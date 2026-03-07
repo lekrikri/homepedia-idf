@@ -1,0 +1,57 @@
+# Secrets — NE JAMAIS COMMITTER
+.env
+ingestion/.env
+ingestion/**/.env
+**/.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+.pytest_cache/
+
+# Données locales temporaires
+/tmp/
+*.parquet
+*.csv.gz
+*.csv
+
+# Go
+backend/bin/
+backend/server
+backend/tmp/
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.next/
+frontend/build/
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+Zone.Identifier
+*:Zone.Identifier
+
+# Logs
+*.log
+dvf_full_log.txt
+
+# PDF / fichiers Epitech (à la racine uniquement)
+/*.pdf
+/kickoff*
+/message*
+/project*
+# Fichiers Zone.Identifier Windows
+*.Identifier
