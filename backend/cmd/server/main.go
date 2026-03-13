@@ -64,6 +64,9 @@ func main() {
 		// Transactions (public read — heavy queries handled by Databricks gold layer)
 		v1.GET("/transactions", handlers.ListTransactions)
 		v1.GET("/transactions/:id", handlers.GetTransaction)
+
+		// Stats agrégées
+		v1.GET("/stats", handlers.GetStats)
 	}
 
 	port := os.Getenv("PORT")
