@@ -5,26 +5,25 @@ import "cesium/Build/Cesium/Widgets/widgets.css";
 const CESIUM_TOKEN =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIwMjQ5MDkzYS1iZjU2LTQyMjktOGE2MC0xODZhNDhjNTM0ZWUiLCJpZCI6NDAzMjQ1LCJpYXQiOjE3NzM0Mjk1Njl9.C2tlmAUZ7wHLKcgNEp2NpH1L_MitT09cFIKeBPIu27c";
 
-// DPE → couleur RGBA Cesium
-const DPE_CESIUM = {
-  A: "color('#22c55e')",
-  B: "color('#4ade80')",
-  C: "color('#facc15')",
-  D: "color('#fb923c')",
-  E: "color('#f97316')",
-  F: "color('#ef4444')",
-  G: "color('#dc2626')",
+const DPE_HEX = {
+  A: "#22c55e",
+  B: "#4ade80",
+  C: "#a3e635",
+  D: "#facc15",
+  E: "#fb923c",
+  F: "#f87171",
+  G: "#dc2626",
 };
 
 const COMMUNE_VIEWS = {
-  "75056": { lon: 2.3488,  lat: 48.8566, alt: 900,  pitch: -40 },
-  "92012": { lon: 2.2408,  lat: 48.8359, alt: 600,  pitch: -40 },
-  "92051": { lon: 2.2698,  lat: 48.8847, alt: 600,  pitch: -40 },
-  "93066": { lon: 2.4415,  lat: 48.8638, alt: 600,  pitch: -40 },
-  "94028": { lon: 2.4399,  lat: 48.8477, alt: 600,  pitch: -40 },
-  "78646": { lon: 2.1297,  lat: 48.8014, alt: 700,  pitch: -35 },
-  "91228": { lon: 2.4452,  lat: 48.6278, alt: 700,  pitch: -35 },
-  "92026": { lon: 2.2874,  lat: 48.8936, alt: 600,  pitch: -40 },
+  "75056": { lon: 2.3488,  lat: 48.8534, alt: 1200, pitch: -45 },
+  "92012": { lon: 2.2408,  lat: 48.8359, alt:  700, pitch: -42 },
+  "92051": { lon: 2.2698,  lat: 48.8847, alt:  700, pitch: -42 },
+  "93066": { lon: 2.4415,  lat: 48.8638, alt:  700, pitch: -42 },
+  "94028": { lon: 2.4399,  lat: 48.8477, alt:  700, pitch: -42 },
+  "78646": { lon: 2.1297,  lat: 48.8014, alt:  800, pitch: -38 },
+  "91228": { lon: 2.4452,  lat: 48.6278, alt:  800, pitch: -38 },
+  "92026": { lon: 2.2874,  lat: 48.8936, alt:  700, pitch: -42 },
 };
 
 export default function CesiumView3D({ selectedCommune, transactions }) {
@@ -33,65 +32,113 @@ export default function CesiumView3D({ selectedCommune, transactions }) {
   const tilesetRef   = useRef(null);
   const entitiesRef  = useRef([]);
 
-  // ── Init viewer ──────────────────────────────────────────────────────────────
+  // ── Init ─────────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current || viewerRef.current) return;
 
     Cesium.Ion.defaultAccessToken = CESIUM_TOKEN;
 
     const viewer = new Cesium.Viewer(containerRef.current, {
-      terrainProvider:    new Cesium.EllipsoidTerrainProvider(),
+      terrain:            Cesium.Terrain.fromWorldTerrain(),
       animation:          false,
       baseLayerPicker:    false,
       fullscreenButton:   false,
       geocoder:           false,
       homeButton:         false,
-      infoBox:            false,
+      infoBox:            true,
       sceneModePicker:    false,
-      selectionIndicator: false,
+      selectionIndicator: true,
       timeline:           false,
       navigationHelpButton:              false,
       navigationInstructionsInitiallyVisible: false,
       requestRenderMode:  false,
-      // Fond noir
-      skyBox:  false,
-      skyAtmosphere: false,
+      skyBox:             false,
+      skyAtmosphere:      new Cesium.SkyAtmosphere(),
     });
 
-    // Fond sombre
-    viewer.scene.backgroundColor = Cesium.Color.fromCssColorString("#101722");
-    viewer.scene.globe.baseColor  = Cesium.Color.fromCssColorString("#0d1520");
-    viewer.scene.globe.enableLighting = false;
-    viewer.scene.globe.showGroundAtmosphere = false;
-    viewer.scene.fog.enabled = false;
-
-    // Imagery sombre : Natural Earth II (sans clé)
+    // ── Imagery : Bing Aerial via Cesium Ion ──────────────────────────────────
     viewer.imageryLayers.removeAll();
-    viewer.imageryLayers.addImageryProvider(
-      new Cesium.TileMapServiceImageryProvider({
-        url: Cesium.buildModuleUrl("Assets/Textures/NaturalEarthII"),
-      })
-    );
+    Cesium.IonImageryProvider.fromAssetId(2).then(provider => {
+      viewer.imageryLayers.addImageryProvider(provider);
+    }).catch(() => {
+      // fallback Natural Earth II
+      viewer.imageryLayers.addImageryProvider(
+        new Cesium.TileMapServiceImageryProvider({
+          url: Cesium.buildModuleUrl("Assets/Textures/NaturalEarthII"),
+        })
+      );
+    });
 
-    // OSM Buildings (asset ID 96188 = tileset mondial gratuit Cesium Ion)
+    // ── Globe settings ────────────────────────────────────────────────────────
+    viewer.scene.globe.enableLighting      = true;
+    viewer.scene.globe.showGroundAtmosphere = false;
+    viewer.scene.fog.enabled               = false;
+    viewer.scene.backgroundColor           = Cesium.Color.fromCssColorString("#060d18");
+    viewer.scene.skyAtmosphere.show        = true;
+
+    // ── Post-processing : Bloom (neon glow) ───────────────────────────────────
+    if (viewer.scene.postProcessStages) {
+      viewer.scene.postProcessStages.fxaa.enabled = true;
+      const bloom = viewer.scene.postProcessStages.bloom;
+      if (bloom) {
+        bloom.enabled           = true;
+        bloom.uniforms.glowOnly = false;
+        bloom.uniforms.contrast = 128;
+        bloom.uniforms.brightness = -0.2;
+        bloom.uniforms.delta    = 1.0;
+        bloom.uniforms.sigma    = 2.5;
+        bloom.uniforms.stepSize = 4.0;
+      }
+    }
+
+    // ── Ambient occlusion ─────────────────────────────────────────────────────
+    const ao = viewer.scene.postProcessStages.ambientOcclusion;
+    if (ao) {
+      ao.enabled = true;
+      ao.uniforms.intensity   = 3.0;
+      ao.uniforms.bias        = 0.1;
+      ao.uniforms.lengthCap   = 0.03;
+      ao.uniforms.stepSize    = 2.0;
+      ao.uniforms.frustumLength = 1000;
+    }
+
+    // ── OSM Buildings ─────────────────────────────────────────────────────────
     Cesium.Cesium3DTileset.fromIonAssetId(96188).then(tileset => {
       viewer.scene.primitives.add(tileset);
       tilesetRef.current = tileset;
-      applyBuildingStyle(tileset, null);
+
+      // Bâtiments : dark blue glass, léger glow sur les arêtes
+      tileset.style = new Cesium.Cesium3DTileStyle({
+        color: {
+          conditions: [
+            ["${feature['building']} === 'yes' || true", "color('#0d2544', 0.88)"],
+          ],
+        },
+      });
     }).catch(e => console.warn("[Cesium] OSM Buildings:", e));
 
-    // Vue initiale — Paris IDF
+    // ── Vue initiale : Paris vue oblique ─────────────────────────────────────
     viewer.camera.setView({
-      destination: Cesium.Cartesian3.fromDegrees(2.3488, 48.85, 8000),
+      destination: Cesium.Cartesian3.fromDegrees(2.3488, 48.845, 2000),
       orientation: {
-        heading: Cesium.Math.toRadians(0),
-        pitch:   Cesium.Math.toRadians(-50),
+        heading: Cesium.Math.toRadians(20),
+        pitch:   Cesium.Math.toRadians(-40),
         roll:    0,
       },
     });
 
-    viewerRef.current = viewer;
+    // ── InfoBox dark style ───────────────────────────────────────────────────
+    const style = document.createElement("style");
+    style.textContent = `
+      .cesium-infoBox { background: rgba(10,20,40,0.95) !important; border: 1px solid rgba(60,131,246,0.4) !important; border-radius: 12px !important; }
+      .cesium-infoBox-title { background: rgba(60,131,246,0.15) !important; color: #e2e8f0 !important; font-family: Inter, sans-serif !important; }
+      .cesium-infoBox-close { color: #64748b !important; }
+      .cesium-infoBox iframe { filter: invert(1) hue-rotate(180deg); }
+      .cesium-widget-credits { display: none !important; }
+    `;
+    document.head.appendChild(style);
 
+    viewerRef.current = viewer;
     return () => {
       if (viewerRef.current && !viewerRef.current.isDestroyed()) {
         viewerRef.current.destroy();
@@ -100,108 +147,101 @@ export default function CesiumView3D({ selectedCommune, transactions }) {
     };
   }, []);
 
-  // ── Style bâtiments selon DPE dominant de la commune ────────────────────────
-  function applyBuildingStyle(tileset, dpePrincipal) {
-    const baseColor = dpePrincipal && DPE_CESIUM[dpePrincipal]
-      ? DPE_CESIUM[dpePrincipal]
-      : "color('#1a3a5c', 0.95)";
-
-    tileset.style = new Cesium.Cesium3DTileStyle({
-      color: {
-        conditions: [
-          ["true", baseColor],
-        ],
-      },
-    });
-  }
-
-  // ── Fly to commune + markers transactions ────────────────────────────────────
+  // ── Fly to commune ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!viewerRef.current || !selectedCommune) return;
-
-    const view = COMMUNE_VIEWS[selectedCommune.code_insee];
-    if (view) {
-      viewerRef.current.camera.flyTo({
-        destination: Cesium.Cartesian3.fromDegrees(view.lon, view.lat, view.alt),
-        orientation: {
-          heading: Cesium.Math.toRadians(0),
-          pitch:   Cesium.Math.toRadians(view.pitch),
-          roll:    0,
-        },
-        duration: 1.8,
-      });
-    }
-
-    // Update building color based on DPE
-    if (tilesetRef.current) {
-      const dpeCounts = transactions.reduce((acc, t) => {
-        if (t.classe_energie) acc[t.classe_energie] = (acc[t.classe_energie] || 0) + 1;
-        return acc;
-      }, {});
-      const dpePrincipal = Object.entries(dpeCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
-      applyBuildingStyle(tilesetRef.current, dpePrincipal);
-    }
+    const v = COMMUNE_VIEWS[selectedCommune.code_insee];
+    if (!v) return;
+    viewerRef.current.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(v.lon, v.lat, v.alt),
+      orientation: {
+        heading: Cesium.Math.toRadians(10),
+        pitch:   Cesium.Math.toRadians(v.pitch),
+        roll:    0,
+      },
+      duration: 2.0,
+    });
   }, [selectedCommune]);
 
-  // ── Transaction markers ──────────────────────────────────────────────────────
+  // ── Barres prix (vertical bars colored by DPE) ────────────────────────────
   useEffect(() => {
     if (!viewerRef.current) return;
 
-    // Remove old entities
-    entitiesRef.current.forEach(e => viewerRef.current.entities.remove(e));
+    // Nettoyer les anciennes entités
+    entitiesRef.current.forEach(e => {
+      try { viewerRef.current.entities.remove(e); } catch {}
+    });
     entitiesRef.current = [];
 
     transactions.forEach(t => {
-      if (!t.longitude || !t.latitude) return;
+      if (!t.longitude || !t.latitude || !t.valeur_fonciere || !t.surface_reelle_bati) return;
 
-      const prixM2 = t.valeur_fonciere && t.surface_reelle_bati
-        ? Math.round(t.valeur_fonciere / t.surface_reelle_bati) : null;
+      const prixM2  = t.valeur_fonciere / t.surface_reelle_bati;
+      // Hauteur = prix/m² / 25, entre 15m et 400m pour être visible
+      const barH    = Math.min(400, Math.max(15, prixM2 / 25));
+      const hexColor = t.classe_energie ? DPE_HEX[t.classe_energie] : "#3c83f6";
+      const cesColor = Cesium.Color.fromCssColorString(hexColor);
 
-      const dpeColor = t.classe_energie
-        ? Cesium.Color.fromCssColorString(
-            { A:"#22c55e", B:"#4ade80", C:"#facc15", D:"#fb923c", E:"#f97316", F:"#ef4444", G:"#dc2626" }
-            [t.classe_energie] || "#3c83f6"
-          )
-        : Cesium.Color.fromCssColorString("#3c83f6");
+      const prix = t.valeur_fonciere >= 1e6
+        ? `${(t.valeur_fonciere / 1e6).toFixed(2)}M€`
+        : `${(t.valeur_fonciere / 1000).toFixed(0)}k€`;
 
-      const prix = t.valeur_fonciere
-        ? t.valeur_fonciere >= 1e6
-          ? `${(t.valeur_fonciere / 1e6).toFixed(2)}M€`
-          : `${(t.valeur_fonciere / 1000).toFixed(0)}k€`
-        : "—";
-
-      const entity = viewerRef.current.entities.add({
-        position: Cesium.Cartesian3.fromDegrees(t.longitude, t.latitude, 20),
-        point: {
-          pixelSize:        10,
-          color:            dpeColor.withAlpha(0.9),
-          outlineColor:     Cesium.Color.WHITE.withAlpha(0.7),
-          outlineWidth:     1.5,
-          heightReference:  Cesium.HeightReference.RELATIVE_TO_GROUND,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      // ── Barre verticale ──────────────────────────────────────────────────
+      const bar = viewerRef.current.entities.add({
+        position: Cesium.Cartesian3.fromDegrees(t.longitude, t.latitude, barH / 2),
+        cylinder: {
+          length:        barH,
+          topRadius:     4,
+          bottomRadius:  4,
+          material:      cesColor.withAlpha(0.82),
+          outline:       true,
+          outlineColor:  cesColor.brighten(0.4, new Cesium.Color()).withAlpha(0.6),
+          outlineWidth:  1,
+          heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND,
+          shadowMode:    Cesium.ShadowMode.DISABLED,
         },
+        description: `
+          <div style="font-family:Inter,sans-serif;padding:12px;color:#e2e8f0;background:#0a1428;min-width:200px">
+            <div style="font-size:22px;font-weight:900;color:${hexColor};letter-spacing:-0.5px">${prix}</div>
+            <div style="font-size:12px;color:#94a3b8;margin:4px 0">${t.type_local || "Bien"} · ${t.surface_reelle_bati?.toFixed(0) ?? "?"}m²</div>
+            <div style="font-size:11px;color:#64748b">${Math.round(prixM2).toLocaleString()} €/m²</div>
+            ${t.classe_energie ? `<div style="margin-top:8px;padding:3px 10px;border-radius:6px;display:inline-block;font-weight:900;font-size:13px;background:${hexColor}25;color:${hexColor};border:1px solid ${hexColor}50">DPE ${t.classe_energie}</div>` : ""}
+            <div style="font-size:10px;color:#475569;margin-top:6px">${[t.adresse_numero, t.adresse].filter(Boolean).join(" ") || "—"}</div>
+          </div>
+        `,
+      });
+
+      // ── Sphère lumineuse au sommet ────────────────────────────────────────
+      const sphere = viewerRef.current.entities.add({
+        position: Cesium.Cartesian3.fromDegrees(t.longitude, t.latitude, barH),
+        ellipsoid: {
+          radii:    new Cesium.Cartesian3(12, 12, 12),
+          material: cesColor.withAlpha(0.95),
+          outline:  false,
+          heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND,
+          shadowMode: Cesium.ShadowMode.DISABLED,
+        },
+      });
+
+      // ── Label prix ────────────────────────────────────────────────────────
+      const label = viewerRef.current.entities.add({
+        position: Cesium.Cartesian3.fromDegrees(t.longitude, t.latitude, barH + 25),
         label: {
           text:             prix,
-          font:             "bold 11px Inter",
+          font:             "bold 12px Inter",
           fillColor:        Cesium.Color.WHITE,
           outlineColor:     Cesium.Color.BLACK,
           outlineWidth:     2,
           style:            Cesium.LabelStyle.FILL_AND_OUTLINE,
-          pixelOffset:      new Cesium.Cartesian2(0, -18),
+          pixelOffset:      new Cesium.Cartesian2(0, 0),
           heightReference:  Cesium.HeightReference.RELATIVE_TO_GROUND,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          show:             true,
+          scaleByDistance:  new Cesium.NearFarScalar(300, 1.2, 2000, 0.4),
+          translucencyByDistance: new Cesium.NearFarScalar(500, 1.0, 3000, 0.0),
         },
-        description: `
-          <div style="font-family:Inter,sans-serif;padding:8px;background:#0f1724;color:#e2e8f0;min-width:160px;border-radius:8px">
-            <div style="font-size:18px;font-weight:900;color:#3c83f6">${prix}</div>
-            <div style="font-size:11px;color:#94a3b8;margin-top:4px">${t.type_local || "Bien"} · ${t.surface_reelle_bati?.toFixed(0) ?? "?"}m²</div>
-            ${prixM2 ? `<div style="font-size:11px;color:#64748b;margin-top:2px">${prixM2.toLocaleString()} €/m²</div>` : ""}
-            ${t.classe_energie ? `<div style="margin-top:6px"><span style="background:${dpeColor.toCssHexString()}40;color:${dpeColor.toCssHexString()};padding:2px 8px;border-radius:4px;font-weight:900;font-size:11px">DPE ${t.classe_energie}</span></div>` : ""}
-          </div>
-        `,
       });
-      entitiesRef.current.push(entity);
+
+      entitiesRef.current.push(bar, sphere, label);
     });
   }, [transactions]);
 
@@ -209,23 +249,31 @@ export default function CesiumView3D({ selectedCommune, transactions }) {
     <div className="relative w-full h-full">
       <div ref={containerRef} className="w-full h-full" />
 
-      {/* Legend overlay */}
-      <div className="absolute top-4 left-4 z-10 flex flex-col gap-1.5 px-3 py-2 rounded-xl"
-        style={{ background: "rgba(16,23,34,0.85)", backdropFilter: "blur(8px)", border: "1px solid rgba(60,131,246,0.2)" }}>
-        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">DPE Bâtiments</p>
-        {Object.entries({ A:"#22c55e", B:"#4ade80", C:"#facc15", D:"#fb923c", E:"#f97316", F:"#ef4444", G:"#dc2626" }).map(([cls, col]) => (
-          <div key={cls} className="flex items-center gap-2">
-            <div className="size-2.5 rounded-sm" style={{ background: col }} />
-            <span className="text-[9px] text-slate-300 font-bold">{cls}</span>
-          </div>
-        ))}
+      {/* Legend */}
+      <div className="absolute top-4 left-4 z-10 px-3 py-3 rounded-xl"
+        style={{ background: "rgba(6,13,24,0.88)", backdropFilter: "blur(12px)", border: "1px solid rgba(60,131,246,0.25)" }}>
+        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Barres · DPE · Prix</p>
+        <div className="space-y-1.5">
+          {Object.entries(DPE_HEX).map(([cls, hex]) => (
+            <div key={cls} className="flex items-center gap-2">
+              <div className="w-2 h-5 rounded-sm" style={{ background: hex, boxShadow: `0 0 6px ${hex}` }} />
+              <span className="text-[9px] text-slate-300 font-bold">{cls}</span>
+              <span className="text-[8px] text-slate-500">
+                {{ A:"< 3k", B:"3–5k", C:"5–7k", D:"7–10k", E:"10–13k", F:"13–16k", G:"16k+" }[cls]} €/m²
+              </span>
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 pt-2 border-t border-slate-800">
+          <p className="text-[8px] text-slate-500">Hauteur barre = prix / m²</p>
+        </div>
       </div>
 
       {/* Hint */}
-      <div className="absolute bottom-10 left-4 z-10 px-3 py-1.5 rounded-lg text-[10px] text-slate-400"
-        style={{ background: "rgba(16,23,34,0.8)", border: "1px solid rgba(255,255,255,0.06)" }}>
-        <span className="material-symbols-outlined align-middle mr-1" style={{ fontSize: 13 }}>mouse</span>
-        Clic sur un point · Glisser pour orbiter · Scroll pour zoomer
+      <div className="absolute bottom-10 left-4 z-10 flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] text-slate-400"
+        style={{ background: "rgba(6,13,24,0.8)", border: "1px solid rgba(255,255,255,0.05)" }}>
+        <span className="material-symbols-outlined" style={{ fontSize: 13 }}>touch_app</span>
+        Clic sur une barre · Glisser pour orbiter · Scroll pour zoomer
       </div>
     </div>
   );
