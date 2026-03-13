@@ -70,30 +70,38 @@ export default function CesiumView3D({ selectedCommune, transactions }) {
     });
 
     // ── Globe settings ────────────────────────────────────────────────────────
-    viewer.scene.globe.enableLighting       = false;  // OFF = couleur uniforme, pas de faces noires
+    viewer.scene.globe.enableLighting       = false;  // terrain uniforme
     viewer.scene.globe.showGroundAtmosphere = false;
     viewer.scene.fog.enabled               = false;
     viewer.scene.backgroundColor           = Cesium.Color.fromCssColorString("#060d18");
-    viewer.scene.skyAtmosphere.show        = false;   // OFF = pas de ciel bleu qui clash
+    viewer.scene.skyAtmosphere.show        = false;
 
-    // ── Post-processing : FXAA uniquement (bloom trop agressif) ──────────────
+    // ── Lumière directionnelle : toits clairs + arêtes sombres (effet eNect) ─
+    // Direction = légèrement oblique vers le bas depuis le NW
+    const lightDir = new Cesium.Cartesian3(0.5, 0.5, -1.0);
+    Cesium.Cartesian3.normalize(lightDir, lightDir);
+    viewer.scene.light = new Cesium.DirectionalLight({
+      direction: lightDir,
+      intensity: 4.0,
+    });
+
+    // ── Post-processing : FXAA uniquement ────────────────────────────────────
     if (viewer.scene.postProcessStages) {
       viewer.scene.postProcessStages.fxaa.enabled = true;
       const bloom = viewer.scene.postProcessStages.bloom;
       if (bloom) bloom.enabled = false;
     }
-
-    // ── Ambient occlusion : désactivé ────────────────────────────────────────
     const ao = viewer.scene.postProcessStages.ambientOcclusion;
     if (ao) ao.enabled = false;
 
-    // ── OSM Buildings : bleu digital-twin semi-transparent ───────────────────
+    // ── OSM Buildings : bleu digital-twin quasi-opaque ───────────────────────
+    // Toits = clairs (face vers lumière) | Murs = gradients d'ombre selon orientation
     Cesium.Cesium3DTileset.fromIonAssetId(96188).then(tileset => {
       viewer.scene.primitives.add(tileset);
       tilesetRef.current = tileset;
 
       tileset.style = new Cesium.Cesium3DTileStyle({
-        color: "color('#2155a3', 0.78)",
+        color: "color('#2a62c9', 0.94)",
       });
     }).catch(e => console.warn("[Cesium] OSM Buildings:", e));
 
