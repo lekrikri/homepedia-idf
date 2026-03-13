@@ -76,30 +76,48 @@ export default function CesiumView3D({ selectedCommune, transactions }) {
     viewer.scene.backgroundColor           = Cesium.Color.fromCssColorString("#060d18");
     viewer.scene.skyAtmosphere.show        = false;
 
-    // ── SunLight fixé à midi solstice d'été sur Paris ─────────────────────────
-    // Soleil à ~75° au zénith → toits face au soleil = clairs, murs en ombre
-    viewer.clock.currentTime   = Cesium.JulianDate.fromDate(new Date("2024-06-21T10:00:00Z"));
-    viewer.clock.shouldAnimate = false;
-    viewer.scene.light = new Cesium.SunLight();
+    // ── DirectionalLight depuis le dessus de Paris (ECEF correct) ────────────
+    // eastNorthUpToFixedFrame donne la matrice de transformation locale pour Paris
+    // On en extrait le vecteur "up" (Z local) → inversé = direction de la lumière
+    const parisECEF  = Cesium.Cartesian3.fromDegrees(2.35, 48.85);
+    const enuMatrix  = Cesium.Transforms.eastNorthUpToFixedFrame(parisECEF);
+    const localUp    = new Cesium.Cartesian3(0, 0, 1);
+    const upECEF     = new Cesium.Cartesian3();
+    Cesium.Matrix4.multiplyByPointAsVector(enuMatrix, localUp, upECEF);
+    Cesium.Cartesian3.normalize(upECEF, upECEF);
+    const lightDir   = Cesium.Cartesian3.negate(upECEF, new Cesium.Cartesian3());
+    viewer.scene.light = new Cesium.DirectionalLight({
+      direction: lightDir,
+      intensity: 5.0,   // haute intensité → toits presque blancs, murs quasi noirs
+    });
 
-    // ── Post-processing : FXAA uniquement ────────────────────────────────────
+    // ── Post-processing : FXAA + bloom subtil pour glow des barres DPE ───────
     if (viewer.scene.postProcessStages) {
       viewer.scene.postProcessStages.fxaa.enabled = true;
       const bloom = viewer.scene.postProcessStages.bloom;
-      if (bloom) bloom.enabled = false;
+      if (bloom) {
+        bloom.enabled             = true;
+        bloom.uniforms.glowOnly   = false;
+        bloom.uniforms.contrast   = 128;
+        bloom.uniforms.brightness = -0.2;  // légèrement négatif → évite que le ciel grise
+        bloom.uniforms.delta      = 1.0;
+        bloom.uniforms.sigma      = 1.1;   // bas → glow subtil, pas de blur global
+        bloom.uniforms.stepSize   = 1.0;
+      }
     }
     const ao = viewer.scene.postProcessStages.ambientOcclusion;
     if (ao) ao.enabled = false;
 
-    // ── OSM Buildings : colorBlendMode MIX ────────────────────────────────────
-    // MIX préserve le shading PBR original (toits clairs / murs sombres)
-    // et y applique la teinte bleue à 65% → effet digital-twin avec ombres réelles
+    // ── OSM Buildings : MIX + DirectionalLight haute intensité ───────────────
+    // intensity: 5.0 → faces hautes (toits) = presque blanches → mélangé avec bleu = bleu clair
+    //                    faces verticales (murs) = presque noires → mélangé avec bleu = bleu très sombre
+    // colorBlendAmount: 0.75 → laisse assez de contraste PBR visible
     Cesium.Cesium3DTileset.fromIonAssetId(96188).then(tileset => {
       viewer.scene.primitives.add(tileset);
       tilesetRef.current = tileset;
 
       tileset.colorBlendMode   = Cesium.Cesium3DTileColorBlendMode.MIX;
-      tileset.colorBlendAmount = 0.82;  // 82% bleu → bien bleu mais garde les ombres PBR
+      tileset.colorBlendAmount = 0.75;
 
       tileset.style = new Cesium.Cesium3DTileStyle({
         color: "color('#2563eb', 1.0)",
