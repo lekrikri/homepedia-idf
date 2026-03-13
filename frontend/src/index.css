@@ -48,6 +48,21 @@
   .glow-border {
     box-shadow: 0 0 15px rgba(60, 131, 246, 0.15);
   }
+  .glow-button {
+    box-shadow: 0 4px 24px rgba(60, 131, 246, 0.35);
+    transition: box-shadow 0.2s, background 0.2s, transform 0.15s;
+  }
+  .glow-button:hover {
+    box-shadow: 0 4px 32px rgba(60, 131, 246, 0.55);
+    transform: translateY(-1px);
+  }
+  .modal-enter {
+    animation: modalIn 0.2s ease-out;
+  }
+  @keyframes modalIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to   { opacity: 1; transform: scale(1); }
+  }
   .mono-nums {
     font-family: 'JetBrains Mono', monospace;
   }

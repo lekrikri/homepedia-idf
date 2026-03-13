@@ -1,0 +1,71 @@
+-- =============================================================================
+-- HomePedia — Données de test (seed)
+-- =============================================================================
+
+-- Communes IDF
+INSERT INTO communes (code_insee, code_postal, nom, departement, region, population) VALUES
+  ('75056', '75001', 'Paris',             '75', 'Île-de-France', 2161000),
+  ('92012', '92100', 'Boulogne-Billancourt','92','Île-de-France',  122741),
+  ('92051', '92200', 'Neuilly-sur-Seine', '92', 'Île-de-France',   62015),
+  ('93066', '93100', 'Montreuil',         '93', 'Île-de-France',  108094),
+  ('94028', '94300', 'Vincennes',         '94', 'Île-de-France',   49754),
+  ('78646', '78000', 'Versailles',        '78', 'Île-de-France',   85523),
+  ('91228', '91000', 'Évry-Courcouronnes','91', 'Île-de-France',   73800),
+  ('77288', '77000', 'Melun',             '77', 'Île-de-France',   42000),
+  ('95500', '95000', 'Cergy',             '95', 'Île-de-France',   64600),
+  ('92026', '92300', 'Levallois-Perret',  '92', 'Île-de-France',   67000)
+ON CONFLICT (code_insee) DO NOTHING;
+
+-- Transactions DVF réalistes (Paris + petite couronne)
+INSERT INTO transactions (id_mutation, date_mutation, nature_mutation, valeur_fonciere, adresse_numero, adresse_voie, code_postal, commune, code_commune, type_local, surface_reelle_bati, nombre_pieces, longitude, latitude, geom, source_annee) VALUES
+  ('2023-123456', '2023-11-24', 'Vente', 745000,  '12', 'Rue de Rivoli',      '75001', 'Paris',              '75056', 'Appartement', 54.2, 2, 2.3488, 48.8566, ST_SetSRID(ST_MakePoint(2.3488, 48.8566), 4326), 2023),
+  ('2023-123457', '2023-11-23', 'Vente', 1230000, '45', 'Av. Victor Hugo',    '92100', 'Boulogne-Billancourt','92012', 'Maison',      112.5,5, 2.2408, 48.8359, ST_SetSRID(ST_MakePoint(2.2408, 48.8359), 4326), 2023),
+  ('2023-123458', '2023-11-22', 'Vente', 310000,  '8 Bis','Rue de la Paix',   '75002', 'Paris',              '75056', 'Studio',      19.8, 1, 2.3308, 48.8698, ST_SetSRID(ST_MakePoint(2.3308, 48.8698), 4326), 2023),
+  ('2023-123459', '2023-11-21', 'Vente', 1410000, '102','Boulevard Raspail',  '75006', 'Paris',              '75056', 'Appartement', 88.4, 4, 2.3282, 48.8474, ST_SetSRID(ST_MakePoint(2.3282, 48.8474), 4326), 2023),
+  ('2023-123460', '2023-11-20', 'Vente', 455000,  '32', 'Rue de Vanves',      '92100', 'Boulogne-Billancourt','92012', 'Appartement', 42.0, 2, 2.2510, 48.8326, ST_SetSRID(ST_MakePoint(2.2510, 48.8326), 4326), 2023),
+  ('2023-123461', '2023-11-20', 'Vente', 3290000, '7',  'Quai Branly',        '75007', 'Paris',              '75056', 'Appartement', 145.8,5, 2.2986, 48.8596, ST_SetSRID(ST_MakePoint(2.2986, 48.8596), 4326), 2023),
+  ('2023-123462', '2023-11-19', 'Vente', 385000,  '18', 'Rue Lepic',          '75018', 'Paris',              '75056', 'Appartement', 33.5, 2, 2.3339, 48.8854, ST_SetSRID(ST_MakePoint(2.3339, 48.8854), 4326), 2023),
+  ('2023-123463', '2023-11-18', 'Vente', 680000,  '5',  'Allée des Roses',    '92200', 'Neuilly-sur-Seine',  '92051', 'Appartement', 65.0, 3, 2.2698, 48.8847, ST_SetSRID(ST_MakePoint(2.2698, 48.8847), 4326), 2023),
+  ('2023-123464', '2023-11-17', 'Vente', 290000,  '23', 'Rue de Paris',       '93100', 'Montreuil',          '93066', 'Appartement', 48.5, 2, 2.4415, 48.8638, ST_SetSRID(ST_MakePoint(2.4415, 48.8638), 4326), 2023),
+  ('2023-123465', '2023-11-16', 'Vente', 520000,  '14', 'Av. de Vincennes',   '94300', 'Vincennes',          '94028', 'Maison',      78.0, 3, 2.4399, 48.8477, ST_SetSRID(ST_MakePoint(2.4399, 48.8477), 4326), 2023),
+  ('2023-123466', '2023-11-15', 'Vente', 1850000, '88', 'Rue de la Pompe',    '75016', 'Paris',              '75056', 'Appartement', 120.0,4, 2.2777, 48.8620, ST_SetSRID(ST_MakePoint(2.2777, 48.8620), 4326), 2023),
+  ('2023-123467', '2023-11-14', 'Vente', 195000,  '41', 'Av. Jean Jaurès',    '93100', 'Montreuil',          '93066', 'Studio',      22.0, 1, 2.4500, 48.8600, ST_SetSRID(ST_MakePoint(2.4500, 48.8600), 4326), 2023),
+  ('2023-123468', '2023-11-13', 'Vente', 390000,  '3',  'Rue du Château',     '92100', 'Boulogne-Billancourt','92012', 'Appartement', 52.0, 2, 2.2380, 48.8340, ST_SetSRID(ST_MakePoint(2.2380, 48.8340), 4326), 2023),
+  ('2023-123469', '2023-11-12', 'Vente', 2100000, '22', 'Bd du Général Leclerc','92200','Neuilly-sur-Seine', '92051', 'Appartement', 160.0,5, 2.2600, 48.8850, ST_SetSRID(ST_MakePoint(2.2600, 48.8850), 4326), 2023),
+  ('2023-123470', '2023-11-11', 'Vente', 430000,  '9',  'Rue de l''Eglise',   '94028', 'Vincennes',          '94028', 'Appartement', 58.0, 3, 2.4350, 48.8470, ST_SetSRID(ST_MakePoint(2.4350, 48.8470), 4326), 2023),
+  ('2023-123471', '2023-11-10', 'Vente', 870000,  '67', 'Rue Saint-Dominique','75007', 'Paris',              '75056', 'Appartement', 72.0, 3, 2.3063, 48.8573, ST_SetSRID(ST_MakePoint(2.3063, 48.8573), 4326), 2023),
+  ('2023-123472', '2023-11-09', 'Vente', 255000,  '12', 'Cité des Fleurs',    '93066', 'Montreuil',          '93066', 'Appartement', 35.0, 2, 2.4420, 48.8660, ST_SetSRID(ST_MakePoint(2.4420, 48.8660), 4326), 2023),
+  ('2023-123473', '2023-11-08', 'Vente', 1560000, '31', 'Av. Mozart',         '75016', 'Paris',              '75056', 'Appartement', 105.0,4, 2.2742, 48.8571, ST_SetSRID(ST_MakePoint(2.2742, 48.8571), 4326), 2023),
+  ('2023-123474', '2023-11-07', 'Vente', 620000,  '7',  'Rue Carnot',         '92200', 'Neuilly-sur-Seine',  '92051', 'Appartement', 68.0, 3, 2.2720, 48.8860, ST_SetSRID(ST_MakePoint(2.2720, 48.8860), 4326), 2023),
+  ('2023-123475', '2023-11-06', 'Vente', 345000,  '55', 'Rue de la République','94300','Vincennes',          '94028', 'Appartement', 45.0, 2, 2.4410, 48.8490, ST_SetSRID(ST_MakePoint(2.4410, 48.8490), 4326), 2023),
+  ('2023-123476', '2023-11-05', 'Vente', 920000,  '4',  'Av. de la Grande Armée','75017','Paris',           '75056', 'Appartement', 78.0, 3, 2.2949, 48.8752, ST_SetSRID(ST_MakePoint(2.2949, 48.8752), 4326), 2023),
+  ('2023-123477', '2023-11-04', 'Vente', 178000,  '19', 'Av. du Président Wilson','93100','Montreuil',      '93066', 'Studio',      18.5, 1, 2.4480, 48.8620, ST_SetSRID(ST_MakePoint(2.4480, 48.8620), 4326), 2023),
+  ('2023-123478', '2023-11-03', 'Vente', 1100000, '56', 'Bd Exelmans',          '75016', 'Paris',           '75056', 'Appartement', 92.0, 4, 2.2593, 48.8389, ST_SetSRID(ST_MakePoint(2.2593, 48.8389), 4326), 2023),
+  ('2023-123479', '2023-11-02', 'Vente', 475000,  '11', 'Rue du Château',       '92100', 'Boulogne-Billancourt','92012','Appartement',60.0, 3, 2.2420, 48.8370, ST_SetSRID(ST_MakePoint(2.2420, 48.8370), 4326), 2023),
+  ('2023-123480', '2023-11-01', 'Vente', 2650000, '18', 'Av. Foch',             '75116', 'Paris',           '75056', 'Appartement', 180.0,5, 2.2720, 48.8733, ST_SetSRID(ST_MakePoint(2.2720, 48.8733), 4326), 2023),
+  ('2023-123481', '2023-10-31', 'Vente', 320000,  '3',  'Bd Rouget de Lisle',   '93100', 'Montreuil',       '93066', 'Appartement', 42.0, 2, 2.4395, 48.8640, ST_SetSRID(ST_MakePoint(2.4395, 48.8640), 4326), 2023),
+  ('2023-123482', '2023-10-30', 'Vente', 760000,  '33', 'Rue de Longchamp',     '92200', 'Neuilly-sur-Seine','92051','Appartement', 72.0, 3, 2.2660, 48.8830, ST_SetSRID(ST_MakePoint(2.2660, 48.8830), 4326), 2023),
+  ('2023-123483', '2023-10-29', 'Vente', 265000,  '8',  'Rue Hoche',            '94300', 'Vincennes',        '94028','Appartement', 35.0, 2, 2.4440, 48.8460, ST_SetSRID(ST_MakePoint(2.4440, 48.8460), 4326), 2023),
+  ('2023-123484', '2023-10-28', 'Vente', 1380000, '25', 'Av. de Suffren',       '75007', 'Paris',            '75056','Appartement', 95.0, 4, 2.3017, 48.8505, ST_SetSRID(ST_MakePoint(2.3017, 48.8505), 4326), 2023),
+  ('2023-123485', '2023-10-27', 'Vente', 890000,  '47', 'Bd Murat',             '75016', 'Paris',            '75056','Appartement', 80.0, 3, 2.2506, 48.8393, ST_SetSRID(ST_MakePoint(2.2506, 48.8393), 4326), 2023),
+  ('2023-123486', '2023-10-26', 'Vente', 215000,  '72', 'Rue de Paris',         '93100', 'Montreuil',        '93066','Studio',      24.0, 1, 2.4460, 48.8660, ST_SetSRID(ST_MakePoint(2.4460, 48.8660), 4326), 2023),
+  ('2023-123487', '2023-10-25', 'Vente', 545000,  '6',  'Rue du Bois',          '92200', 'Neuilly-sur-Seine','92051','Appartement', 58.0, 3, 2.2740, 48.8870, ST_SetSRID(ST_MakePoint(2.2740, 48.8870), 4326), 2023),
+  ('2023-123488', '2023-10-24', 'Vente', 1750000, '14', 'Rue de Varenne',       '75007', 'Paris',            '75056','Appartement', 130.0,5, 2.3148, 48.8556, ST_SetSRID(ST_MakePoint(2.3148, 48.8556), 4326), 2023),
+  ('2023-123489', '2023-10-23', 'Vente', 410000,  '29', 'Av. du Roule',         '92200', 'Neuilly-sur-Seine','92051','Appartement', 48.0, 2, 2.2680, 48.8840, ST_SetSRID(ST_MakePoint(2.2680, 48.8840), 4326), 2023),
+  ('2023-123490', '2023-10-22', 'Vente', 580000,  '15', 'Bd Jean Jaurès',       '92100', 'Boulogne-Billancourt','92012','Maison',   85.0, 4, 2.2480, 48.8320, ST_SetSRID(ST_MakePoint(2.2480, 48.8320), 4326), 2023),
+  ('2023-123491', '2023-10-21', 'Vente', 295000,  '34', 'Rue de Stalingrad',    '93100', 'Montreuil',        '93066','Appartement', 40.0, 2, 2.4470, 48.8610, ST_SetSRID(ST_MakePoint(2.4470, 48.8610), 4326), 2023),
+  ('2023-123492', '2023-10-20', 'Vente', 3800000, '2',  'Av. Montaigne',        '75008', 'Paris',            '75056','Appartement', 220.0,6, 2.3063, 48.8670, ST_SetSRID(ST_MakePoint(2.3063, 48.8670), 4326), 2023),
+  ('2023-123493', '2023-10-19', 'Vente', 680000,  '88', 'Bd du Château',        '92200', 'Neuilly-sur-Seine','92051','Appartement', 70.0, 3, 2.2700, 48.8820, ST_SetSRID(ST_MakePoint(2.2700, 48.8820), 4326), 2023),
+  ('2023-123494', '2023-10-18', 'Vente', 142000,  '5',  'Allée des Marronniers','93100', 'Montreuil',        '93066','Studio',      16.0, 1, 2.4510, 48.8590, ST_SetSRID(ST_MakePoint(2.4510, 48.8590), 4326), 2023),
+  ('2023-123495', '2023-10-17', 'Vente', 990000,  '71', 'Rue de Passy',         '75016', 'Paris',            '75056','Appartement', 82.0, 3, 2.2770, 48.8563, ST_SetSRID(ST_MakePoint(2.2770, 48.8563), 4326), 2023),
+  ('2023-123496', '2023-10-16', 'Vente', 460000,  '12', 'Av. Edouard Vaillant', '92100', 'Boulogne-Billancourt','92012','Appartement',55.0,2, 2.2460, 48.8360, ST_SetSRID(ST_MakePoint(2.2460, 48.8360), 4326), 2023),
+  ('2023-123497', '2023-10-15', 'Vente', 1680000, '9',  'Rue de la Faisanderie','75016', 'Paris',            '75056','Appartement', 120.0,4, 2.2660, 48.8622, ST_SetSRID(ST_MakePoint(2.2660, 48.8622), 4326), 2023),
+  ('2023-123498', '2023-10-14', 'Vente', 355000,  '28', 'Rue Robespierre',      '93100', 'Montreuil',        '93066','Appartement', 47.0, 2, 2.4430, 48.8650, ST_SetSRID(ST_MakePoint(2.4430, 48.8650), 4326), 2023),
+  ('2023-123499', '2023-10-13', 'Vente', 840000,  '22', 'Bd de la Saussaye',    '92200', 'Neuilly-sur-Seine','92051','Appartement', 76.0, 3, 2.2720, 48.8810, ST_SetSRID(ST_MakePoint(2.2720, 48.8810), 4326), 2023),
+  ('2023-123500', '2023-10-12', 'Vente', 1250000, '44', 'Av. de la Bourdonnais','75007', 'Paris',            '75056','Appartement', 98.0, 4, 2.3031, 48.8577, ST_SetSRID(ST_MakePoint(2.3031, 48.8577), 4326), 2023),
+  ('2023-123501', '2023-10-11', 'Vente', 495000,  '17', 'Rue des Boulets',      '75011', 'Paris',            '75056','Appartement', 62.0, 3, 2.3904, 48.8516, ST_SetSRID(ST_MakePoint(2.3904, 48.8516), 4326), 2023),
+  ('2023-123502', '2023-10-10', 'Vente', 230000,  '63', 'Rue du Capitaine Dreyfus','93100','Montreuil',      '93066','Appartement', 32.0, 2, 2.4490, 48.8630, ST_SetSRID(ST_MakePoint(2.4490, 48.8630), 4326), 2023),
+  ('2023-123503', '2023-10-09', 'Vente', 2900000, '38', 'Av. George V',         '75008', 'Paris',            '75056','Appartement', 195.0,5, 2.3029, 48.8717, ST_SetSRID(ST_MakePoint(2.3029, 48.8717), 4326), 2023),
+  ('2023-123504', '2023-10-08', 'Vente', 720000,  '3',  'Sq. de Roquebrune',    '92200', 'Neuilly-sur-Seine','92051','Maison',     110.0, 4, 2.2710, 48.8800, ST_SetSRID(ST_MakePoint(2.2710, 48.8800), 4326), 2023),
+  ('2023-123505', '2023-10-07', 'Vente', 375000,  '41', 'Rue de la Cour des Noues','75020','Paris',          '75056','Appartement', 50.0, 2, 2.4019, 48.8643, ST_SetSRID(ST_MakePoint(2.4019, 48.8643), 4326), 2023)
+ON CONFLICT (id_mutation, date_mutation, type_local) DO NOTHING;

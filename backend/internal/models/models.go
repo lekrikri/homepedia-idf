@@ -19,6 +19,7 @@ type Transaction struct {
 	DateMutation       string   `json:"date_mutation"`        // ISO date
 	NatureMutation     *string  `json:"nature_mutation,omitempty"`
 	ValeurFonciere     *float64 `json:"valeur_fonciere,omitempty"`
+	AdresseNumero      *string  `json:"adresse_numero,omitempty"`
 	Adresse            *string  `json:"adresse,omitempty"`
 	CodePostal         *string  `json:"code_postal,omitempty"`
 	Commune            *string  `json:"commune,omitempty"`
@@ -28,6 +29,7 @@ type Transaction struct {
 	NombrePieces       *int16   `json:"nombre_pieces,omitempty"`
 	Longitude          *float64 `json:"longitude,omitempty"`
 	Latitude           *float64 `json:"latitude,omitempty"`
+	ClasseEnergie      *string  `json:"classe_energie,omitempty"`
 	SourceAnnee        int16    `json:"source_annee"`
 }
 

@@ -24,10 +24,10 @@ func ListTransactions(c *gin.Context) {
 	annee := c.Query("annee")
 
 	query := `
-		SELECT id, date_mutation, nature_mutation, valeur_fonciere,
-		       adresse_voie, code_postal, commune, code_commune,
+		SELECT id, TO_CHAR(date_mutation, 'YYYY-MM-DD'), nature_mutation, valeur_fonciere,
+		       adresse_numero, adresse_voie, code_postal, commune, code_commune,
 		       type_local, surface_reelle_bati, nombre_pieces,
-		       longitude, latitude, source_annee
+		       longitude, latitude, classe_energie, source_annee
 		FROM transactions
 		WHERE ($1 = '' OR code_commune = $1)
 		  AND ($2 = '' OR type_local ILIKE $2)
@@ -48,9 +48,9 @@ func ListTransactions(c *gin.Context) {
 		var t models.Transaction
 		if err := rows.Scan(
 			&t.ID, &t.DateMutation, &t.NatureMutation, &t.ValeurFonciere,
-			&t.Adresse, &t.CodePostal, &t.Commune, &t.CodeCommune,
+			&t.AdresseNumero, &t.Adresse, &t.CodePostal, &t.Commune, &t.CodeCommune,
 			&t.TypeLocal, &t.SurfaceReelleBati, &t.NombrePieces,
-			&t.Longitude, &t.Latitude, &t.SourceAnnee,
+			&t.Longitude, &t.Latitude, &t.ClasseEnergie, &t.SourceAnnee,
 		); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "scan error"})
 			return
@@ -70,16 +70,16 @@ func GetTransaction(c *gin.Context) {
 
 	var t models.Transaction
 	err := db.Pool.QueryRow(c.Request.Context(),
-		`SELECT id, date_mutation, nature_mutation, valeur_fonciere,
-		        adresse_voie, code_postal, commune, code_commune,
+		`SELECT id, TO_CHAR(date_mutation, 'YYYY-MM-DD'), nature_mutation, valeur_fonciere,
+		        adresse_numero, adresse_voie, code_postal, commune, code_commune,
 		        type_local, surface_reelle_bati, nombre_pieces,
-		        longitude, latitude, source_annee
+		        longitude, latitude, classe_energie, source_annee
 		 FROM transactions WHERE id = $1`, id,
 	).Scan(
 		&t.ID, &t.DateMutation, &t.NatureMutation, &t.ValeurFonciere,
-		&t.Adresse, &t.CodePostal, &t.Commune, &t.CodeCommune,
+		&t.AdresseNumero, &t.Adresse, &t.CodePostal, &t.Commune, &t.CodeCommune,
 		&t.TypeLocal, &t.SurfaceReelleBati, &t.NombrePieces,
-		&t.Longitude, &t.Latitude, &t.SourceAnnee,
+		&t.Longitude, &t.Latitude, &t.ClasseEnergie, &t.SourceAnnee,
 	)
 
 	if err != nil {

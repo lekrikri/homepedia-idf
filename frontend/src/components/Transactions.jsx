@@ -22,13 +22,35 @@ const STATS = [
 
 export default function Transactions() {
   const [data, setData] = useState(MOCK);
+  const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
+  const PER_PAGE = 25;
 
   useEffect(() => {
-    axios.get("/api/v1/transactions?limit=100")
+    axios.get("/api/v1/transactions?limit=500")
       .then(r => { if (r.data.data?.length) setData(r.data.data); })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
+
+  // Computed stats from real data
+  const withM2 = data.filter(t => t.valeur_fonciere && t.surface_reelle_bati);
+  const avgM2 = withM2.length
+    ? Math.round(withM2.reduce((s, t) => s + t.valeur_fonciere / t.surface_reelle_bati, 0) / withM2.length)
+    : 0;
+  const totalVolume = data.reduce((s, t) => s + (t.valeur_fonciere || 0), 0);
+  const typeCounts = data.reduce((acc, t) => { const k = t.type_local || "Autre"; acc[k] = (acc[k]||0)+1; return acc; }, {});
+  const topType = Object.entries(typeCounts).sort((a,b) => b[1]-a[1])[0];
+
+  const computedStats = [
+    { label: "Prix moyen/m²",     value: `€${avgM2.toLocaleString()}`,                     trend: "+2.4%", up: true },
+    { label: "Volume total",      value: `€${(totalVolume/1e6).toFixed(1)}M`,               trend: "Total", up: null },
+    { label: "Market Velocity",   value: `${(data.length/30).toFixed(1)}/jour`,             trend: "-0.5%", up: false },
+    { label: "Type le + fréquent",value: topType ? topType[0] : "—", trend: topType ? `${Math.round(topType[1]/data.length*100)}% du total` : "", up: null },
+  ];
+
+  const paged = data.slice((page-1)*PER_PAGE, page*PER_PAGE);
+  const totalPages = Math.ceil(data.length / PER_PAGE);
 
   return (
     <div className="h-full overflow-y-auto bg-background-dark px-6 py-8 lg:px-20 flex flex-col gap-6">
@@ -37,7 +59,7 @@ export default function Transactions() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-white">Transaction Registry</h1>
           <p className="text-slate-400 mt-1">
-            Found <span className="text-slate-300 font-semibold">127</span> residential transactions in Île-de-France for the last 30 days.
+            {loading ? "Chargement…" : <>Found <span className="text-slate-300 font-semibold">{data.length}</span> transactions en Île-de-France.</>}
           </p>
         </div>
         <button className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-primary/90 w-fit">
@@ -81,33 +103,38 @@ export default function Transactions() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
-              {data.map((t, i) => (
-                <tr key={i} className="group hover:bg-primary/10 transition-colors border-l-4 border-l-transparent hover:border-l-primary">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm mono-nums text-slate-300">{t.date}</td>
-                  <td className="px-6 py-4 text-sm font-medium">{t.adresse || t.adresse}</td>
-                  <td className="px-6 py-4 text-xs font-medium">
-                    <span className="px-2 py-0.5 rounded bg-slate-700 text-slate-300">{t.type || t.type_local}</span>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-right mono-nums">{(t.surface || t.surface_reelle_bati)?.toFixed(1)}</td>
-                  <td className="px-6 py-4 text-sm text-right mono-nums font-semibold text-primary">
-                    €{((t.prix || t.valeur_fonciere) / 1000).toFixed(0)}k
-                  </td>
-                  <td className="px-6 py-4 text-sm text-right mono-nums text-slate-400">
-                    €{(t.prix_m2 || 0).toLocaleString()}
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    {t.dpe
-                      ? <span className={`px-2 py-0.5 rounded-sm text-[10px] font-bold border ${DPE_COLOR[t.dpe] || "bg-slate-700 text-slate-400 border-slate-600"}`}>{t.dpe}</span>
-                      : <span className="text-slate-600">—</span>
-                    }
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <button className="p-1 hover:text-primary">
-                      <span className="material-symbols-outlined" style={{ fontSize: 18 }}>open_in_new</span>
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {paged.map((t, i) => {
+                const prixM2 = t.valeur_fonciere && t.surface_reelle_bati
+                  ? Math.round(t.valeur_fonciere / t.surface_reelle_bati) : null;
+                const adresse = [t.adresse_numero, t.adresse, t.code_postal, t.commune].filter(Boolean).join(" ") || t.adresse || "—";
+                return (
+                  <tr key={t.id || i} className="group hover:bg-primary/10 transition-colors border-l-4 border-l-transparent hover:border-l-primary">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm mono-nums text-slate-300">{t.date_mutation}</td>
+                    <td className="px-6 py-4 text-sm font-medium">{adresse}</td>
+                    <td className="px-6 py-4 text-xs font-medium">
+                      <span className="px-2 py-0.5 rounded bg-slate-700 text-slate-300">{t.type_local || "—"}</span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-right mono-nums">{t.surface_reelle_bati?.toFixed(1) ?? "—"}</td>
+                    <td className="px-6 py-4 text-sm text-right mono-nums font-semibold text-primary">
+                      {t.valeur_fonciere ? `€${(t.valeur_fonciere / 1000).toFixed(0)}k` : "—"}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-right mono-nums text-slate-400">
+                      {prixM2 ? `€${prixM2.toLocaleString()}` : "—"}
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      {t.classe_energie
+                        ? <span className={`px-2 py-0.5 rounded-sm text-[10px] font-bold border ${DPE_COLOR[t.classe_energie] || "bg-slate-700 text-slate-400 border-slate-600"}`}>{t.classe_energie}</span>
+                        : <span className="text-slate-600">—</span>
+                      }
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <button className="p-1 hover:text-primary">
+                        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>open_in_new</span>
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -116,21 +143,22 @@ export default function Transactions() {
         <div className="p-4 border-t border-slate-800 flex items-center justify-between"
           style={{ background: "rgba(15,23,42,0.3)" }}>
           <div className="text-xs text-slate-500">
-            Showing <span className="text-slate-300 font-semibold">1-25</span> of 127 transactions
+            Showing <span className="text-slate-300 font-semibold">{(page-1)*PER_PAGE+1}–{Math.min(page*PER_PAGE, data.length)}</span> of {data.length} transactions
           </div>
           <div className="flex gap-2 items-center">
-            <button className="p-1.5 rounded bg-slate-800 border border-slate-700 opacity-50" disabled>
+            <button onClick={() => setPage(p => Math.max(1, p-1))} disabled={page === 1}
+              className="p-1.5 rounded bg-slate-800 border border-slate-700 disabled:opacity-40">
               <span className="material-symbols-outlined" style={{ fontSize: 20 }}>chevron_left</span>
             </button>
-            {[1,2,3].map(n => (
+            {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => i + 1).map(n => (
               <button key={n} onClick={() => setPage(n)}
                 className={`px-3 py-1 rounded text-xs font-bold ${page === n ? "bg-primary text-white" : "text-slate-400 hover:bg-slate-800"}`}>
                 {n}
               </button>
             ))}
-            <span className="text-slate-600 px-1">...</span>
-            <button className="px-3 py-1 rounded text-xs text-slate-400 hover:bg-slate-800">6</button>
-            <button className="p-1.5 rounded bg-slate-800 border border-slate-700">
+            {totalPages > 5 && <span className="text-slate-600 px-1">…{totalPages}</span>}
+            <button onClick={() => setPage(p => Math.min(totalPages, p+1))} disabled={page === totalPages}
+              className="p-1.5 rounded bg-slate-800 border border-slate-700 disabled:opacity-40">
               <span className="material-symbols-outlined" style={{ fontSize: 20 }}>chevron_right</span>
             </button>
           </div>
@@ -139,7 +167,7 @@ export default function Transactions() {
 
       {/* Mini stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {STATS.map(s => (
+        {computedStats.map(s => (
           <div key={s.label} className="glass-panel-light p-4 rounded-xl">
             <p className="text-xs font-medium text-slate-500 uppercase">{s.label}</p>
             <div className="flex items-end justify-between mt-1">
