@@ -3,7 +3,8 @@ import { NavLink } from "react-router-dom";
 import LoginModal from "./LoginModal";
 
 const NAV = [
-  { to: "/",             label: "Carte" },
+  { to: "/",             label: "Accueil",      end: true },
+  { to: "/carte",        label: "Carte" },
   { to: "/transactions", label: "Transactions" },
   { to: "/dashboard",    label: "Statistiques" },
 ];
@@ -65,11 +66,11 @@ export default function Header() {
           </div>
 
           <nav className="hidden md:flex items-center gap-6">
-            {NAV.map(({ to, label }) => (
+            {NAV.map(({ to, label, end }) => (
               <NavLink
                 key={to}
                 to={to}
-                end={to === "/"}
+                end={end ?? false}
                 className={({ isActive }) =>
                   isActive
                     ? "text-primary font-semibold text-sm border-b-2 border-primary pb-5 mt-5"

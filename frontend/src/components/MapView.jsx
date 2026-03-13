@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import maplibregl from "maplibre-gl";
 import axios from "axios";
 import "maplibre-gl/dist/maplibre-gl.css";
+import CesiumView3D from "./CesiumView3D";
 
 // Coordonnées par code INSEE pour le flyTo
 const COMMUNE_COORDS = {
@@ -311,6 +312,7 @@ export default function MapView() {
   const [selectedCommune, setSelectedCommune] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [search, setSearch] = useState("");
+  const [is3D, setIs3D] = useState(false);
 
   useEffect(() => {
     axios.get("/api/v1/communes?limit=50").then(r => {
@@ -397,8 +399,18 @@ export default function MapView() {
       />
 
       <div className="relative flex-1">
-        <div ref={mapContainer} className="w-full h-full" />
+        {/* MapLibre 2D — toujours monté pour garder l'état, juste caché en mode 3D */}
+        <div ref={mapContainer} className="w-full h-full" style={{ display: is3D ? "none" : "block" }} />
 
+        {/* Cesium 3D — monté uniquement quand activé */}
+        {is3D && (
+          <CesiumView3D
+            selectedCommune={selectedCommune}
+            transactions={transactions}
+          />
+        )}
+
+        {/* Breadcrumb */}
         <div className="absolute top-4 left-4 flex items-center gap-2 z-10 rounded-full px-4 py-1.5 text-xs font-medium"
           style={{ background: "rgba(16,23,34,0.8)", backdropFilter: "blur(12px)", border: "1px solid rgba(60,131,246,0.2)" }}>
           {breadcrumb.map((s, i, a) => (
@@ -409,39 +421,69 @@ export default function MapView() {
           ))}
         </div>
 
-        <div className="absolute bottom-20 right-4 z-10 flex flex-col gap-2">
-          {["layers","3d_rotation"].map(icon => (
-            <button key={icon} className="size-11 rounded-xl glass-panel flex items-center justify-center hover:bg-primary/20 transition-all">
-              <span className="material-symbols-outlined text-slate-300" style={{ fontSize: 20 }}>{icon}</span>
-            </button>
-          ))}
-          <div className="flex flex-col glass-panel rounded-xl overflow-hidden divide-y divide-primary/10">
-            {[["add", () => map.current?.zoomIn()], ["remove", () => map.current?.zoomOut()]].map(([icon, fn]) => (
-              <button key={icon} onClick={fn} className="size-11 flex items-center justify-center hover:bg-primary/20 transition-all">
-                <span className="material-symbols-outlined text-slate-300" style={{ fontSize: 20 }}>{icon}</span>
-              </button>
-            ))}
+        {/* Mode badge 3D */}
+        {is3D && (
+          <div className="absolute top-4 right-4 z-10 flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold"
+            style={{ background: "rgba(60,131,246,0.2)", border: "1px solid rgba(60,131,246,0.5)", color: "#3c83f6" }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 14 }}>view_in_ar</span>
+            Vue 3D · OSM Buildings
           </div>
+        )}
+
+        {/* Contrôles droite */}
+        <div className="absolute bottom-20 right-4 z-10 flex flex-col gap-2">
+          {/* Toggle 3D */}
+          <button
+            onClick={() => setIs3D(v => !v)}
+            title={is3D ? "Passer en vue 2D" : "Passer en vue 3D"}
+            className={`size-11 rounded-xl flex items-center justify-center transition-all ${
+              is3D
+                ? "bg-primary text-white shadow-lg shadow-primary/40"
+                : "glass-panel hover:bg-primary/20 text-slate-300"
+            }`}>
+            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>
+              {is3D ? "map" : "3d_rotation"}
+            </span>
+          </button>
+
+          <button className="size-11 rounded-xl glass-panel flex items-center justify-center hover:bg-primary/20 transition-all">
+            <span className="material-symbols-outlined text-slate-300" style={{ fontSize: 20 }}>layers</span>
+          </button>
+
+          {!is3D && (
+            <div className="flex flex-col glass-panel rounded-xl overflow-hidden divide-y divide-primary/10">
+              {[["add", () => map.current?.zoomIn()], ["remove", () => map.current?.zoomOut()]].map(([icon, fn]) => (
+                <button key={icon} onClick={fn} className="size-11 flex items-center justify-center hover:bg-primary/20 transition-all">
+                  <span className="material-symbols-outlined text-slate-300" style={{ fontSize: 20 }}>{icon}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
-        <button className="absolute bottom-10 right-4 z-10 size-13 bg-primary rounded-full flex items-center justify-center shadow-2xl shadow-primary/40 hover:scale-105 transition-transform"
+        {/* FAB assistant */}
+        <button className="absolute bottom-10 right-4 z-10 bg-primary rounded-full flex items-center justify-center shadow-2xl shadow-primary/40 hover:scale-105 transition-transform"
           style={{ width: 52, height: 52 }}>
           <span className="material-symbols-outlined text-white" style={{ fontSize: 26 }}>smart_toy</span>
           <span className="absolute -top-1 -right-1 size-4 bg-green-500 border-2 border-background-dark rounded-full animate-pulse" />
         </button>
 
+        {/* Status bar */}
         <div className="absolute bottom-0 left-0 right-0 h-8 border-t border-primary/20 flex items-center justify-between px-4 z-10"
           style={{ background: "rgba(16,23,34,0.95)", backdropFilter: "blur(8px)" }}>
           <div className="flex items-center gap-4">
-            <span className="text-[10px] text-slate-500 mono-nums">Données DVF 2023</span>
+            <span className="text-[10px] text-slate-500 mono-nums">Données DVF 2019–2024</span>
             <span className="h-3 w-px bg-slate-700" />
             <span className="text-[10px] text-slate-500 mono-nums">{transactions.length} transactions chargées</span>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-[10px] text-slate-500">Heatmap:</span>
-            <div className="w-20 h-1.5 rounded-full bg-gradient-to-r from-blue-600 via-yellow-500 to-red-600" />
+            <span className="text-[10px] font-bold" style={{ color: is3D ? "#3c83f6" : "#64748b" }}>
+              {is3D ? "CesiumJS · OSM Buildings" : "MapLibre GL · Dark Matter"}
+            </span>
             <span className="h-3 w-px bg-slate-700" />
-            <span className="text-[10px] text-slate-500 mono-nums">Zoom: <span className="text-primary">12z</span></span>
+            <span className="text-[10px] text-slate-500 mono-nums">
+              {is3D ? "3D" : "2D"}
+            </span>
           </div>
         </div>
       </div>
