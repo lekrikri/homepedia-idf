@@ -70,52 +70,39 @@ export default function CesiumView3D({ selectedCommune, transactions }) {
     });
 
     // ── Globe settings ────────────────────────────────────────────────────────
-    viewer.scene.globe.enableLighting      = true;
+    viewer.scene.globe.enableLighting       = false;  // OFF = couleur uniforme, pas de faces noires
     viewer.scene.globe.showGroundAtmosphere = false;
     viewer.scene.fog.enabled               = false;
     viewer.scene.backgroundColor           = Cesium.Color.fromCssColorString("#060d18");
-    viewer.scene.skyAtmosphere.show        = true;
+    viewer.scene.skyAtmosphere.show        = false;   // OFF = pas de ciel bleu qui clash
 
-    // ── Post-processing : FXAA + bloom subtil ─────────────────────────────────
+    // ── Post-processing : FXAA uniquement (bloom trop agressif) ──────────────
     if (viewer.scene.postProcessStages) {
       viewer.scene.postProcessStages.fxaa.enabled = true;
       const bloom = viewer.scene.postProcessStages.bloom;
-      if (bloom) {
-        bloom.enabled             = true;
-        bloom.uniforms.glowOnly   = false;
-        bloom.uniforms.contrast   = 128;
-        bloom.uniforms.brightness = -0.3;
-        bloom.uniforms.delta      = 1.0;
-        bloom.uniforms.sigma      = 0.9;
-        bloom.uniforms.stepSize   = 1.0;
-      }
+      if (bloom) bloom.enabled = false;
     }
 
-    // ── Ambient occlusion : désactivé (crée du bruit sur les bâtiments) ──────
+    // ── Ambient occlusion : désactivé ────────────────────────────────────────
     const ao = viewer.scene.postProcessStages.ambientOcclusion;
     if (ao) ao.enabled = false;
 
-    // ── OSM Buildings ─────────────────────────────────────────────────────────
+    // ── OSM Buildings : bleu digital-twin semi-transparent ───────────────────
     Cesium.Cesium3DTileset.fromIonAssetId(96188).then(tileset => {
       viewer.scene.primitives.add(tileset);
       tilesetRef.current = tileset;
 
-      // Bâtiments : dark blue glass, léger glow sur les arêtes
       tileset.style = new Cesium.Cesium3DTileStyle({
-        color: {
-          conditions: [
-            ["${feature['building']} === 'yes' || true", "color('#0d2544', 0.88)"],
-          ],
-        },
+        color: "color('#2155a3', 0.78)",
       });
     }).catch(e => console.warn("[Cesium] OSM Buildings:", e));
 
     // ── Vue initiale : Paris vue oblique ─────────────────────────────────────
     viewer.camera.setView({
-      destination: Cesium.Cartesian3.fromDegrees(2.3488, 48.845, 3500),
+      destination: Cesium.Cartesian3.fromDegrees(2.3488, 48.845, 3000),
       orientation: {
         heading: Cesium.Math.toRadians(20),
-        pitch:   Cesium.Math.toRadians(-55),
+        pitch:   Cesium.Math.toRadians(-50),
         roll:    0,
       },
     });
@@ -130,6 +117,13 @@ export default function CesiumView3D({ selectedCommune, transactions }) {
       .cesium-widget-credits { display: none !important; }
     `;
     document.head.appendChild(style);
+
+    // ── Contraindre le pitch : empêcher vue rasante ───────────────────────────
+    viewer.scene.screenSpaceCameraController.minimumZoomDistance = 200;
+    viewer.scene.screenSpaceCameraController.tiltEventTypes      = [
+      Cesium.CameraEventType.RIGHT_DRAG,
+      Cesium.CameraEventType.PINCH,
+    ];
 
     viewerRef.current = viewer;
     return () => {
