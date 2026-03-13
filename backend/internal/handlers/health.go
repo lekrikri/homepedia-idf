@@ -1,16 +1,22 @@
 package handlers
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"homepedia/backend/internal/db"
 )
 
 // ServiceStatus holds the reachability status for a dependency.
 type ServiceStatus struct {
-	Status string `json:"status"`
-	Host   string `json:"host,omitempty"`
+	Status  string `json:"status"`
+	Host    string `json:"host,omitempty"`
+	Latency string `json:"latency_ms,omitempty"`
 }
 
 // HealthResponse is the shape of the /api/v1/health response body.
@@ -20,41 +26,52 @@ type HealthResponse struct {
 }
 
 // HealthCheck handles GET /api/v1/health.
-// It returns a lightweight status payload without actually pinging every
-// dependency — deep connectivity checks belong in dedicated readiness probes.
+// Performs a real ping to PostgreSQL; other services are reported as "configured".
 func HealthCheck(c *gin.Context) {
+	pgStatus := pingPostgres()
+
 	services := map[string]ServiceStatus{
-		"postgres": {
-			Status: "configured",
-			Host:   hostFromEnv("POSTGRES_HOST", "POSTGRES_PORT", "5432"),
-		},
-		"redis": {
-			Status: "configured",
-			Host:   hostFromEnv("REDIS_HOST", "REDIS_PORT", "6379"),
-		},
-		"chromadb": {
-			Status: "configured",
-			Host:   hostFromEnv("CHROMADB_HOST", "CHROMADB_PORT", "8000"),
-		},
-		"mongodb": {
-			Status: "configured",
-			Host:   mongoHost(),
-		},
+		"postgres":  pgStatus,
+		"redis":     {Status: "configured", Host: hostFromEnv("REDIS_HOST", "REDIS_PORT", "6379")},
+		"chromadb":  {Status: "configured", Host: hostFromEnv("CHROMADB_HOST", "CHROMADB_PORT", "8000")},
+		"mongodb":   {Status: mongoStatus()},
+	}
+
+	overall := "ok"
+	if pgStatus.Status != "ok" {
+		overall = "degraded"
 	}
 
 	c.JSON(http.StatusOK, HealthResponse{
-		Status:   "ok",
+		Status:   overall,
 		Services: services,
 	})
 }
 
-// mongoHost reads MONGODB_URI from env and returns a sanitized host label (no credentials).
-func mongoHost() string {
-	uri := os.Getenv("MONGODB_URI")
-	if uri == "" {
-		return "atlas (not configured)"
+func pingPostgres() ServiceStatus {
+	host := hostFromEnv("POSTGRES_HOST", "POSTGRES_PORT", "5432")
+	if db.Pool == nil {
+		return ServiceStatus{Status: "not connected", Host: host}
 	}
-	return "atlas (configured)"
+	start := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := db.Pool.Ping(ctx); err != nil {
+		return ServiceStatus{Status: "unreachable", Host: host}
+	}
+	latency := time.Since(start).Milliseconds()
+	return ServiceStatus{
+		Status:  "ok",
+		Host:    host,
+		Latency: fmt.Sprintf("%d", latency),
+	}
+}
+
+func mongoStatus() string {
+	if os.Getenv("MONGODB_URI") == "" {
+		return "not configured"
+	}
+	return "configured"
 }
 
 // hostFromEnv builds a "host:port" string from environment variables with fallback defaults.
