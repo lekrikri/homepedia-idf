@@ -1,5 +1,7 @@
 # Secrets — NE JAMAIS COMMITTER
 .env
+*.env.local
+*.env.*.local
 ingestion/.env
 ingestion/**/.env
 **/.env
@@ -15,37 +17,65 @@ env/
 dist/
 .pytest_cache/
 
-# Données locales temporaires
-/tmp/
-*.parquet
-*.csv.gz
-*.csv
-
 # Go
+backend/vendor/
 backend/bin/
 backend/server
 backend/tmp/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
 
-# Node
+# Node / Frontend
 node_modules/
+frontend/node_modules/
 frontend/dist/
 frontend/.next/
 frontend/build/
+frontend/.cache/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Docker
+.docker/
+
+# Données locales temporaires
+/tmp/
+data/raw/
+data/processed/
+*.parquet
+*.csv
+*.csv.gz
+*.json.gz
 
 # IDE
 .vscode/settings.json
 .idea/
 *.swp
 *.swo
+*~
 
 # OS
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
 Zone.Identifier
 *:Zone.Identifier
+*.Identifier
 
 # Logs
 *.log
+logs/
 dvf_full_log.txt
 
 # PDF / fichiers Epitech (à la racine uniquement)
@@ -53,5 +83,3 @@ dvf_full_log.txt
 /kickoff*
 /message*
 /project*
-# Fichiers Zone.Identifier Windows
-*.Identifier
