@@ -16,14 +16,14 @@ const DPE_HEX = {
 };
 
 const COMMUNE_VIEWS = {
-  "75056": { lon: 2.3488,  lat: 48.8534, alt: 1200, pitch: -45 },
-  "92012": { lon: 2.2408,  lat: 48.8359, alt:  700, pitch: -42 },
-  "92051": { lon: 2.2698,  lat: 48.8847, alt:  700, pitch: -42 },
-  "93066": { lon: 2.4415,  lat: 48.8638, alt:  700, pitch: -42 },
-  "94028": { lon: 2.4399,  lat: 48.8477, alt:  700, pitch: -42 },
-  "78646": { lon: 2.1297,  lat: 48.8014, alt:  800, pitch: -38 },
-  "91228": { lon: 2.4452,  lat: 48.6278, alt:  800, pitch: -38 },
-  "92026": { lon: 2.2874,  lat: 48.8936, alt:  700, pitch: -42 },
+  "75056": { lon: 2.3488,  lat: 48.8534, alt: 2000, pitch: -55 },
+  "92012": { lon: 2.2408,  lat: 48.8359, alt: 1400, pitch: -52 },
+  "92051": { lon: 2.2698,  lat: 48.8847, alt: 1400, pitch: -52 },
+  "93066": { lon: 2.4415,  lat: 48.8638, alt: 1400, pitch: -52 },
+  "94028": { lon: 2.4399,  lat: 48.8477, alt: 1400, pitch: -52 },
+  "78646": { lon: 2.1297,  lat: 48.8014, alt: 1600, pitch: -50 },
+  "91228": { lon: 2.4452,  lat: 48.6278, alt: 1600, pitch: -50 },
+  "92026": { lon: 2.2874,  lat: 48.8936, alt: 1400, pitch: -52 },
 };
 
 export default function CesiumView3D({ selectedCommune, transactions }) {
@@ -76,31 +76,24 @@ export default function CesiumView3D({ selectedCommune, transactions }) {
     viewer.scene.backgroundColor           = Cesium.Color.fromCssColorString("#060d18");
     viewer.scene.skyAtmosphere.show        = true;
 
-    // ── Post-processing : Bloom (neon glow) ───────────────────────────────────
+    // ── Post-processing : FXAA + bloom subtil ─────────────────────────────────
     if (viewer.scene.postProcessStages) {
       viewer.scene.postProcessStages.fxaa.enabled = true;
       const bloom = viewer.scene.postProcessStages.bloom;
       if (bloom) {
-        bloom.enabled           = true;
-        bloom.uniforms.glowOnly = false;
-        bloom.uniforms.contrast = 128;
-        bloom.uniforms.brightness = -0.2;
-        bloom.uniforms.delta    = 1.0;
-        bloom.uniforms.sigma    = 2.5;
-        bloom.uniforms.stepSize = 4.0;
+        bloom.enabled             = true;
+        bloom.uniforms.glowOnly   = false;
+        bloom.uniforms.contrast   = 128;
+        bloom.uniforms.brightness = -0.3;
+        bloom.uniforms.delta      = 1.0;
+        bloom.uniforms.sigma      = 0.9;
+        bloom.uniforms.stepSize   = 1.0;
       }
     }
 
-    // ── Ambient occlusion ─────────────────────────────────────────────────────
+    // ── Ambient occlusion : désactivé (crée du bruit sur les bâtiments) ──────
     const ao = viewer.scene.postProcessStages.ambientOcclusion;
-    if (ao) {
-      ao.enabled = true;
-      ao.uniforms.intensity   = 3.0;
-      ao.uniforms.bias        = 0.1;
-      ao.uniforms.lengthCap   = 0.03;
-      ao.uniforms.stepSize    = 2.0;
-      ao.uniforms.frustumLength = 1000;
-    }
+    if (ao) ao.enabled = false;
 
     // ── OSM Buildings ─────────────────────────────────────────────────────────
     Cesium.Cesium3DTileset.fromIonAssetId(96188).then(tileset => {
@@ -119,10 +112,10 @@ export default function CesiumView3D({ selectedCommune, transactions }) {
 
     // ── Vue initiale : Paris vue oblique ─────────────────────────────────────
     viewer.camera.setView({
-      destination: Cesium.Cartesian3.fromDegrees(2.3488, 48.845, 2000),
+      destination: Cesium.Cartesian3.fromDegrees(2.3488, 48.845, 3500),
       orientation: {
         heading: Cesium.Math.toRadians(20),
-        pitch:   Cesium.Math.toRadians(-40),
+        pitch:   Cesium.Math.toRadians(-55),
         roll:    0,
       },
     });
@@ -191,12 +184,12 @@ export default function CesiumView3D({ selectedCommune, transactions }) {
         position: Cesium.Cartesian3.fromDegrees(t.longitude, t.latitude, barH / 2),
         cylinder: {
           length:        barH,
-          topRadius:     4,
-          bottomRadius:  4,
-          material:      cesColor.withAlpha(0.82),
+          topRadius:     8,
+          bottomRadius:  8,
+          material:      cesColor.withAlpha(0.9),
           outline:       true,
-          outlineColor:  cesColor.brighten(0.4, new Cesium.Color()).withAlpha(0.6),
-          outlineWidth:  1,
+          outlineColor:  cesColor.brighten(0.5, new Cesium.Color()).withAlpha(0.8),
+          outlineWidth:  2,
           heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND,
           shadowMode:    Cesium.ShadowMode.DISABLED,
         },
@@ -215,7 +208,7 @@ export default function CesiumView3D({ selectedCommune, transactions }) {
       const sphere = viewerRef.current.entities.add({
         position: Cesium.Cartesian3.fromDegrees(t.longitude, t.latitude, barH),
         ellipsoid: {
-          radii:    new Cesium.Cartesian3(12, 12, 12),
+          radii:    new Cesium.Cartesian3(18, 18, 18),
           material: cesColor.withAlpha(0.95),
           outline:  false,
           heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND,
