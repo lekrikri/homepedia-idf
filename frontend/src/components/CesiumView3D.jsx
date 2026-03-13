@@ -99,10 +99,10 @@ export default function CesiumView3D({ selectedCommune, transactions }) {
       tilesetRef.current = tileset;
 
       tileset.colorBlendMode   = Cesium.Cesium3DTileColorBlendMode.MIX;
-      tileset.colorBlendAmount = 0.65;
+      tileset.colorBlendAmount = 0.82;  // 82% bleu → bien bleu mais garde les ombres PBR
 
       tileset.style = new Cesium.Cesium3DTileStyle({
-        color: "color('#1d4ed8', 1.0)",
+        color: "color('#2563eb', 1.0)",
       });
     }).catch(e => console.warn("[Cesium] OSM Buildings:", e));
 
