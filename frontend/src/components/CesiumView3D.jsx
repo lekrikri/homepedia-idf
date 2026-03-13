@@ -76,14 +76,11 @@ export default function CesiumView3D({ selectedCommune, transactions }) {
     viewer.scene.backgroundColor           = Cesium.Color.fromCssColorString("#060d18");
     viewer.scene.skyAtmosphere.show        = false;
 
-    // ── Lumière directionnelle : toits clairs + arêtes sombres (effet eNect) ─
-    // Direction = légèrement oblique vers le bas depuis le NW
-    const lightDir = new Cesium.Cartesian3(0.5, 0.5, -1.0);
-    Cesium.Cartesian3.normalize(lightDir, lightDir);
-    viewer.scene.light = new Cesium.DirectionalLight({
-      direction: lightDir,
-      intensity: 4.0,
-    });
+    // ── SunLight fixé à midi solstice d'été sur Paris ─────────────────────────
+    // Soleil à ~75° au zénith → toits face au soleil = clairs, murs en ombre
+    viewer.clock.currentTime   = Cesium.JulianDate.fromDate(new Date("2024-06-21T10:00:00Z"));
+    viewer.clock.shouldAnimate = false;
+    viewer.scene.light = new Cesium.SunLight();
 
     // ── Post-processing : FXAA uniquement ────────────────────────────────────
     if (viewer.scene.postProcessStages) {
@@ -94,14 +91,18 @@ export default function CesiumView3D({ selectedCommune, transactions }) {
     const ao = viewer.scene.postProcessStages.ambientOcclusion;
     if (ao) ao.enabled = false;
 
-    // ── OSM Buildings : bleu digital-twin quasi-opaque ───────────────────────
-    // Toits = clairs (face vers lumière) | Murs = gradients d'ombre selon orientation
+    // ── OSM Buildings : colorBlendMode MIX ────────────────────────────────────
+    // MIX préserve le shading PBR original (toits clairs / murs sombres)
+    // et y applique la teinte bleue à 65% → effet digital-twin avec ombres réelles
     Cesium.Cesium3DTileset.fromIonAssetId(96188).then(tileset => {
       viewer.scene.primitives.add(tileset);
       tilesetRef.current = tileset;
 
+      tileset.colorBlendMode   = Cesium.Cesium3DTileColorBlendMode.MIX;
+      tileset.colorBlendAmount = 0.65;
+
       tileset.style = new Cesium.Cesium3DTileStyle({
-        color: "color('#2a62c9', 0.94)",
+        color: "color('#1d4ed8', 1.0)",
       });
     }).catch(e => console.warn("[Cesium] OSM Buildings:", e));
 
