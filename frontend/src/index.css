@@ -1,12 +1,72 @@
-*, *::before, *::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root { height: 100%; }
+  body {
+    font-family: 'Inter', sans-serif;
+    background-color: #101722;
+    color: #f1f5f9;
+    -webkit-font-smoothing: antialiased;
+  }
+  .material-symbols-outlined {
+    font-family: 'Material Symbols Outlined';
+    font-weight: normal;
+    font-style: normal;
+    font-size: 24px;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    display: inline-block;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    -webkit-font-feature-settings: 'liga';
+    font-feature-settings: 'liga';
+    -webkit-font-smoothing: antialiased;
+  }
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(60, 131, 246, 0.3); border-radius: 10px; }
 }
 
-html, body, #root {
-  height: 100%;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  background: #f5f5f5;
-  color: #1a1a1a;
+@layer components {
+  .glass-panel {
+    background: rgba(16, 23, 34, 0.7);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(60, 131, 246, 0.2);
+  }
+  .glass-panel-light {
+    background: rgba(30, 41, 59, 0.7);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  .glow-border {
+    box-shadow: 0 0 15px rgba(60, 131, 246, 0.15);
+  }
+  .mono-nums {
+    font-family: 'JetBrains Mono', monospace;
+  }
 }
+
+/* MapLibre dark overrides */
+.maplibregl-ctrl-group {
+  background: #1e293b !important;
+  border: 1px solid rgba(60,131,246,.2) !important;
+}
+.maplibregl-ctrl-group button {
+  background: #1e293b !important;
+  color: #94a3b8 !important;
+}
+.maplibregl-ctrl-group button:hover { background: #0d2a52 !important; }
+.maplibregl-popup-content {
+  background: #101722 !important;
+  color: #e2e8f0 !important;
+  border: 1px solid rgba(60,131,246,.2);
+  border-radius: 8px;
+}
+.maplibregl-popup-tip { display: none; }
