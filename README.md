@@ -206,7 +206,7 @@ homepedia/
 | **INSEE Revenus** | Filosofi — revenus médians par commune | — | ⚠️ Manuel requis |
 | **ADEME DPE** | 800 000 DPE logements IDF (8 depts) | ~19 MB Parquet | ✅ Uploadé |
 | **OSM POI** | 172 911 points d'intérêt IDF (7 catégories) | ~6 MB Parquet | ✅ Uploadé |
-| **GTFS IDFM** | Arrêts + lignes Île-de-France Mobilités | — | ⚠️ Clé PRIM requise |
+| **GTFS PRIM** | 15 370 arrêts + 2 010 lignes IDF (navitia) | 650 KB Parquet | ✅ Uploadé |
 
 ### Sources des données
 

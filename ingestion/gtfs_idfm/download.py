@@ -1,29 +1,30 @@
 """
 ingestion/gtfs_idfm/download.py
 ================================
-Télécharge le GTFS d'Île-de-France Mobilités (IDFM) et extrait :
-  - stops.txt     → toutes les stations/arrêts IDF (nom, GPS, type)
-  - routes.txt    → lignes de transport (métro, RER, bus, tram)
-  - trips.txt     → trajets planifiés
-  - stop_times.txt → horaires (fichier volumineux ~500 MB)
+Récupère les données transport IDF via l'API PRIM Navitia (Île-de-France Mobilités) :
+  - stop_areas  → 15 370 stations/arrêts IDF (nom, GPS, type)
+  - lines       → lignes de transport (métro, RER, bus, tram)
 
-Calcule un score d'accessibilité transport par commune (IRIS-level).
+Calcule un score d'accessibilité transport par zone (~500m).
 
 Upload vers Azure Data Lake Storage Gen2 (container bronze/gtfs/).
 
 Usage :
     python3 download.py                # télécharge + traite + upload
-    python3 download.py --no-upload    # test local
-    python3 download.py --stops-only   # seulement les stations (rapide)
+    python3 download.py --no-upload    # test local uniquement
+
+Prérequis :
+    PRIM_API_KEY dans ingestion/.env
+    Inscription gratuite : https://prim.iledefrance-mobilites.fr/
 """
 
 import os
-import io
-import zipfile
+import time
 import argparse
 from pathlib import Path
 
 import pandas as pd
+import requests
 from azure.storage.filedatalake import DataLakeServiceClient
 from dotenv import load_dotenv
 
@@ -36,210 +37,172 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 LOCAL_DATA_DIR    = Path(os.getenv("LOCAL_DATA_DIR", "/tmp/dvf")) / "gtfs"
 ADLS_ACCOUNT_NAME = os.getenv("ADLS_ACCOUNT_NAME", "homepediadatalake")
 ADLS_ACCOUNT_KEY  = os.getenv("ADLS_ACCOUNT_KEY", "")
-PRIM_API_KEY      = os.getenv("PRIM_API_KEY", "")    # Clé PRIM — https://prim.iledefrance-mobilites.fr/
+PRIM_API_KEY      = os.getenv("PRIM_API_KEY", "")
 BRONZE_CONTAINER  = "bronze"
 
-# GTFS IDFM — open data officiel Île-de-France Mobilités
-# ⚠️  Depuis 2025, le téléchargement direct requiert une clé API PRIM (gratuite).
-#
-# Comment obtenir une clé PRIM :
-#   1. S'inscrire sur https://prim.iledefrance-mobilites.fr/
-#   2. Créer une application → récupérer l'apikey
-#   3. Ajouter PRIM_API_KEY=<votre_clé> dans ingestion/.env
-#
-# Une fois la clé obtenue, le ZIP GTFS (~200 MB, mis à jour 3x/jour) est accessible via :
-GTFS_URL = "https://prim.iledefrance-mobilites.fr/marketplace/download-gtfs/gtfs"
-# Header requis : {"apikey": PRIM_API_KEY}
+PRIM_BASE = "https://prim.iledefrance-mobilites.fr/marketplace/v2/navitia"
 
-# Types de transport (route_type GTFS)
-TRANSPORT_TYPES = {
-    0: "tram",
-    1: "metro",
-    2: "rer",
-    3: "bus",
-    7: "funiculaire",
-    11: "trolleybus",
-    12: "monorail",
-}
-
-# Score d'accessibilité par type de transport (pour calcul composite)
-TRANSPORT_SCORE = {
-    "metro":      5,
-    "rer":        5,
-    "tram":       4,
-    "bus":        2,
-    "trolleybus": 2,
-    "funiculaire": 1,
-    "monorail":   1,
+# Types de transport navitia → label
+PHYSICAL_MODES = {
+    "physical_mode:Metro":       ("metro",       5),
+    "physical_mode:RapidTransit":("rer",         5),
+    "physical_mode:Tramway":     ("tram",        4),
+    "physical_mode:Bus":         ("bus",         2),
+    "physical_mode:LocalTrain":  ("train",       4),
+    "physical_mode:Shuttle":     ("navette",     1),
+    "physical_mode:Funicular":   ("funiculaire", 1),
 }
 
 
 # ──────────────────────────────────────────────────────────────
-# Téléchargement GTFS
+# API PRIM helpers
 # ──────────────────────────────────────────────────────────────
 
-def download_gtfs() -> Path:
-    """Télécharge le ZIP GTFS IDFM (~200 MB)."""
-    import requests
-    LOCAL_DATA_DIR.mkdir(parents=True, exist_ok=True)
-    zip_path = LOCAL_DATA_DIR / "idfm_gtfs.zip"
-
-    if zip_path.exists():
-        print(f"  📦 GTFS déjà téléchargé : {zip_path}")
-        return zip_path
-
+def prim_get(endpoint: str, params: dict = None) -> dict:
+    """Appel GET sur l'API PRIM Navitia."""
     if not PRIM_API_KEY:
         raise ValueError(
             "PRIM_API_KEY non définie.\n"
             "  → S'inscrire sur https://prim.iledefrance-mobilites.fr/\n"
             "  → Ajouter PRIM_API_KEY=<votre_clé> dans ingestion/.env"
         )
-    print(f"  ↓ Téléchargement GTFS IDFM via PRIM (~200 MB)...")
-    r = requests.get(GTFS_URL, headers={"apikey": PRIM_API_KEY}, stream=True, timeout=300)
+    url = f"{PRIM_BASE}/{endpoint.lstrip('/')}"
+    r = requests.get(url, headers={"apikey": PRIM_API_KEY}, params=params, timeout=30)
     r.raise_for_status()
-
-    total = int(r.headers.get("content-length", 0))
-    downloaded = 0
-
-    with open(zip_path, "wb") as f:
-        for chunk in r.iter_content(chunk_size=1024 * 1024):
-            f.write(chunk)
-            downloaded += len(chunk)
-            if total:
-                print(f"     {downloaded/1024/1024:.0f}/{total/1024/1024:.0f} MB", end="\r")
-
-    print(f"\n  ✅ GTFS téléchargé : {zip_path.stat().st_size / 1024 / 1024:.0f} MB")
-    return zip_path
+    return r.json()
 
 
-def extract_gtfs_file(zip_path: Path, filename: str) -> pd.DataFrame:
-    """Extrait et lit un fichier du ZIP GTFS."""
-    print(f"  📂 Lecture {filename}...")
-    with zipfile.ZipFile(zip_path) as z:
-        matches = [n for n in z.namelist() if n.endswith(filename)]
-        if not matches:
-            print(f"  ⚠️  {filename} non trouvé dans le ZIP")
-            return pd.DataFrame()
-        with z.open(matches[0]) as f:
-            df = pd.read_csv(f, dtype=str, low_memory=False)
-    print(f"     {len(df):,} lignes")
-    return df
+def prim_paginate(endpoint: str, key: str, page_size: int = 1000) -> list:
+    """Pagine automatiquement sur tous les résultats d'un endpoint navitia."""
+    results = []
+    start = 0
+    total = None
+    while True:
+        data = prim_get(endpoint, params={"count": page_size, "start_page": start // page_size})
+        if total is None:
+            total = data.get("pagination", {}).get("total_result", 0)
+        batch = data.get(key, [])
+        results.extend(batch)
+        print(f"     {len(results)}/{total}", end="\r")
+        if len(results) >= total or not batch:
+            break
+        start += page_size
+        time.sleep(0.15)   # respecter rate limit PRIM
+    print()
+    return results
 
 
 # ──────────────────────────────────────────────────────────────
-# Traitement
+# Téléchargement et traitement
 # ──────────────────────────────────────────────────────────────
 
-def process_stops(zip_path: Path) -> Path:
-    """
-    Traite stops.txt → stations nettoyées avec type de transport.
-    Jointure avec routes pour ajouter le type de transport à chaque arrêt.
-    """
-    df_stops = extract_gtfs_file(zip_path, "stops.txt")
-    df_routes = extract_gtfs_file(zip_path, "routes.txt")
-    df_trips = extract_gtfs_file(zip_path, "trips.txt")
-    df_stop_times = extract_gtfs_file(zip_path, "stop_times.txt")
+def fetch_stops() -> Path:
+    """Récupère tous les arrêts IDF via l'API navitia → stops.parquet."""
+    print("  🚉 Téléchargement des arrêts (stop_areas)...")
+    raw = prim_paginate("stop_areas/", "stop_areas")
 
-    # --- Arrêts de base ---
-    stops = df_stops[["stop_id", "stop_name", "stop_lat", "stop_lon",
-                       "location_type", "parent_station"]].copy()
-    stops["stop_lat"] = pd.to_numeric(stops["stop_lat"], errors="coerce")
-    stops["stop_lon"] = pd.to_numeric(stops["stop_lon"], errors="coerce")
-    stops = stops.dropna(subset=["stop_lat", "stop_lon"])
+    rows = []
+    for s in raw:
+        coord = s.get("coord", {})
+        lat = float(coord.get("lat", 0) or 0)
+        lon = float(coord.get("lon", 0) or 0)
+        if not lat or not lon:
+            continue
 
-    # --- Jointure pour récupérer route_type par arrêt ---
-    # stop_times → trips → routes
-    if not df_stop_times.empty and not df_trips.empty and not df_routes.empty:
-        # Associer chaque stop à un trip
-        st = df_stop_times[["stop_id", "trip_id"]].drop_duplicates()
-        trips = df_trips[["trip_id", "route_id"]].drop_duplicates()
-        routes = df_routes[["route_id", "route_type", "route_short_name"]].drop_duplicates()
+        # Déduire le type de transport depuis physical_modes
+        modes = [m.get("id", "") for m in s.get("physical_modes", [])]
+        transport_type = "bus"
+        transport_score = 2
+        for mode_id in modes:
+            if mode_id in PHYSICAL_MODES:
+                label, score = PHYSICAL_MODES[mode_id]
+                if score > transport_score:
+                    transport_type = label
+                    transport_score = score
 
-        stop_routes = st.merge(trips, on="trip_id").merge(routes, on="route_id")
+        lignes = ",".join(
+            l.get("id", "") for l in s.get("lines", [])
+        )
 
-        # Pour chaque arrêt, garder le type de transport principal (le plus "important")
-        stop_routes["route_type"] = pd.to_numeric(stop_routes["route_type"], errors="coerce")
-        stop_routes["transport_type"] = stop_routes["route_type"].map(TRANSPORT_TYPES)
-        stop_routes["transport_score"] = stop_routes["transport_type"].map(TRANSPORT_SCORE).fillna(1)
+        rows.append({
+            "stop_id":        s.get("id", ""),
+            "stop_name":      s.get("name", ""),
+            "stop_lat":       lat,
+            "stop_lon":       lon,
+            "transport_type": transport_type,
+            "transport_score":transport_score,
+            "lignes":         lignes,
+        })
 
-        # Meilleur score par arrêt
-        best = (stop_routes.groupby("stop_id")
-                .agg(transport_type=("transport_type", lambda x: x.iloc[stop_routes.loc[x.index, "transport_score"].idxmax()]),
-                     lignes=("route_short_name", lambda x: ",".join(sorted(set(x.dropna())))))
-                .reset_index())
-
-        stops = stops.merge(best, on="stop_id", how="left")
-    else:
-        stops["transport_type"] = "bus"
-        stops["lignes"] = ""
-
-    print(f"  ✅ {len(stops):,} arrêts traités")
-
-    parquet_path = LOCAL_DATA_DIR / "stops.parquet"
-    stops.to_parquet(parquet_path, index=False, compression="snappy")
-    print(f"     Parquet : {parquet_path.name} ({parquet_path.stat().st_size / 1024:.0f} KB)")
-    return parquet_path
+    df = pd.DataFrame(rows)
+    LOCAL_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    out = LOCAL_DATA_DIR / "stops.parquet"
+    df.to_parquet(out, index=False, compression="snappy")
+    print(f"  ✅ {len(df):,} arrêts → {out.name} ({out.stat().st_size / 1024:.0f} KB)")
+    return out
 
 
-def process_accessibility_score(stops_parquet: Path) -> Path:
-    """
-    Calcule un score d'accessibilité transport par code commune (approx).
-    Score = Σ(transport_score × nb_arrêts dans rayon 800m) normalisé sur 10.
+def fetch_lines() -> Path:
+    """Récupère toutes les lignes IDF → lines.parquet."""
+    print("  🚇 Téléchargement des lignes (lines)...")
+    raw = prim_paginate("lines/", "lines")
 
-    Note : sans PostGIS on fait un groupby approximatif lat/lon arrondi.
-    L'enrichissement précis (rayon 800m) sera fait dans Databricks avec Spark.
-    """
+    rows = []
+    for l in raw:
+        rows.append({
+            "line_id":       l.get("id", ""),
+            "line_name":     l.get("name", ""),
+            "line_code":     l.get("code", ""),
+            "transport_type":l.get("physical_modes", [{}])[0].get("id", "").replace("physical_mode:", "").lower()
+                             if l.get("physical_modes") else "bus",
+            "color":         l.get("color", ""),
+            "network":       l.get("network", {}).get("name", ""),
+        })
+
+    df = pd.DataFrame(rows)
+    out = LOCAL_DATA_DIR / "lines.parquet"
+    df.to_parquet(out, index=False, compression="snappy")
+    print(f"  ✅ {len(df):,} lignes → {out.name} ({out.stat().st_size / 1024:.0f} KB)")
+    return out
+
+
+def compute_accessibility(stops_path: Path) -> Path:
+    """Score d'accessibilité transport par zone (~500m) → accessibility_scores.parquet."""
     print("  📊 Calcul score accessibilité par zone...")
-    df = pd.read_parquet(stops_parquet)
+    df = pd.read_parquet(stops_path)
 
-    # Arrondir coordonnées pour regrouper par zone ~500m
     df["lat_zone"] = df["stop_lat"].round(3)
     df["lon_zone"] = df["stop_lon"].round(3)
 
-    score_map = TRANSPORT_SCORE
-    df["score"] = df["transport_type"].map(score_map).fillna(1)
+    zone = (df.groupby(["lat_zone", "lon_zone"])
+              .agg(score_transport=("transport_score", "sum"),
+                   nb_arrets=("stop_id", "count"),
+                   types_transport=("transport_type", lambda x: ",".join(sorted(set(x)))))
+              .reset_index())
 
-    zone_scores = (df.groupby(["lat_zone", "lon_zone"])
-                   .agg(score_transport=("score", "sum"),
-                        nb_arrets=("stop_id", "count"),
-                        types_transport=("transport_type", lambda x: ",".join(sorted(set(x.dropna())))))
-                   .reset_index())
+    max_s = zone["score_transport"].max()
+    zone["score_transport_norm"] = (zone["score_transport"] / max_s * 10).round(2) if max_s else 0
 
-    # Normaliser sur 10
-    max_score = zone_scores["score_transport"].max()
-    if max_score > 0:
-        zone_scores["score_transport_norm"] = (zone_scores["score_transport"] / max_score * 10).round(2)
-    else:
-        zone_scores["score_transport_norm"] = 0
-
-    parquet_path = LOCAL_DATA_DIR / "accessibility_scores.parquet"
-    zone_scores.to_parquet(parquet_path, index=False, compression="snappy")
-    print(f"  ✅ {len(zone_scores):,} zones — Parquet : {parquet_path.name}")
-    return parquet_path
+    out = LOCAL_DATA_DIR / "accessibility_scores.parquet"
+    zone.to_parquet(out, index=False, compression="snappy")
+    print(f"  ✅ {len(zone):,} zones → {out.name}")
+    return out
 
 
 # ──────────────────────────────────────────────────────────────
 # Upload Azure
 # ──────────────────────────────────────────────────────────────
 
-def get_adls_client():
-    if not ADLS_ACCOUNT_KEY:
-        raise ValueError("ADLS_ACCOUNT_KEY non définie.")
-    return DataLakeServiceClient(
+def upload_to_bronze(local_path: Path, remote_name: str):
+    print(f"  ☁️  Upload → {BRONZE_CONTAINER}/gtfs/{remote_name}")
+    client = DataLakeServiceClient(
         account_url=f"https://{ADLS_ACCOUNT_NAME}.dfs.core.windows.net",
         credential=ADLS_ACCOUNT_KEY,
     )
-
-
-def upload_to_bronze(local_path: Path, remote_subpath: str):
-    remote_path = f"gtfs/{remote_subpath}"
-    print(f"  ☁️  Upload → {BRONZE_CONTAINER}/{remote_path}")
-    client = get_adls_client()
-    fs = client.get_file_system_client(BRONZE_CONTAINER)
-    fc = fs.get_file_client(remote_path)
+    fc = client.get_file_system_client(BRONZE_CONTAINER).get_file_client(f"gtfs/{remote_name}")
     with open(local_path, "rb") as f:
         fc.upload_data(f.read(), overwrite=True)
-    print(f"  ✅ Uploadé")
+    print(f"  ✅ Uploadé ({local_path.stat().st_size / 1024:.0f} KB)")
 
 
 # ──────────────────────────────────────────────────────────────
@@ -247,28 +210,28 @@ def upload_to_bronze(local_path: Path, remote_subpath: str):
 # ──────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Ingestion GTFS IDFM → Azure Data Lake bronze/")
-    parser.add_argument("--no-upload", action="store_true")
-    parser.add_argument("--stops-only", action="store_true", help="Seulement les arrêts (sans horaires)")
+    parser = argparse.ArgumentParser(description="Ingestion transports IDF via PRIM Navitia → Azure bronze/gtfs/")
+    parser.add_argument("--no-upload", action="store_true", help="Ne pas uploader sur Azure")
     args = parser.parse_args()
 
-    print("\n" + "="*60)
-    print("  🚇 GTFS Île-de-France Mobilités")
-    print("="*60)
+    print("\n" + "=" * 60)
+    print("  🚇 GTFS / PRIM Île-de-France Mobilités")
+    print("=" * 60)
 
-    zip_path = download_gtfs()
-    stops_parquet = process_stops(zip_path)
-    accessibility_parquet = process_accessibility_score(stops_parquet)
+    stops_path        = fetch_stops()
+    lines_path        = fetch_lines()
+    accessibility_path = compute_accessibility(stops_path)
 
     if not args.no_upload:
-        upload_to_bronze(stops_parquet, "stops.parquet")
-        upload_to_bronze(accessibility_parquet, "accessibility_scores.parquet")
-        stops_parquet.unlink()
-        accessibility_parquet.unlink()
-        zip_path.unlink()
+        upload_to_bronze(stops_path,         "stops.parquet")
+        upload_to_bronze(lines_path,         "lines.parquet")
+        upload_to_bronze(accessibility_path, "accessibility_scores.parquet")
+        stops_path.unlink()
+        lines_path.unlink()
+        accessibility_path.unlink()
     else:
-        print(f"\n  📁 Mode local :")
-        print(f"     {stops_parquet}")
-        print(f"     {accessibility_parquet}")
+        print(f"\n  📁 Fichiers locaux :")
+        for p in [stops_path, lines_path, accessibility_path]:
+            print(f"     {p}")
 
-    print("\n🎉 Ingestion GTFS terminée !")
+    print("\n🎉 Ingestion GTFS/PRIM terminée !")
