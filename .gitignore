@@ -54,6 +54,10 @@ data/processed/
 *.csv.gz
 *.json.gz
 
+# Claude Code
+CLAUDE.md
+.claude/
+
 # IDE
 .vscode/settings.json
 .idea/
