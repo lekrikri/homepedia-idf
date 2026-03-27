@@ -42,6 +42,21 @@ type User struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// CommuneGold représente une commune avec ses métriques Gold agrégées depuis les transactions.
+type CommuneGold struct {
+	CodeInsee       string   `json:"code_insee"`
+	Nom             string   `json:"nom"`
+	Departement     string   `json:"departement"`
+	Population      *int     `json:"population,omitempty"`
+	NbTransactions  int      `json:"nb_transactions"`
+	PrixM2Median    *float64 `json:"prix_m2_median,omitempty"`
+	PrixM2Moyen     *float64 `json:"prix_m2_moyen,omitempty"`
+	ScoreDPEMoyen   *float64 `json:"score_dpe_moyen,omitempty"`  // 1=A … 7=G
+	DPEDominant     *string  `json:"dpe_dominant,omitempty"`
+	PctAppartements *float64 `json:"pct_appartements,omitempty"` // %
+	SurfaceMoyenne  *float64 `json:"surface_moyenne,omitempty"`  // m²
+}
+
 // ScoreIris représente les agrégats calculés pour une zone IRIS.
 type ScoreIris struct {
 	CodeIris     string   `json:"code_iris"`

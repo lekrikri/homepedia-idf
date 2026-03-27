@@ -21,17 +21,22 @@ const STATS = [
 ];
 
 export default function Transactions() {
-  const [data, setData] = useState(MOCK);
+  const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
+  const [typeFilter, setTypeFilter] = useState("");
+  const [anneeFilter, setAnneeFilter] = useState("");
   const PER_PAGE = 25;
 
   useEffect(() => {
-    axios.get("/api/v1/transactions?limit=500")
-      .then(r => { if (r.data.data?.length) setData(r.data.data); })
+    setLoading(true);
+    const typeP = typeFilter ? `&type_local=${typeFilter}` : "";
+    const anneeP = anneeFilter ? `&annee=${anneeFilter}` : "";
+    axios.get(`/api/v1/transactions?limit=500${typeP}${anneeP}`)
+      .then(r => { setData(r.data.data || []); setPage(1); })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [typeFilter, anneeFilter]);
 
   // Computed stats from real data
   const withM2 = data.filter(t => t.valeur_fonciere && t.surface_reelle_bati);
@@ -70,24 +75,26 @@ export default function Transactions() {
 
       {/* Filters bar */}
       <div className="glass-panel-light rounded-xl p-3 flex flex-wrap items-center gap-3">
-        {["Last 30 Days", "Property Type: All", "Price Range", "Surface"].map(f => (
-          <button key={f} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 text-slate-100 rounded-lg text-xs font-medium border border-slate-700 hover:bg-slate-700 transition-colors">
-            {f === "Last 30 Days" && <span className="material-symbols-outlined" style={{ fontSize: 16 }}>calendar_today</span>}
-            {f}
-            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>expand_more</span>
+        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
+          className="bg-slate-800 text-slate-100 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-medium focus:border-primary outline-none cursor-pointer">
+          <option value="">Tous les types</option>
+          <option value="Appartement">Appartement</option>
+          <option value="Maison">Maison</option>
+        </select>
+        <select value={anneeFilter} onChange={e => setAnneeFilter(e.target.value)}
+          className="bg-slate-800 text-slate-100 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-medium focus:border-primary outline-none cursor-pointer">
+          <option value="">Toutes les années</option>
+          {[2024,2023,2022,2021,2020,2019].map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+        {(typeFilter || anneeFilter) && (
+          <button onClick={() => { setTypeFilter(""); setAnneeFilter(""); }}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs text-red-400 border border-red-500/20 hover:bg-red-500/10 transition-colors">
+            <span className="material-symbols-outlined" style={{ fontSize: 14 }}>close</span>
+            Réinitialiser
           </button>
-        ))}
-        <div className="h-6 w-px bg-slate-700 mx-2" />
-        <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-primary/20 hover:bg-primary/20 transition-colors"
-          style={{ background: "rgba(60,131,246,0.1)", color: "#3c83f6" }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>filter_alt</span>
-          Advanced Filters
-        </button>
-        <div className="ml-auto flex items-center gap-2">
-          <span className="text-xs text-slate-500">Sorted by: Newest</span>
-          <button className="p-1.5 hover:bg-slate-800 rounded">
-            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>sort</span>
-          </button>
+        )}
+        <div className="ml-auto text-xs text-slate-500">
+          {loading ? "Chargement…" : `${data.length} résultats`}
         </div>
       </div>
 

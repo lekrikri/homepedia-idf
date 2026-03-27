@@ -36,17 +36,24 @@ function extractFeatureProps(feature) {
   return props;
 }
 
-export default function CesiumView3D({ selectedCommune, transactions }) {
+export default function CesiumView3D({ selectedCommune, transactions, initCenter, flyTarget }) {
   const containerRef    = useRef(null);
   const viewerRef       = useRef(null);
   const tilesetRef      = useRef(null);
   const entitiesRef     = useRef([]);
   const handlerRef      = useRef(null);
 
-  const [selectedBuilding, setSelectedBuilding] = useState(null);
+  const [selectedBuilding, setSelectedBuilding] = useState(null); // { props, nearbyTx, clickLat, clickLon }
   // Ref pour accès depuis les callbacks Cesium (fermeture stable)
   const setSelectedBuildingRef = useRef(setSelectedBuilding);
   useEffect(() => { setSelectedBuildingRef.current = setSelectedBuilding; }, []);
+  // Ref pour accès aux transactions depuis le handler Cesium (closure stable)
+  const transactionsRef = useRef(transactions);
+  useEffect(() => { transactionsRef.current = transactions; }, [transactions]);
+  // Ref pour accès à initCenter dans l'effet d'init (closure stable)
+  const initCenterRef = useRef(initCenter);
+  // Ref pour ignorer le premier montage dans fly-to-commune
+  const isMountedRef = useRef(false);
 
   // ── Init ───────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -164,16 +171,58 @@ export default function CesiumView3D({ selectedCommune, transactions }) {
     handler.setInputAction(({ position }) => {
       const picked = viewer.scene.pick(position);
       if (Cesium.defined(picked) && picked instanceof Cesium.Cesium3DTileFeature) {
-        setSelectedBuildingRef.current(extractFeatureProps(picked));
+        const props = extractFeatureProps(picked);
+
+        // Récupérer coordonnées au SOL via rayon caméra → terrain
+        // (globe.pick ignore les tuiles 3D et donne la position au sol, ce qui
+        //  correspond aux coordonnées DVF qui sont en général au niveau de la rue)
+        let clickLat = null, clickLon = null;
+        try {
+          const ray = viewer.camera.getPickRay(position);
+          // 1er essai : position sur le globe (terrain)
+          let cartesian = Cesium.defined(ray)
+            ? viewer.scene.globe.pick(ray, viewer.scene)
+            : undefined;
+          // 2ème essai : pickPosition si le terrain n'a pas encore chargé
+          if (!Cesium.defined(cartesian) && viewer.scene.pickPositionSupported) {
+            cartesian = viewer.scene.pickPosition(position);
+          }
+          if (Cesium.defined(cartesian)) {
+            const carto = Cesium.Cartographic.fromCartesian(cartesian);
+            clickLat = Cesium.Math.toDegrees(carto.latitude);
+            clickLon = Cesium.Math.toDegrees(carto.longitude);
+          }
+        } catch {}
+
+        // Trouver transactions DVF dans un rayon de 120m
+        // (rayon généreux car coords DVF = centroïde parcelle/rue, pas forcément le bâtiment exact)
+        let nearbyTx = [];
+        if (clickLat !== null) {
+          nearbyTx = transactionsRef.current.filter(t => {
+            if (!t.latitude || !t.longitude) return false;
+            const dLat = (t.latitude  - clickLat) * Math.PI / 180;
+            const dLon = (t.longitude - clickLon) * Math.PI / 180;
+            const a = Math.sin(dLat/2)**2
+              + Math.cos(clickLat * Math.PI/180) * Math.cos(t.latitude * Math.PI/180) * Math.sin(dLon/2)**2;
+            const distM = 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return distM <= 120;
+          }).sort((a, b) => (b.valeur_fonciere || 0) - (a.valeur_fonciere || 0));
+        }
+
+        setSelectedBuildingRef.current({ props, nearbyTx, clickLat, clickLon });
       } else {
-        // Clic dans le vide → fermer panel
         setSelectedBuildingRef.current(null);
       }
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
-    // ── Vue initiale ──────────────────────────────────────────────────────────
+    // ── Vue initiale : synchronisée avec la vue 2D ────────────────────────────
+    const ic = initCenterRef.current;
+    const initLon = ic?.lng  ?? 2.3488;
+    const initLat = ic?.lat  ?? 48.845;
+    // Conversion zoom MapLibre → altitude Cesium (approx)
+    const initAlt = ic ? Math.max(200, Math.round(2000 * Math.pow(2, 13 - ic.zoom))) : 3000;
     viewer.camera.setView({
-      destination: Cesium.Cartesian3.fromDegrees(2.3488, 48.845, 3000),
+      destination: Cesium.Cartesian3.fromDegrees(initLon, initLat, initAlt),
       orientation: {
         heading: Cesium.Math.toRadians(20),
         pitch:   Cesium.Math.toRadians(-50),
@@ -202,17 +251,45 @@ export default function CesiumView3D({ selectedCommune, transactions }) {
     };
   }, []);
 
-  // ── Fly to commune ────────────────────────────────────────────────────────
+  // ── Fly to commune (seulement si commune/transactions changent APRÈS le montage) ──
   useEffect(() => {
+    // Ne pas overrider initCenter au premier montage
+    if (!isMountedRef.current) { isMountedRef.current = true; return; }
     if (!viewerRef.current || !selectedCommune) return;
-    const v = COMMUNE_VIEWS[selectedCommune.code_insee];
-    if (!v) return;
+
+    // Centroïde calculé depuis les transactions (même logique que MapView 2D)
+    const withCoords = transactions.filter(t => t.longitude && t.latitude);
+
+    let lon, lat, alt, pitch;
+    if (withCoords.length > 0) {
+      lon   = withCoords.reduce((s, t) => s + t.longitude, 0) / withCoords.length;
+      lat   = withCoords.reduce((s, t) => s + t.latitude,  0) / withCoords.length;
+      alt   = 1400;
+      pitch = -52;
+    } else {
+      const v = COMMUNE_VIEWS[selectedCommune.code_insee];
+      if (!v) return;
+      lon = v.lon; lat = v.lat; alt = v.alt; pitch = v.pitch;
+    }
+
     viewerRef.current.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(v.lon, v.lat, v.alt),
-      orientation: { heading: Cesium.Math.toRadians(10), pitch: Cesium.Math.toRadians(v.pitch), roll: 0 },
+      destination: Cesium.Cartesian3.fromDegrees(lon, lat, alt),
+      orientation: { heading: Cesium.Math.toRadians(10), pitch: Cesium.Math.toRadians(pitch), roll: 0 },
       duration: 2.0,
     });
-  }, [selectedCommune]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCommune, transactions]);
+
+  // ── Fly to adresse recherchée (depuis Header search) ──────────────────────
+  useEffect(() => {
+    if (!viewerRef.current || !flyTarget) return;
+    const alt = Math.max(200, Math.round(2000 * Math.pow(2, 13 - (flyTarget.zoom || 16))));
+    viewerRef.current.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(flyTarget.lng, flyTarget.lat, alt),
+      orientation: { heading: Cesium.Math.toRadians(0), pitch: Cesium.Math.toRadians(-45), roll: 0 },
+      duration: 1.5,
+    });
+  }, [flyTarget]);
 
   // ── Barres DPE ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -268,7 +345,8 @@ export default function CesiumView3D({ selectedCommune, transactions }) {
   }, [transactions]);
 
   // ── Rendu ─────────────────────────────────────────────────────────────────
-  const b = selectedBuilding;
+  const b        = selectedBuilding?.props;
+  const nearbyTx = selectedBuilding?.nearbyTx ?? [];
   const buildingName = b?.name || b?.["addr:street"] || "Bâtiment OSM";
   const buildingType = b?.building
     ? (BUILDING_TYPE_LABELS[b.building] ?? b.building)
@@ -278,16 +356,12 @@ export default function CesiumView3D({ selectedCommune, transactions }) {
   const addr     = b?.["addr:street"]
     ? `${b["addr:housenumber"] ?? ""} ${b["addr:street"]}`.trim()
     : null;
-  const source   = b?.source;
-  const wikidata = b?.wikidata;
 
   const infoRows = [
     ["Type", buildingType],
     ["Niveaux", levels],
     ["Hauteur estimée", height ? `${Math.round(height)} m` : null],
-    ["Adresse", addr],
-    ["Source", source],
-    ["Wikidata", wikidata],
+    ["Adresse OSM", addr],
   ].filter(([, v]) => v != null && v !== "");
 
   return (
@@ -317,17 +391,18 @@ export default function CesiumView3D({ selectedCommune, transactions }) {
       {/* ── Panel bâtiment custom ─────────────────────────────────────────── */}
       {selectedBuilding && (
         <div
-          className="absolute top-4 right-4 z-20 w-72 rounded-2xl overflow-hidden animate-in fade-in slide-in-from-right-4 duration-200"
+          className="absolute top-4 right-4 z-20 w-80 rounded-2xl overflow-hidden overflow-y-auto"
           style={{
-            background:    "rgba(6,13,28,0.93)",
+            maxHeight: "calc(100% - 2rem)",
+            background:    "rgba(6,13,28,0.95)",
             backdropFilter:"blur(24px)",
             border:        "1px solid rgba(52,112,210,0.35)",
-            boxShadow:     "0 8px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(52,112,210,0.1)",
+            boxShadow:     "0 8px 40px rgba(0,0,0,0.5)",
           }}
         >
           {/* Header */}
-          <div className="flex items-start justify-between px-4 py-3"
-            style={{ background: "rgba(52,112,210,0.1)", borderBottom: "1px solid rgba(52,112,210,0.2)" }}>
+          <div className="flex items-start justify-between px-4 py-3 sticky top-0 z-10"
+            style={{ background: "rgba(52,112,210,0.12)", borderBottom: "1px solid rgba(52,112,210,0.2)" }}>
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="shrink-0 w-8 h-8 rounded-lg flex items-center justify-center"
                 style={{ background: "rgba(52,112,210,0.2)" }}>
@@ -340,17 +415,15 @@ export default function CesiumView3D({ selectedCommune, transactions }) {
                 )}
               </div>
             </div>
-            <button
-              onClick={() => setSelectedBuilding(null)}
-              className="shrink-0 ml-2 w-6 h-6 rounded-md flex items-center justify-center text-slate-500 hover:text-white hover:bg-white/10 transition-all"
-            >
+            <button onClick={() => setSelectedBuilding(null)}
+              className="shrink-0 ml-2 w-6 h-6 rounded-md flex items-center justify-center text-slate-500 hover:text-white hover:bg-white/10 transition-all">
               <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
             </button>
           </div>
 
-          {/* Body */}
-          {infoRows.length > 0 ? (
-            <div className="px-4 py-3 space-y-2.5">
+          {/* Infos OSM */}
+          {infoRows.length > 0 && (
+            <div className="px-4 py-3 space-y-2 border-b border-slate-800/60">
               {infoRows.map(([label, value]) => (
                 <div key={label} className="flex items-start justify-between gap-3">
                   <span className="text-[11px] text-slate-500 shrink-0 pt-px">{label}</span>
@@ -358,15 +431,74 @@ export default function CesiumView3D({ selectedCommune, transactions }) {
                 </div>
               ))}
             </div>
-          ) : (
-            <p className="px-4 py-3 text-[11px] text-slate-500 italic">Aucune donnée disponible</p>
           )}
 
+          {/* Transactions DVF à proximité */}
+          <div className="px-4 py-3">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                Transactions DVF · rayon 120m
+              </p>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                style={{ background: nearbyTx.length ? "rgba(60,131,246,0.2)" : "rgba(100,116,139,0.15)", color: nearbyTx.length ? "#3c83f6" : "#64748b" }}>
+                {nearbyTx.length}
+              </span>
+            </div>
+
+            {nearbyTx.length === 0 ? (
+              <div className="text-center py-4">
+                <span className="material-symbols-outlined text-slate-700 block mb-1" style={{ fontSize: 24 }}>search_off</span>
+                <p className="text-[11px] text-slate-600">Aucune transaction DVF<br/>dans ce bâtiment</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {nearbyTx.map((t, i) => {
+                  const prix = t.valeur_fonciere
+                    ? t.valeur_fonciere >= 1e6
+                      ? `${(t.valeur_fonciere / 1e6).toFixed(2)}M€`
+                      : `${(t.valeur_fonciere / 1000).toFixed(0)}k€`
+                    : "—";
+                  const prixM2 = t.valeur_fonciere && t.surface_reelle_bati
+                    ? Math.round(t.valeur_fonciere / t.surface_reelle_bati) : null;
+                  const dpeColor = t.classe_energie ? DPE_HEX[t.classe_energie] : "#475569";
+                  return (
+                    <div key={t.id || i} className="rounded-xl p-3"
+                      style={{ background: "rgba(15,23,42,0.6)", border: "1px solid rgba(60,131,246,0.1)" }}>
+                      {/* Ligne 1 : prix + DPE */}
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-base font-black mono-nums" style={{ color: "#3c83f6" }}>{prix}</span>
+                        <div className="flex items-center gap-1.5">
+                          {t.classe_energie && (
+                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded"
+                              style={{ background: `${dpeColor}20`, color: dpeColor, border: `1px solid ${dpeColor}50` }}>
+                              DPE {t.classe_energie}
+                            </span>
+                          )}
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">{t.source_annee}</span>
+                        </div>
+                      </div>
+                      {/* Ligne 2 : type + surface */}
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className="text-slate-300">{t.type_local || "Bien"} · {t.surface_reelle_bati?.toFixed(0) ?? "?"}m²{t.nombre_pieces ? ` · T${t.nombre_pieces}` : ""}</span>
+                        {prixM2 && <span className="text-slate-500 mono-nums">€{prixM2.toLocaleString()}/m²</span>}
+                      </div>
+                      {/* Ligne 3 : adresse + date */}
+                      <div className="flex items-center justify-between mt-1 text-[10px] text-slate-600">
+                        <span className="truncate mr-2">{[t.adresse_numero, t.adresse].filter(Boolean).join(" ") || "—"}</span>
+                        <span className="shrink-0">{t.date_mutation}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           {/* Footer */}
-          <div className="px-4 py-2.5 flex items-center gap-1.5"
-            style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-            <span className="material-symbols-outlined text-slate-600" style={{ fontSize: 12 }}>source</span>
-            <span className="text-[9px] text-slate-600">OpenStreetMap · Cesium OSM Buildings</span>
+          <div className="px-4 py-2 flex items-center justify-between"
+            style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+            <span className="text-[9px] text-slate-600">OSM Buildings · DVF 2019–2024</span>
+            <span className="text-[9px] text-slate-600">rayon 120m</span>
           </div>
         </div>
       )}

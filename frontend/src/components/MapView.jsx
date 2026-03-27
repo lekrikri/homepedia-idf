@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import maplibregl from "maplibre-gl";
 import axios from "axios";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -30,17 +31,27 @@ const DPE_COLORS = {
 
 // ─── Right Panel ───────────────────────────────────────────────────────────────
 function RightPanel({ commune, transactions }) {
-  const withM2 = transactions.filter(t => t.valeur_fonciere && t.surface_reelle_bati);
-  const prices = withM2.map(t => t.valeur_fonciere / t.surface_reelle_bati).sort((a, b) => a - b);
-  const prixMedian = prices.length ? Math.round(prices[Math.floor(prices.length / 2)]) : null;
+  // Utilise les métriques Gold du serveur si disponibles, sinon calcul client-side fallback
+  const prixMedian = commune?.prix_m2_median
+    ? Math.round(commune.prix_m2_median)
+    : (() => {
+        const prices = transactions
+          .filter(t => t.valeur_fonciere && t.surface_reelle_bati)
+          .map(t => t.valeur_fonciere / t.surface_reelle_bati)
+          .sort((a, b) => a - b);
+        return prices.length ? Math.round(prices[Math.floor(prices.length / 2)]) : null;
+      })();
 
-  const dpeCounts = transactions.reduce((acc, t) => {
-    if (t.classe_energie) acc[t.classe_energie] = (acc[t.classe_energie] || 0) + 1;
-    return acc;
-  }, {});
-  const dpePrincipal = Object.entries(dpeCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+  const dpePrincipal = commune?.dpe_dominant
+    ?? Object.entries(
+        transactions.reduce((acc, t) => {
+          if (t.classe_energie) acc[t.classe_energie] = (acc[t.classe_energie] || 0) + 1;
+          return acc;
+        }, {})
+       ).sort((a, b) => b[1] - a[1])[0]?.[0];
+
   const dpeStyle = dpePrincipal ? DPE_COLORS[dpePrincipal] : null;
-
+  const nbTransactions = commune?.nb_transactions ?? transactions.length;
   const score = prixMedian ? Math.min(95, Math.max(25, Math.round(100 - prixMedian / 280))) : 82;
   const lastSales = transactions.slice(0, 4);
 
@@ -83,7 +94,7 @@ function RightPanel({ commune, transactions }) {
         <div className="grid grid-cols-2 gap-3 mb-6">
           <div className="bg-slate-900/50 p-3 rounded-xl border border-primary/10 flex flex-col items-center">
             <span className="material-symbols-outlined text-primary mb-1" style={{ fontSize: 20 }}>handshake</span>
-            <div className="text-xl font-bold mono-nums text-slate-100">{transactions.length}</div>
+            <div className="text-xl font-bold mono-nums text-slate-100">{nbTransactions.toLocaleString()}</div>
             <p className="text-[10px] text-slate-500 uppercase">Transactions</p>
           </div>
           <div className="bg-slate-900/50 p-3 rounded-xl border border-primary/10 flex flex-col items-center">
@@ -151,7 +162,8 @@ function RightPanel({ commune, transactions }) {
 }
 
 // ─── Left Sidebar ──────────────────────────────────────────────────────────────
-function LeftSidebar({ communes, transactions, selectedCommune, onSelectCommune, search, onSearch }) {
+function LeftSidebar({ communes, transactions, selectedCommune, onSelectCommune, search, onSearch,
+  activeTypes, onToggleType, anneeMax, onAnneeChange, onReset, sortDesc, onToggleSort }) {
   const [showSuggestions, setShowSuggestions] = useState(false);
 
   const suggestions = search.length >= 1
@@ -230,12 +242,13 @@ function LeftSidebar({ communes, transactions, selectedCommune, onSelectCommune,
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <h3 className="text-[10px] font-bold text-primary uppercase tracking-widest">Filtres</h3>
-            <button className="text-[10px] text-slate-500 hover:text-primary underline">Réinitialiser</button>
+            <button onClick={onReset} className="text-[10px] text-slate-500 hover:text-primary underline">Réinitialiser</button>
           </div>
           <div className="space-y-2">
-            {["Appartement", "Maison", "Studio"].map((t, i) => (
+            {["Appartement", "Maison"].map(t => (
               <label key={t} className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
-                <input type="checkbox" defaultChecked={i < 2} className="rounded border-slate-700 bg-slate-800 accent-primary size-4" />
+                <input type="checkbox" checked={activeTypes.has(t)} onChange={() => onToggleType(t)}
+                  className="rounded border-slate-700 bg-slate-800 accent-primary size-4" />
                 {t}
               </label>
             ))}
@@ -243,9 +256,11 @@ function LeftSidebar({ communes, transactions, selectedCommune, onSelectCommune,
           <div className="space-y-2">
             <div className="flex justify-between text-[10px]">
               <span className="text-slate-400">Année de vente</span>
-              <span className="text-primary mono-nums">2019 – 2024</span>
+              <span className="text-primary mono-nums">2019 – {anneeMax}</span>
             </div>
-            <input type="range" min="2019" max="2024" defaultValue="2024" className="w-full h-1 bg-slate-700 rounded-lg accent-primary cursor-pointer" />
+            <input type="range" min="2019" max="2024" value={anneeMax}
+              onChange={e => onAnneeChange(Number(e.target.value))}
+              className="w-full h-1 bg-slate-700 rounded-lg accent-primary cursor-pointer" />
           </div>
         </div>
 
@@ -255,7 +270,10 @@ function LeftSidebar({ communes, transactions, selectedCommune, onSelectCommune,
             <h3 className="text-[10px] font-bold text-primary uppercase tracking-widest">
               Résultats <span className="text-slate-500">({transactions.length})</span>
             </h3>
-            <span className="material-symbols-outlined text-slate-500 cursor-pointer" style={{ fontSize: 16 }}>sort</span>
+            <span onClick={onToggleSort} title={sortDesc ? "Trier par prix croissant" : "Trier par prix décroissant"}
+              className="material-symbols-outlined text-slate-500 hover:text-primary cursor-pointer transition-colors" style={{ fontSize: 16 }}>
+              {sortDesc ? "arrow_downward" : "arrow_upward"}
+            </span>
           </div>
 
           {transactions.length === 0 ? (
@@ -302,20 +320,33 @@ function LeftSidebar({ communes, transactions, selectedCommune, onSelectCommune,
 }
 
 // ─── Main ──────────────────────────────────────────────────────────────────────
+const ANNEE_MIN = 2019;
+const ANNEE_MAX = 2024;
+const TYPES_ALL = ["Appartement", "Maison"];
+
 export default function MapView() {
   const mapContainer = useRef(null);
   const map = useRef(null);
   const markersRef = useRef([]);
 
+  const [searchParams, setSearchParams] = useSearchParams();
   const [allCommunes, setAllCommunes] = useState([]);
   const [communes, setCommunes] = useState([]);
   const [selectedCommune, setSelectedCommune] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [search, setSearch] = useState("");
   const [is3D, setIs3D] = useState(false);
+  const [sortDesc, setSortDesc] = useState(true);
+  const [adressePin, setAdressePin] = useState(null); // marqueur adresse recherchée
+  const [cesiumInitCenter, setCesiumInitCenter] = useState(null);
+  const [cesiumFlyTarget, setCesiumFlyTarget] = useState(null);
+
+  // ── Filtres actifs ────────────────────────────────────────────────────────
+  const [activeTypes, setActiveTypes] = useState(new Set(TYPES_ALL));
+  const [anneeMax, setAnneeMax] = useState(ANNEE_MAX);
 
   useEffect(() => {
-    axios.get("/api/v1/communes?limit=50").then(r => {
+    axios.get("/api/v1/communes/gold?limit=1300").then(r => {
       if (r.data.data) { setAllCommunes(r.data.data); setCommunes(r.data.data); }
     }).catch(() => {});
   }, []);
@@ -323,25 +354,35 @@ export default function MapView() {
   useEffect(() => {
     if (!search) { setCommunes(allCommunes); return; }
     const q = search.toLowerCase();
-    setCommunes(allCommunes.filter(c => c.nom.toLowerCase().includes(q) || (c.code_postal || "").includes(q)));
+    setCommunes(allCommunes.filter(c => c.nom.toLowerCase().includes(q)));
   }, [search, allCommunes]);
 
-  const handleSelectCommune = useCallback((commune) => {
-    setSelectedCommune(commune);
-    const coords = COMMUNE_COORDS[commune.code_insee];
-    if (coords && map.current) map.current.flyTo({ center: coords, zoom: 13, duration: 900 });
-    axios.get(`/api/v1/transactions?commune=${commune.code_insee}&limit=100`).then(r => {
+  // Recharge les transactions quand commune ou filtres changent
+  const loadTransactions = useCallback((commune, types, maxAnnee) => {
+    if (!commune) return;
+    const typeParam = types.size === 1 ? `&type_local=${[...types][0]}` : "";
+    const anneeParam = maxAnnee < ANNEE_MAX ? `&annee=${maxAnnee}` : "";
+    axios.get(`/api/v1/transactions?commune=${commune.code_insee}&limit=100${typeParam}${anneeParam}`).then(r => {
       const data = r.data.data || [];
       setTransactions(data);
       markersRef.current.forEach(m => m.remove());
       markersRef.current = [];
+
+      // FlyTo : centroïde calculé depuis les coordonnées des transactions
+      const withCoords = data.filter(t => t.longitude && t.latitude);
+      if (withCoords.length && map.current) {
+        const avgLon = withCoords.reduce((s, t) => s + t.longitude, 0) / withCoords.length;
+        const avgLat = withCoords.reduce((s, t) => s + t.latitude, 0) / withCoords.length;
+        map.current.flyTo({ center: [avgLon, avgLat], zoom: 13, duration: 900 });
+      }
+
       data.forEach(t => {
         if (!t.longitude || !t.latitude) return;
         const el = document.createElement("div");
         el.style.cssText = "width:10px;height:10px;background:#3c83f6;border-radius:50%;border:2px solid rgba(255,255,255,0.6);cursor:pointer;box-shadow:0 0 8px rgba(60,131,246,0.7);transition:transform .15s";
         el.addEventListener("mouseenter", () => { el.style.transform = "scale(1.5)"; });
         el.addEventListener("mouseleave", () => { el.style.transform = "scale(1)"; });
-        const dpePopupColors = { A:"#22c55e",B:"#4ade80",C:"#facc15",D:"#fb923c",E:"#f97316",F:"#ef4444",G:"#dc2626" };
+        const dpeColors = { A:"#22c55e",B:"#4ade80",C:"#facc15",D:"#fb923c",E:"#f97316",F:"#ef4444",G:"#dc2626" };
         const prixM2Popup = t.valeur_fonciere && t.surface_reelle_bati ? Math.round(t.valeur_fonciere / t.surface_reelle_bati) : null;
         const popup = new maplibregl.Popup({ offset: 16, closeButton: false, maxWidth: "220px" })
           .setHTML(`<div style="font-family:Inter,sans-serif;min-width:180px">
@@ -355,7 +396,7 @@ export default function MapView() {
             <div style="height:1px;background:rgba(60,131,246,0.15);margin:8px 0"></div>
             <div style="display:flex;align-items:center;justify-content:space-between;font-size:10px">
               <span style="color:#94a3b8">${t.surface_reelle_bati || "?"}m² · ${t.type_local || "—"}</span>
-              ${t.classe_energie ? `<span style="font-weight:900;font-size:11px;padding:1px 6px;border-radius:4px;background:${dpePopupColors[t.classe_energie] || "#64748b"}20;color:${dpePopupColors[t.classe_energie] || "#64748b"};border:1px solid ${dpePopupColors[t.classe_energie] || "#64748b"}50">DPE ${t.classe_energie}</span>` : ""}
+              ${t.classe_energie ? `<span style="font-weight:900;font-size:11px;padding:1px 6px;border-radius:4px;background:${dpeColors[t.classe_energie]||"#64748b"}20;color:${dpeColors[t.classe_energie]||"#64748b"};border:1px solid ${dpeColors[t.classe_energie]||"#64748b"}50">DPE ${t.classe_energie}</span>` : ""}
             </div>
             ${prixM2Popup ? `<div style="font-size:10px;color:#475569;margin-top:4px">€${prixM2Popup.toLocaleString()}/m²</div>` : ""}
           </div>`);
@@ -364,12 +405,75 @@ export default function MapView() {
     }).catch(() => {});
   }, []);
 
+  const handleSelectCommune = useCallback((commune) => {
+    setSelectedCommune(commune);
+    loadTransactions(commune, activeTypes, anneeMax);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadTransactions, activeTypes, anneeMax]);
+
+  const handleToggleType = (type) => {
+    setActiveTypes(prev => {
+      const next = new Set(prev);
+      if (next.has(type)) { if (next.size > 1) next.delete(type); }
+      else next.add(type);
+      loadTransactions(selectedCommune, next, anneeMax);
+      return next;
+    });
+  };
+
+  const handleAnneeChange = (val) => {
+    setAnneeMax(val);
+    loadTransactions(selectedCommune, activeTypes, val);
+  };
+
+  const handleReset = () => {
+    setActiveTypes(new Set(TYPES_ALL));
+    setAnneeMax(ANNEE_MAX);
+    loadTransactions(selectedCommune, new Set(TYPES_ALL), ANNEE_MAX);
+  };
+
   useEffect(() => {
     if (allCommunes.length && !selectedCommune) {
-      const paris = allCommunes.find(c => c.code_insee === "75056") || allCommunes[0];
-      handleSelectCommune(paris);
+      const paris15 = allCommunes.find(c => c.code_insee === "75115") || allCommunes[0];
+      handleSelectCommune(paris15);
     }
   }, [allCommunes, selectedCommune, handleSelectCommune]);
+
+  // FlyTo depuis les URL params (recherche adresse dans le Header)
+  useEffect(() => {
+    const lat  = parseFloat(searchParams.get("lat"));
+    const lng  = parseFloat(searchParams.get("lng"));
+    const zoom = parseFloat(searchParams.get("zoom") || "16");
+    const q    = searchParams.get("q");
+    if (!lat || !lng || !map.current) return;
+
+    map.current.flyTo({ center: [lng, lat], zoom, duration: 800 });
+
+    // Propager vers Cesium si vue 3D active (ou au prochain basculement)
+    setCesiumFlyTarget({ lng, lat, zoom });
+
+    // Supprimer l'ancien pin adresse
+    if (adressePin) adressePin.remove();
+
+    // Créer un marqueur rouge pour l'adresse
+    const el = document.createElement("div");
+    el.style.cssText = "width:14px;height:14px;background:#ef4444;border-radius:50%;border:3px solid white;box-shadow:0 0 12px rgba(239,68,68,0.8);cursor:default";
+    const popup = new maplibregl.Popup({ offset: 18, closeButton: false, maxWidth: "240px" })
+      .setHTML(`<div style="font-family:Inter,sans-serif;font-size:12px;color:#e2e8f0;padding:2px 0">
+        <div style="font-weight:700;margin-bottom:2px">${q || "Adresse recherchée"}</div>
+        <div style="color:#64748b;font-size:10px">${lat.toFixed(5)}, ${lng.toFixed(5)}</div>
+      </div>`);
+    const pin = new maplibregl.Marker(el)
+      .setLngLat([lng, lat])
+      .setPopup(popup)
+      .addTo(map.current);
+    setAdressePin(pin);
+    pin.togglePopup();
+
+    // Nettoyer les params après usage
+    setSearchParams({});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   useEffect(() => {
     if (map.current) return;
@@ -391,11 +495,18 @@ export default function MapView() {
     <div className="flex h-full overflow-hidden">
       <LeftSidebar
         communes={communes}
-        transactions={transactions}
+        transactions={sortDesc ? [...transactions].sort((a,b) => (b.valeur_fonciere||0)-(a.valeur_fonciere||0)) : transactions}
         selectedCommune={selectedCommune}
         onSelectCommune={handleSelectCommune}
         search={search}
         onSearch={setSearch}
+        activeTypes={activeTypes}
+        onToggleType={handleToggleType}
+        anneeMax={anneeMax}
+        onAnneeChange={handleAnneeChange}
+        onReset={handleReset}
+        sortDesc={sortDesc}
+        onToggleSort={() => setSortDesc(v => !v)}
       />
 
       <div className="relative flex-1">
@@ -407,6 +518,8 @@ export default function MapView() {
           <CesiumView3D
             selectedCommune={selectedCommune}
             transactions={transactions}
+            initCenter={cesiumInitCenter}
+            flyTarget={cesiumFlyTarget}
           />
         )}
 
@@ -434,7 +547,14 @@ export default function MapView() {
         <div className="absolute bottom-20 right-4 z-10 flex flex-col gap-2">
           {/* Toggle 3D */}
           <button
-            onClick={() => setIs3D(v => !v)}
+            onClick={() => {
+            if (!is3D && map.current) {
+              const { lng, lat } = map.current.getCenter();
+              const zoom = map.current.getZoom();
+              setCesiumInitCenter({ lng, lat, zoom });
+            }
+            setIs3D(v => !v);
+          }}
             title={is3D ? "Passer en vue 2D" : "Passer en vue 3D"}
             className={`size-11 rounded-xl flex items-center justify-center transition-all ${
               is3D

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from "react";
-import { NavLink } from "react-router-dom";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { NavLink, useNavigate } from "react-router-dom";
 import LoginModal from "./LoginModal";
 
 const NAV = [
@@ -19,11 +19,53 @@ function getInitials(user) {
 }
 
 export default function Header() {
-  const [search,    setSearch]    = useState("");
-  const [showLogin, setShowLogin] = useState(false);
-  const [user,      setUser]      = useState(null);
-  const [showMenu,  setShowMenu]  = useState(false);
-  const menuRef = useRef(null);
+  const navigate = useNavigate();
+  const [search,       setSearch]       = useState("");
+  const [suggestions,  setSuggestions]  = useState([]);
+  const [showDrop,     setShowDrop]     = useState(false);
+  const [loading,      setLoading]      = useState(false);
+  const [showLogin,    setShowLogin]    = useState(false);
+  const [user,         setUser]         = useState(null);
+  const [showMenu,     setShowMenu]     = useState(false);
+  const menuRef   = useRef(null);
+  const searchRef = useRef(null);
+  const debounce  = useRef(null);
+
+  // Autocomplete via api-adresse.data.gouv.fr (gratuit, sans clé, IDF uniquement)
+  const fetchSuggestions = useCallback((q) => {
+    if (!q || q.length < 3) { setSuggestions([]); return; }
+    clearTimeout(debounce.current);
+    debounce.current = setTimeout(() => {
+      setLoading(true);
+      fetch(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&limit=6&lat=48.8566&lon=2.3488`)
+        .then(r => r.json())
+        .then(d => {
+          setSuggestions(d.features || []);
+          setShowDrop(true);
+        })
+        .catch(() => setSuggestions([]))
+        .finally(() => setLoading(false));
+    }, 300);
+  }, []);
+
+  const handleSelect = (feature) => {
+    const [lon, lat] = feature.geometry.coordinates;
+    const label = feature.properties.label;
+    setSearch(label);
+    setSuggestions([]);
+    setShowDrop(false);
+    // Naviguer vers /carte avec les coordonnées en params
+    navigate(`/carte?lat=${lat}&lng=${lon}&zoom=16&q=${encodeURIComponent(label)}`);
+  };
+
+  // Fermer dropdown si clic en dehors
+  useEffect(() => {
+    const handler = (e) => {
+      if (searchRef.current && !searchRef.current.contains(e.target)) setShowDrop(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   // Restore session from localStorage
   useEffect(() => {
@@ -85,14 +127,46 @@ export default function Header() {
 
         {/* Search */}
         <div className="flex-1 max-w-md px-10">
-          <div className="relative group">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors" style={{ fontSize: 18 }}>search</span>
+          <div className="relative group" ref={searchRef}>
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors" style={{ fontSize: 18 }}>
+              {loading ? "sync" : "search"}
+            </span>
             <input
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onChange={e => { setSearch(e.target.value); fetchSuggestions(e.target.value); }}
+              onFocus={() => suggestions.length > 0 && setShowDrop(true)}
+              onKeyDown={e => e.key === "Escape" && setShowDrop(false)}
               className="w-full bg-slate-800/50 border-none rounded-lg pl-10 py-2 text-sm focus:ring-1 focus:ring-primary/50 placeholder:text-slate-500 outline-none text-slate-100"
               placeholder="Rechercher une adresse, un quartier..."
             />
+            {search && (
+              <button onClick={() => { setSearch(""); setSuggestions([]); }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300">
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
+              </button>
+            )}
+
+            {/* Dropdown suggestions */}
+            {showDrop && suggestions.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-1 rounded-xl overflow-hidden shadow-2xl z-[100]"
+                style={{ background: "#0f1724", border: "1px solid rgba(60,131,246,0.3)" }}>
+                {suggestions.map((f, i) => {
+                  const p = f.properties;
+                  const typeIcon = p.type === "street" ? "route" : p.type === "municipality" ? "location_city" : "location_on";
+                  return (
+                    <button key={i} onMouseDown={() => handleSelect(f)}
+                      className="w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-primary/10 transition-colors border-b border-slate-800/60 last:border-0">
+                      <span className="material-symbols-outlined text-primary/60 mt-0.5 shrink-0" style={{ fontSize: 16 }}>{typeIcon}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-slate-100 font-medium truncate">{p.name}</p>
+                        <p className="text-[11px] text-slate-500 truncate">{p.postcode} {p.city}{p.context ? ` · ${p.context}` : ""}</p>
+                      </div>
+                      <span className="text-[10px] text-slate-600 shrink-0 mt-1 uppercase tracking-wider">{p.type}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
