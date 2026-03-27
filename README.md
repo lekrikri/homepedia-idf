@@ -573,95 +573,69 @@ Sources loyers : données CLAMEUR / OLAP (à intégrer en Phase 2.7)
 
 ---
 
-## API Backend — Endpoints Go
+## API Backend — Endpoints Go (v1 — opérationnels)
+
+> Base URL : `http://localhost:8080/api/v1`
+
+### Santé
+
+```http
+GET /api/v1/health
+```
 
 ### Authentification
 
 ```http
-POST /api/auth/register
-POST /api/auth/login
-POST /api/auth/refresh
-DELETE /api/auth/logout
-POST /api/auth/forgot-password
-POST /api/auth/reset-password
+POST /api/v1/auth/register   # { email, password, full_name }
+POST /api/v1/auth/login      # { email, password } → { token, user }
+GET  /api/v1/auth/me         # Bearer token requis → user courant
 ```
 
 ### Communes
 
 ```http
-GET /api/communes
-  ?dept=75&min_score=60&max_price=8000&page=1&limit=20
+GET /api/v1/communes
+  ?limit=1300
 
-GET /api/communes/:code_insee
-  # Retourne fiche complète : prix, tendance, score, transport, POI, DPE
+GET /api/v1/communes/:code_insee
+  # Retourne commune (nom, departement, population...)
 
-GET /api/communes/:code_insee/transactions
-  ?year=2024&type=appartement&page=1
+GET /api/v1/communes/gold           # ← NOUVEAU — métriques agrégées
+  ?limit=1300
+  # Retourne les 1288 communes IDF avec :
+  #   nb_transactions, prix_m2_median, prix_m2_moyen,
+  #   score_dpe_moyen, dpe_dominant, pct_appartements, surface_moyenne
 
-GET /api/communes/:code_insee/evolution
-  ?from=2020&to=2024
-
-GET /api/communes/compare
-  ?codes=75013,94300,93100
+GET /api/v1/communes/:code_insee/gold   # ← NOUVEAU — une commune
 ```
 
-### Statistiques
+### Transactions DVF
 
 ```http
-GET /api/stats/heatmap
-  ?dept=75&type=prix&year=2024
-  # Retourne GeoJSON pour heatmap
+GET /api/v1/transactions
+  ?commune=75115        # code INSEE
+  &type_local=Appartement
+  &annee=2024
+  &limit=100
+  # Retourne id, date_mutation, valeur_fonciere, surface_reelle_bati,
+  #   type_local, nombre_pieces, classe_energie, longitude, latitude...
 
-GET /api/stats/evolution
-  ?region=11&from=2020&to=2024
-
-GET /api/stats/dpe-distribution
-  ?code_commune=75013
+GET /api/v1/transactions/:id
 ```
 
-### Bâtiments 3D
+### Statistiques agrégées
 
 ```http
-GET /api/batiments/:id
-  # Fiche bâtiment : osm_id, hauteur, DPE, transactions
-
-GET /api/tiles/{z}/{x}/{y}.mvt
-  # Tuiles vectorielles MVT (via pg_tileserv)
+GET /api/v1/stats
+  # Prix médian IDF, volume total, nb transactions
 ```
 
-### Transport & Accessibilité
+### Endpoints à venir (Phase 6+)
 
 ```http
-GET /api/transport/isochrone
-  ?lat=48.8566&lon=2.3522&minutes=30&mode=transit
-
-GET /api/transport/score
-  ?code_commune=94300
-```
-
-### RAG — Assistant IA
-
-```http
-POST /api/rag/query
-  Body: { "question": "Quel prix/m² à Vincennes ?", "history": [...] }
-  Returns: { "answer": "...", "sources": [...], "cached": false }
-
-GET /api/rag/suggestions
-  ?context=commune:94300
-```
-
-### Utilisateurs
-
-```http
-GET  /api/users/me
-PUT  /api/users/me/profile
-GET  /api/users/me/favorites
-POST /api/users/me/favorites/:code_commune
-DEL  /api/users/me/favorites/:code_commune
-GET  /api/users/me/alerts
-POST /api/users/me/alerts
-PUT  /api/users/me/alerts/:id
-DEL  /api/users/me/alerts/:id
+POST /api/v1/rag/query          # Assistant IA (Gaspard)
+GET  /api/v1/tiles/{z}/{x}/{y}.mvt   # MVT vectorielles (pg_tileserv)
+GET  /api/v1/transport/isochrone
 ```
 
 ---
@@ -963,16 +937,26 @@ python3 download.py --no-upload
 
 ```bash
 # Démarrer tous les services localement
-docker-compose up -d
+cd backend
+docker compose up -d
 
 # Services disponibles :
-# PostgreSQL + PostGIS : localhost:5432
-# MongoDB             : localhost:27017
-# ChromaDB            : localhost:8000
-# Redis               : localhost:6379
-# Backend Go (Air)    : localhost:8080
-# Frontend React      : localhost:3000
-# pg_tileserv         : localhost:7800
+# PostgreSQL 17 + PostGIS : localhost:5433  (db: homepedia / user: homepedia / pw: homepedia)
+# ChromaDB                : localhost:8001  (vide, prêt pour RAG Gaspard)
+# Redis                   : localhost:6379
+# Backend Go              : localhost:8080  → http://localhost:8080/api/v1/health
+# Frontend React (nginx)  : localhost:3000  → http://localhost:3000
+```
+
+### Peupler la base depuis Azure Silver (après docker compose up)
+
+```bash
+# Prérequis : avoir les credentials Azure ADLS dans data/silver_to_postgres.py
+cd data
+pip install azure-storage-blob pyarrow pandas psycopg2-binary
+python3 silver_to_postgres.py
+
+# Résultat attendu : 1288 communes, ~50050 transactions, DPE enrichi
 ```
 
 ### Backend Go
@@ -1000,21 +984,102 @@ npm run build   # Production build
 
 ---
 
-## Roadmap des Phases
+## État Actuel du Projet
 
-| Phase | Description | Statut |
-|-------|-------------|--------|
-| **Phase 0** | Dev local (docker-compose + DuckDB) | ⏳ Todo |
-| **Phase 1** | Infrastructure Azure + CI/CD | ✅ Quasi complète |
-| **Phase 2** | Ingestion données (DVF, INSEE, DPE, OSM, GTFS) | ✅ **Terminée** |
-| **Phase 3** | Big Data Databricks (bronze→silver→gold + ML) | 📅 Semaine prochaine |
-| **Phase 4** | Database organisation (PostgreSQL, MongoDB, ChromaDB) | ⏳ Todo |
-| **Phase 5** | Backend Go (API REST) | ⏳ Todo |
-| **Phase 6** | RAG — Assistant IA (CamemBERT + ChromaDB) | ⏳ Todo |
-| **Phase 7** | Frontend React (CesiumJS 3D + MapLibre + Chat) | ⏳ Todo |
-| **Phase 8** | Déploiement Azure Container Apps | ⏳ Todo |
+> Dernière mise à jour : **Mars 2026** — commit `6893bce`
 
-Voir [ROADMAP.md](ROADMAP.md) pour le détail complet de chaque phase.
+### Roadmap des Phases
+
+| Phase | Description | Statut | Responsable |
+|-------|-------------|--------|-------------|
+| **Phase 0** | Dev local (docker-compose) | ✅ **Terminée** | Équipe |
+| **Phase 1** | Infrastructure Azure + CI/CD | ✅ **Terminée** | Équipe |
+| **Phase 2** | Ingestion données (DVF, INSEE, DPE, OSM, GTFS) | ✅ **Terminée** | Christophe |
+| **Phase 3** | Big Data Databricks (bronze→silver) | ✅ **Terminée** | Ludovic |
+| **Phase 4** | Pipeline Silver → PostgreSQL + métriques Gold | ✅ **Terminée** | Christophe |
+| **Phase 5** | Backend Go (API REST + endpoints Gold) | ✅ **Terminée** | Christophe |
+| **Phase 6** | RAG — Assistant IA (CamemBERT + ChromaDB) | ⏳ À faire | Gaspard |
+| **Phase 7** | Frontend React (CesiumJS 3D + MapLibre) | 🚧 **En cours** | Christophe |
+| **Phase 8** | Déploiement Azure Container Apps | ⏳ À faire | Équipe |
+
+---
+
+### Tâches réalisées — Christophe
+
+#### Phase 2 — Ingestion (✅ Terminée)
+- [x] Script `ingestion/dvf/download.py` — DVF France entière 2020–2024 → Azure `bronze/dvf/`
+- [x] Script `ingestion/insee/download.py` — 34 970 communes → `bronze/insee/`
+- [x] Script `ingestion/ademe_dpe/download.py` — 800k DPE IDF → `bronze/dpe/`
+- [x] Script `ingestion/osm/extract.py` — 172 911 POI IDF via Overpass → `bronze/osm/`
+- [x] Anonymisation RGPD automatique à l'ingestion (suppression colonnes nominatives DVF)
+
+#### Phase 4 — Silver → PostgreSQL (✅ Terminée)
+- [x] Script `data/silver_to_postgres.py` — lecture Parquet Azure ADLS Silver → PostgreSQL local
+  - Étape 1 : `insee_populations` → table `communes` (1 288 communes IDF)
+  - Étape 2 : `dvf_transactions` → table `transactions` (50 050 transactions)
+  - Étape 3 : jointure DPE → mise à jour `classe_energie` (50 042 transactions enrichies)
+- [x] Calcul des métriques Gold directement en SQL PostgreSQL (PERCENTILE_CONT, MODE, AVG CASE)
+
+#### Phase 5 — Backend Go (✅ Terminée)
+- [x] Structure Go + Gin opérationnelle (`cmd/server/main.go`)
+- [x] Authentification JWT (register / login / me)
+- [x] Endpoints communes : `GET /api/v1/communes`, `GET /api/v1/communes/:code`
+- [x] **Nouveaux** endpoints Gold : `GET /api/v1/communes/gold`, `GET /api/v1/communes/:code/gold`
+  - Métriques : `nb_transactions`, `prix_m2_median`, `prix_m2_moyen`, `score_dpe_moyen`, `dpe_dominant`, `pct_appartements`, `surface_moyenne`
+- [x] Endpoints transactions : `GET /api/v1/transactions`, `GET /api/v1/transactions/:id`
+  - Filtres : `?commune=`, `?type_local=`, `?annee=`, `?limit=`
+- [x] Endpoint stats agrégées : `GET /api/v1/stats`
+- [x] Fix Dockerfile (`GOTOOLCHAIN=auto` pour Go 1.24/1.25)
+- [x] `docker-compose` complet (postgres, redis, chromadb, backend, frontend)
+
+#### Phase 7 — Frontend React (🚧 En cours)
+- [x] Architecture React + MapLibre GL (2D) + CesiumJS (3D) fonctionnelle
+- [x] Header avec autocomplete adresse (api-adresse.data.gouv.fr, debounce 300ms)
+- [x] MapView connectée aux données Gold réelles (1 288 communes)
+- [x] Filtres actifs (type de bien, année de vente) — rechargement API à chaque changement
+- [x] Tri des transactions par prix (croissant/décroissant)
+- [x] FlyTo dynamique depuis centroïde des transactions (plus de coords hardcodées)
+- [x] Recherche adresse → pin rouge sur la carte + navigation `/carte?lat=X&lng=Y`
+- [x] Synchronisation position 2D ↔ 3D au basculement de vue
+- [x] Propagation recherche adresse vers Cesium (flyTarget)
+- [x] Panel bâtiment 3D (clic OSM) : infos OSM + **transactions DVF à proximité** (rayon 120m, `globe.pick`)
+- [x] Page Transactions avec filtres type/année connectés à l'API (suppression mock data)
+- [x] Authentification utilisateur (JWT localStorage, initiales avatar)
+
+---
+
+### Tâches réalisées — Ludovic (Phase 3 Databricks)
+
+#### Bronze → Silver (✅ Terminé — `silver_finis`)
+- [x] Notebook `dvf_cleaning.py` — nettoyage DVF : déduplication, filtrage valeurs aberrantes, calcul prix/m², focus IDF
+- [x] Notebook `insee_cleaning.py` — populations légales par commune, normalisation codes INSEE
+- [x] Notebook `dpe_cleaning.py` — classe DPE par logement, jointure sur adresse/parcelle
+- [x] Notebook `osm_cleaning.py` — POI IDF normalisés par catégorie (éducation, santé, commerce, transport)
+- [x] Notebook `communes_cleaning.py` — référentiel communes IDF avec codes INSEE/postaux
+- [x] Toutes les données Silver disponibles sur Azure ADLS `silver/` en format Parquet/Delta
+- [x] Jointure spatiale DVF ↔ communes via **H3** (résolution 9, ~175m) — remplacement Apache Sedona
+
+---
+
+### Ce qui reste à faire
+
+#### Gaspard — Phase 6 RAG
+- [ ] Génération embeddings (CamemBERT) depuis données Silver
+- [ ] Indexation ChromaDB (disponible sur `localhost:8001`)
+- [ ] Service RAG Python (`rag/embeddings/generate.py`, `rag/query/rag_query.py`)
+- [ ] Endpoint `POST /api/rag/query` dans le backend Go
+- [ ] Panel chat IA dans le frontend
+
+#### Équipe — Phase 7 (suite)
+- [ ] Page Statistiques / Dashboard avec graphiques Recharts
+- [ ] Couches cartographiques (transport GTFS, heatmap, isochrones)
+- [ ] Score investissement XGBoost + MLflow (Phase ML)
+
+#### Équipe — Phase 8 Déploiement
+- [ ] Déploiement Azure Container Apps
+- [ ] CI/CD GitHub Actions → ACR → Container Apps
+
+Voir [ROADMAP.md](ROADMAP.md) et [AXES_AMELIORATION.md](AXES_AMELIORATION.md) pour le détail et les pistes d'amélioration.
 
 ---
 
