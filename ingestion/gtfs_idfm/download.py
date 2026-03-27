@@ -36,11 +36,20 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 LOCAL_DATA_DIR    = Path(os.getenv("LOCAL_DATA_DIR", "/tmp/dvf")) / "gtfs"
 ADLS_ACCOUNT_NAME = os.getenv("ADLS_ACCOUNT_NAME", "homepediadatalake")
 ADLS_ACCOUNT_KEY  = os.getenv("ADLS_ACCOUNT_KEY", "")
+PRIM_API_KEY      = os.getenv("PRIM_API_KEY", "")    # Clé PRIM — https://prim.iledefrance-mobilites.fr/
 BRONZE_CONTAINER  = "bronze"
 
 # GTFS IDFM — open data officiel Île-de-France Mobilités
-# Source : https://data.iledefrance-mobilites.fr/explore/dataset/offre-horaires-tc-gtfs-idfm/
-GTFS_URL = "https://data.iledefrance-mobilites.fr/api/explore/v2.1/catalog/datasets/offre-horaires-tc-gtfs-idfm/files/a925e164271e4bcea90d293a5c2be594"
+# ⚠️  Depuis 2025, le téléchargement direct requiert une clé API PRIM (gratuite).
+#
+# Comment obtenir une clé PRIM :
+#   1. S'inscrire sur https://prim.iledefrance-mobilites.fr/
+#   2. Créer une application → récupérer l'apikey
+#   3. Ajouter PRIM_API_KEY=<votre_clé> dans ingestion/.env
+#
+# Une fois la clé obtenue, le ZIP GTFS (~200 MB, mis à jour 3x/jour) est accessible via :
+GTFS_URL = "https://prim.iledefrance-mobilites.fr/marketplace/download-gtfs/gtfs"
+# Header requis : {"apikey": PRIM_API_KEY}
 
 # Types de transport (route_type GTFS)
 TRANSPORT_TYPES = {
@@ -79,8 +88,14 @@ def download_gtfs() -> Path:
         print(f"  📦 GTFS déjà téléchargé : {zip_path}")
         return zip_path
 
-    print(f"  ↓ Téléchargement GTFS IDFM (~200 MB)...")
-    r = requests.get(GTFS_URL, stream=True, timeout=300)
+    if not PRIM_API_KEY:
+        raise ValueError(
+            "PRIM_API_KEY non définie.\n"
+            "  → S'inscrire sur https://prim.iledefrance-mobilites.fr/\n"
+            "  → Ajouter PRIM_API_KEY=<votre_clé> dans ingestion/.env"
+        )
+    print(f"  ↓ Téléchargement GTFS IDFM via PRIM (~200 MB)...")
+    r = requests.get(GTFS_URL, headers={"apikey": PRIM_API_KEY}, stream=True, timeout=300)
     r.raise_for_status()
 
     total = int(r.headers.get("content-length", 0))

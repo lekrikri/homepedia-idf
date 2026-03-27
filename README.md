@@ -206,7 +206,7 @@ homepedia/
 | **INSEE Revenus** | Filosofi — revenus médians par commune | — | ⚠️ Manuel requis |
 | **ADEME DPE** | 800 000 DPE logements IDF (8 depts) | ~19 MB Parquet | ✅ Uploadé |
 | **OSM POI** | 172 911 points d'intérêt IDF (7 catégories) | ~6 MB Parquet | ✅ Uploadé |
-| **GTFS IDFM** | Arrêts + lignes Île-de-France Mobilités | — | Script prêt |
+| **GTFS IDFM** | Arrêts + lignes Île-de-France Mobilités | — | ⚠️ Clé PRIM requise |
 
 ### Sources des données
 
@@ -925,7 +925,9 @@ python3 download.py
 cd ingestion/osm
 python3 extract.py
 
-# GTFS IDFM
+# GTFS IDFM — requiert une clé PRIM (gratuite)
+# 1. S'inscrire sur https://prim.iledefrance-mobilites.fr/
+# 2. Ajouter PRIM_API_KEY=<clé> dans ingestion/.env
 cd ingestion/gtfs_idfm
 python3 download.py
 
