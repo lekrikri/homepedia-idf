@@ -23,7 +23,7 @@ func GetCommunesAgregat(c *gin.Context) {
 
 	rows, err := db.Pool.Query(c.Request.Context(), `
 		SELECT
-			code_commune, city, code_departement,
+			code_commune, city, TRIM(code_departement) AS code_departement,
 			centroid_lon, centroid_lat, surface_km2,
 			population_totale, population_municipale, densite_pop_km2,
 			prix_median_m2, prix_moyen_m2, nb_transactions, surface_moyenne, prix_median_transaction,
@@ -31,7 +31,7 @@ func GetCommunesAgregat(c *gin.Context) {
 			nb_poi_total, nb_transport, nb_education, nb_sante,
 			nb_commerce, nb_restauration, nb_parcs, nb_services, nb_bio_bobo
 		FROM communes_agregat
-		WHERE ($1 = '' OR code_departement = $1)
+		WHERE ($1 = '' OR TRIM(code_departement) = $1)
 		ORDER BY nb_transactions DESC NULLS LAST
 		LIMIT $2 OFFSET $3
 	`, dept, limit, offset)
@@ -74,7 +74,7 @@ func GetCommuneAgregat(c *gin.Context) {
 	var a models.CommuneAgregat
 	err := db.Pool.QueryRow(c.Request.Context(), `
 		SELECT
-			code_commune, city, code_departement,
+			code_commune, city, TRIM(code_departement) AS code_departement,
 			centroid_lon, centroid_lat, surface_km2,
 			population_totale, population_municipale, densite_pop_km2,
 			prix_median_m2, prix_moyen_m2, nb_transactions, surface_moyenne, prix_median_transaction,

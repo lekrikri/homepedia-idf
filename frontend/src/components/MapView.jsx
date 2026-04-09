@@ -424,7 +424,12 @@ export default function MapView() {
   // Recharge les transactions quand commune ou filtres changent
   const loadAgregat = useCallback((commune) => {
     if (!commune?.code_insee) return;
-    axios.get(`/api/v1/communes/${commune.code_insee}/agregat`)
+    setAgregat(null); // reset immédiat pour éviter données stale
+    // Paris arrondissements (75101-75120) → fallback sur Paris entier (75056)
+    const code = commune.code_insee.startsWith("751") && commune.code_insee !== "75056"
+      ? "75056"
+      : commune.code_insee;
+    axios.get(`/api/v1/communes/${code}/agregat`)
       .then(r => setAgregat(r.data))
       .catch(() => setAgregat(null));
   }, []);
