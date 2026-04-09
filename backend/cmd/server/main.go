@@ -59,9 +59,11 @@ func main() {
 
 		// Communes
 		v1.GET("/communes", handlers.ListCommunes)
-		v1.GET("/communes/gold", handlers.GetCommunesGold)   // Gold metrics (prix médian, DPE, nb tx)
+		v1.GET("/communes/gold", handlers.GetCommunesGold)       // Gold calculé à la volée depuis transactions
+		v1.GET("/communes/agregat", handlers.GetCommunesAgregat) // Gold importé depuis Databricks (population, POI OSM, DPE enrichi)
 		v1.GET("/communes/:code", handlers.GetCommune)
 		v1.GET("/communes/:code/gold", handlers.GetCommuneGold)
+		v1.GET("/communes/:code/agregat", handlers.GetCommuneAgregat)
 
 		// Transactions (public read — heavy queries handled by Databricks gold layer)
 		v1.GET("/transactions", handlers.ListTransactions)

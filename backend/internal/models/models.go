@@ -57,6 +57,39 @@ type CommuneGold struct {
 	SurfaceMoyenne  *float64 `json:"surface_moyenne,omitempty"`  // m²
 }
 
+// CommuneAgregat représente une commune avec toutes les métriques Gold
+// importées depuis Databricks (gold/communes_agregat/).
+type CommuneAgregat struct {
+	CodeCommune           string   `json:"code_commune"`
+	City                  string   `json:"city"`
+	CodeDepartement       string   `json:"code_departement"`
+	CentroidLon           *float64 `json:"centroid_lon,omitempty"`
+	CentroidLat           *float64 `json:"centroid_lat,omitempty"`
+	SurfaceKm2            *float64 `json:"surface_km2,omitempty"`
+	PopulationTotale      *int64   `json:"population_totale,omitempty"`
+	PopulationMunicipale  *int64   `json:"population_municipale,omitempty"`
+	DensitePopKm2         *float64 `json:"densite_pop_km2,omitempty"`
+	PrixMedianM2          *float64 `json:"prix_median_m2,omitempty"`
+	PrixMoyenM2           *float64 `json:"prix_moyen_m2,omitempty"`
+	NbTransactions        *int64   `json:"nb_transactions,omitempty"`
+	SurfaceMoyenne        *float64 `json:"surface_moyenne,omitempty"`
+	PrixMedianTransaction *float64 `json:"prix_median_transaction,omitempty"`
+	ScoreDPEMoyen         *float64 `json:"score_dpe_moyen,omitempty"`
+	ConsoEnergieMoyenne   *float64 `json:"conso_energie_moyenne,omitempty"`
+	EmissionGESMoyenne    *float64 `json:"emission_ges_moyenne,omitempty"`
+	NbDPE                 *int64   `json:"nb_dpe,omitempty"`
+	PctDPEBon             *float64 `json:"pct_dpe_bon,omitempty"`
+	NbPOITotal            *int64   `json:"nb_poi_total,omitempty"`
+	NbTransport           *int64   `json:"nb_transport,omitempty"`
+	NbEducation           *int64   `json:"nb_education,omitempty"`
+	NbSante               *int64   `json:"nb_sante,omitempty"`
+	NbCommerce            *int64   `json:"nb_commerce,omitempty"`
+	NbRestauration        *int64   `json:"nb_restauration,omitempty"`
+	NbParcs               *int64   `json:"nb_parcs,omitempty"`
+	NbServices            *int64   `json:"nb_services,omitempty"`
+	NbBioBobo             *int64   `json:"nb_bio_bobo,omitempty"`
+}
+
 // ScoreIris représente les agrégats calculés pour une zone IRIS.
 type ScoreIris struct {
 	CodeIris     string   `json:"code_iris"`
