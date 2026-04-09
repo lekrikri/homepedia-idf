@@ -173,8 +173,9 @@ def get_pg_conn():
 
 def build_commune_docs(conn) -> list[dict]:
     """
-    Génère 1 document par commune avec ses métriques gold.
-    Format : texte descriptif + métadonnées pour filtrage.
+    Génère 1 document par commune avec ses métriques agrégées depuis transactions.
+    Note : la table commune_gold n'existe pas encore en base locale —
+    les métriques sont calculées directement depuis transactions.
     """
     cur = conn.cursor()
     cur.execute("""
@@ -184,16 +185,25 @@ def build_commune_docs(conn) -> list[dict]:
             c.departement,
             c.region,
             c.population,
-            cg.nb_transactions,
-            cg.prix_m2_median,
-            cg.prix_m2_moyen,
-            cg.dpe_dominant,
-            cg.score_dpe_moyen,
-            cg.pct_appartements,
-            cg.surface_moyenne
+            COUNT(t.id)                          AS nb_transactions,
+            PERCENTILE_CONT(0.5) WITHIN GROUP (
+                ORDER BY t.valeur_fonciere / NULLIF(t.surface_reelle_bati, 0)
+            )                                    AS prix_m2_median,
+            AVG(t.valeur_fonciere / NULLIF(t.surface_reelle_bati, 0)) AS prix_m2_moyen,
+            MODE() WITHIN GROUP (ORDER BY t.classe_energie) AS dpe_dominant,
+            AVG(CASE t.classe_energie
+                WHEN 'A' THEN 1 WHEN 'B' THEN 2 WHEN 'C' THEN 3
+                WHEN 'D' THEN 4 WHEN 'E' THEN 5 WHEN 'F' THEN 6
+                WHEN 'G' THEN 7 END)             AS score_dpe_moyen,
+            AVG(CASE WHEN t.type_local = 'Appartement' THEN 1.0 ELSE 0.0 END) * 100 AS pct_appartements,
+            AVG(t.surface_reelle_bati)           AS surface_moyenne
         FROM communes c
-        LEFT JOIN commune_gold cg ON c.code_insee = cg.code_insee
+        LEFT JOIN transactions t
+            ON t.code_commune = c.code_insee
+            AND t.surface_reelle_bati > 9
+            AND t.valeur_fonciere > 10000
         WHERE c.departement IN ('75','77','78','91','92','93','94','95')
+        GROUP BY c.code_insee, c.nom, c.departement, c.region, c.population
         ORDER BY c.nom
     """)
     rows = cur.fetchall()
