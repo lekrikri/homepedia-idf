@@ -30,17 +30,19 @@ const DPE_COLORS = {
 };
 
 // ─── Right Panel ───────────────────────────────────────────────────────────────
-function RightPanel({ commune, transactions }) {
-  // Utilise les métriques Gold du serveur si disponibles, sinon calcul client-side fallback
-  const prixMedian = commune?.prix_m2_median
-    ? Math.round(commune.prix_m2_median)
-    : (() => {
-        const prices = transactions
-          .filter(t => t.valeur_fonciere && t.surface_reelle_bati)
-          .map(t => t.valeur_fonciere / t.surface_reelle_bati)
-          .sort((a, b) => a - b);
-        return prices.length ? Math.round(prices[Math.floor(prices.length / 2)]) : null;
-      })();
+function RightPanel({ commune, transactions, agregat }) {
+  // Prix médian — Gold agregat en priorité, fallback gold calculé, fallback client-side
+  const prixMedian = agregat?.prix_median_m2
+    ? Math.round(agregat.prix_median_m2)
+    : commune?.prix_m2_median
+      ? Math.round(commune.prix_m2_median)
+      : (() => {
+          const prices = transactions
+            .filter(t => t.valeur_fonciere && t.surface_reelle_bati)
+            .map(t => t.valeur_fonciere / t.surface_reelle_bati)
+            .sort((a, b) => a - b);
+          return prices.length ? Math.round(prices[Math.floor(prices.length / 2)]) : null;
+        })();
 
   const dpePrincipal = commune?.dpe_dominant
     ?? Object.entries(
@@ -51,7 +53,7 @@ function RightPanel({ commune, transactions }) {
        ).sort((a, b) => b[1] - a[1])[0]?.[0];
 
   const dpeStyle = dpePrincipal ? DPE_COLORS[dpePrincipal] : null;
-  const nbTransactions = commune?.nb_transactions ?? transactions.length;
+  const nbTransactions = agregat?.nb_transactions ?? commune?.nb_transactions ?? transactions.length;
   const score = prixMedian ? Math.min(95, Math.max(25, Math.round(100 - prixMedian / 280))) : 82;
   const lastSales = transactions.slice(0, 4);
 
@@ -74,27 +76,31 @@ function RightPanel({ commune, transactions }) {
         <header className="mb-6">
           <h2 className="text-sm font-bold text-primary mb-1">Détail Zone</h2>
           <h3 className="text-lg font-bold text-slate-100">{commune.nom}</h3>
-          <p className="text-xs text-slate-400">Dept. {commune.departement?.trim()} {commune.region ? `— ${commune.region}` : ""}</p>
+          <p className="text-xs text-slate-400">Dept. {commune.departement?.trim()}
+            {agregat?.population_totale ? ` · ${Math.round(agregat.population_totale / 1000)}k hab.` : ""}
+            {agregat?.densite_pop_km2 ? ` · ${Math.round(agregat.densite_pop_km2).toLocaleString()} hab/km²` : ""}
+          </p>
         </header>
 
-        {/* Prix médian + sparkline */}
-        <div className="bg-slate-900/50 p-4 rounded-xl border border-primary/10 mb-6">
+        {/* Prix médian */}
+        <div className="bg-slate-900/50 p-4 rounded-xl border border-primary/10 mb-4">
           <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">Prix Médian / m²</p>
-          <div className="text-3xl font-bold mono-nums text-amber-400 mb-3">
+          <div className="text-3xl font-bold mono-nums text-amber-400 mb-1">
             {prixMedian ? `${prixMedian.toLocaleString()} €` : "— €"}
           </div>
-          <div className="flex items-end gap-1 h-8">
-            {[50, 65, 50, 75, 100, 85].map((h, i) => (
-              <div key={i} className="flex-1 rounded-sm bg-primary/40" style={{ height: `${h}%` }} />
-            ))}
-          </div>
+          {agregat?.prix_moyen_m2 && (
+            <p className="text-[10px] text-slate-500">
+              Moyen : {Math.round(agregat.prix_moyen_m2).toLocaleString()} €/m²
+              {agregat?.surface_moyenne ? ` · Surface moy. ${Math.round(agregat.surface_moyenne)} m²` : ""}
+            </p>
+          )}
         </div>
 
-        {/* 2-col grid */}
-        <div className="grid grid-cols-2 gap-3 mb-6">
+        {/* 2-col grid — Transactions + DPE */}
+        <div className="grid grid-cols-2 gap-3 mb-4">
           <div className="bg-slate-900/50 p-3 rounded-xl border border-primary/10 flex flex-col items-center">
             <span className="material-symbols-outlined text-primary mb-1" style={{ fontSize: 20 }}>handshake</span>
-            <div className="text-xl font-bold mono-nums text-slate-100">{nbTransactions.toLocaleString()}</div>
+            <div className="text-xl font-bold mono-nums text-slate-100">{Number(nbTransactions).toLocaleString()}</div>
             <p className="text-[10px] text-slate-500 uppercase">Transactions</p>
           </div>
           <div className="bg-slate-900/50 p-3 rounded-xl border border-primary/10 flex flex-col items-center">
@@ -102,21 +108,80 @@ function RightPanel({ commune, transactions }) {
             <div className={`text-xl font-bold mono-nums ${dpeStyle?.text || "text-slate-100"}`}>
               {dpePrincipal || "—"}
             </div>
-            <p className="text-[10px] text-slate-500 uppercase">DPE Moyen</p>
+            <p className="text-[10px] text-slate-500 uppercase">DPE Dominant</p>
           </div>
         </div>
 
+        {/* DPE énergie détail */}
+        {agregat?.score_dpe_moyen && (
+          <div className="bg-slate-900/50 p-3 rounded-xl border border-primary/10 mb-4">
+            <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Performance Énergétique</p>
+            <div className="flex justify-between text-[11px]">
+              <span className="text-slate-400">Score DPE moyen</span>
+              <span className="text-slate-200 font-bold mono-nums">{agregat.score_dpe_moyen.toFixed(1)} / 7</span>
+            </div>
+            {agregat.conso_energie_moyenne && (
+              <div className="flex justify-between text-[11px] mt-1">
+                <span className="text-slate-400">Conso énergie</span>
+                <span className="text-slate-200 mono-nums">{Math.round(agregat.conso_energie_moyenne)} kWh/m²/an</span>
+              </div>
+            )}
+            {agregat.emission_ges_moyenne && (
+              <div className="flex justify-between text-[11px] mt-1">
+                <span className="text-slate-400">Émissions GES</span>
+                <span className="text-slate-200 mono-nums">{agregat.emission_ges_moyenne.toFixed(1)} kgCO₂/m²/an</span>
+              </div>
+            )}
+            {agregat.pct_dpe_bon != null && (
+              <div className="flex justify-between text-[11px] mt-1">
+                <span className="text-slate-400">Biens classés A/B</span>
+                <span className="text-green-400 font-bold mono-nums">{(agregat.pct_dpe_bon * 100).toFixed(1)} %</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* POI — Équipements */}
+        {agregat?.nb_poi_total > 0 && (
+          <div className="bg-slate-900/50 p-3 rounded-xl border border-primary/10 mb-4">
+            <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Équipements ({Number(agregat.nb_poi_total).toLocaleString()} POI)</p>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+              {[
+                { icon: "train", label: "Transports", val: agregat.nb_transport },
+                { icon: "school", label: "Éducation",  val: agregat.nb_education },
+                { icon: "local_hospital", label: "Santé",    val: agregat.nb_sante },
+                { icon: "storefront", label: "Commerces", val: agregat.nb_commerce },
+                { icon: "restaurant", label: "Restos",    val: agregat.nb_restauration },
+                { icon: "park", label: "Parcs",     val: agregat.nb_parcs },
+              ].map(({ icon, label, val }) => val > 0 && (
+                <div key={label} className="flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-primary/70" style={{ fontSize: 13 }}>{icon}</span>
+                  <span className="text-[10px] text-slate-400">{label}</span>
+                  <span className="text-[10px] font-bold text-slate-200 mono-nums ml-auto">{Number(val).toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+            {agregat.nb_bio_bobo > 0 && (
+              <div className="mt-2 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-emerald-400/70" style={{ fontSize: 13 }}>eco</span>
+                <span className="text-[10px] text-emerald-400">Gentrification</span>
+                <span className="text-[10px] font-bold text-emerald-300 mono-nums ml-auto">{Number(agregat.nb_bio_bobo)} commerces bio/bobo</span>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Score investissement */}
-        <div className="bg-slate-900/50 p-4 rounded-xl border border-primary/20 mb-6 flex items-center gap-4">
-          <div className="relative shrink-0" style={{ width: 64, height: 64 }}>
-            <svg className="-rotate-90" width="64" height="64" viewBox="0 0 64 64">
-              <circle cx="32" cy="32" r="28" fill="transparent" stroke="#1e293b" strokeWidth="4" />
-              <circle cx="32" cy="32" r="28" fill="transparent" stroke="#3c83f6" strokeWidth="4"
-                strokeDasharray="175" strokeDashoffset={Math.round(175 - (score / 100) * 175)}
+        <div className="bg-slate-900/50 p-4 rounded-xl border border-primary/20 mb-4 flex items-center gap-4">
+          <div className="relative shrink-0" style={{ width: 56, height: 56 }}>
+            <svg className="-rotate-90" width="56" height="56" viewBox="0 0 56 56">
+              <circle cx="28" cy="28" r="24" fill="transparent" stroke="#1e293b" strokeWidth="4" />
+              <circle cx="28" cy="28" r="24" fill="transparent" stroke="#3c83f6" strokeWidth="4"
+                strokeDasharray="150" strokeDashoffset={Math.round(150 - (score / 100) * 150)}
                 strokeLinecap="round" />
             </svg>
             <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-lg font-black mono-nums text-slate-100">{score}</span>
+              <span className="text-base font-black mono-nums text-slate-100">{score}</span>
             </div>
           </div>
           <div>
@@ -132,8 +197,6 @@ function RightPanel({ commune, transactions }) {
             ? <p className="text-xs text-slate-600 text-center py-2">Aucune transaction</p>
             : <div className="space-y-2">
               {lastSales.map((t, i) => {
-                const prixM2 = t.valeur_fonciere && t.surface_reelle_bati
-                  ? Math.round(t.valeur_fonciere / t.surface_reelle_bati) : null;
                 const prix = t.valeur_fonciere
                   ? t.valeur_fonciere >= 1e6
                     ? `${(t.valeur_fonciere / 1e6).toFixed(2)}M€`
@@ -333,6 +396,7 @@ export default function MapView() {
   const [allCommunes, setAllCommunes] = useState([]);
   const [communes, setCommunes] = useState([]);
   const [selectedCommune, setSelectedCommune] = useState(null);
+  const [agregat, setAgregat] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [search, setSearch] = useState("");
   const [is3D, setIs3D] = useState(false);
@@ -358,6 +422,13 @@ export default function MapView() {
   }, [search, allCommunes]);
 
   // Recharge les transactions quand commune ou filtres changent
+  const loadAgregat = useCallback((commune) => {
+    if (!commune?.code_insee) return;
+    axios.get(`/api/v1/communes/${commune.code_insee}/agregat`)
+      .then(r => setAgregat(r.data))
+      .catch(() => setAgregat(null));
+  }, []);
+
   const loadTransactions = useCallback((commune, types, maxAnnee) => {
     if (!commune) return;
     const typeParam = types.size === 1 ? `&type_local=${[...types][0]}` : "";
@@ -408,8 +479,9 @@ export default function MapView() {
   const handleSelectCommune = useCallback((commune) => {
     setSelectedCommune(commune);
     loadTransactions(commune, activeTypes, anneeMax);
+    loadAgregat(commune);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadTransactions, activeTypes, anneeMax]);
+  }, [loadTransactions, loadAgregat, activeTypes, anneeMax]);
 
   const handleToggleType = (type) => {
     setActiveTypes(prev => {
@@ -608,7 +680,7 @@ export default function MapView() {
         </div>
       </div>
 
-      <RightPanel commune={selectedCommune} transactions={transactions} />
+      <RightPanel commune={selectedCommune} transactions={transactions} agregat={agregat} />
     </div>
   );
 }
