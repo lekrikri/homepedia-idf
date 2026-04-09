@@ -1,7 +1,7 @@
 # WORKSHOP — Chatbot IA RAG HomePedia
 ## Pour : Gaspard | Phase 6 — Assistant Conversationnel
 
-> **Objectif** : Construire un chatbot en langage naturel qui répond aux questions immobilières en interrogeant les données HomePedia (DVF, DPE, communes, transports) via une architecture RAG (Retrieval-Augmented Generation).
+> **Objectif** : Construire un chatbot en langage naturel qui répond aux questions immobilières en interrogeant les données HomePedia via une architecture RAG (Retrieval-Augmented Generation).
 
 ---
 
@@ -12,17 +12,17 @@ Question utilisateur
         │
         ▼
 ┌────────────────────┐
-│  Embedding CamemBERT│   → encode la question en vecteur 768d
+│  Embedding         │   → encode la question en vecteur
 │  (sentence-transf.)│
 └────────────┬───────┘
              │ vecteur requête
              ▼
-┌────────────────────┐     ┌─────────────────────────────────┐
-│    ChromaDB        │◄────│ Index de documents pré-indexés  │
-│  (localhost:8001)  │     │  • fiches communes (prix, DPE)  │
-│  collection:       │     │  • résumés quartiers           │
-│  homepedia_docs    │     │  • données transports           │
-└────────────┬───────┘     └─────────────────────────────────┘
+┌────────────────────┐     ┌──────────────────────────────────────────┐
+│    ChromaDB        │◄────│ Index de documents pré-indexés           │
+│  (localhost:8001)  │     │  • fiches communes (prix, DPE, POI)      │
+│  collection:       │     │  • générés depuis gold/communes_agregat/ │
+│  communes_idf      │     │  • 1 document = 1 commune IDF            │
+└────────────┬───────┘     └──────────────────────────────────────────┘
              │ top-k chunks (k=5)
              ▼
 ┌────────────────────┐
@@ -41,17 +41,65 @@ Question utilisateur
 
 ---
 
+## 📊 Source de données — Table Gold `communes_agregat`
+
+La table Gold est la **seule source de vérité** pour le RAG. Elle est produite par Databricks et stockée dans Azure ADLS Gen2.
+
+### Schéma complet
+
+```
+gold/communes_agregat/
+│
+├── code_commune          string    -- clé principale (INSEE 5 chiffres)
+├── city                  string    -- nom de la commune
+├── code_departement      string    -- 75, 77, 78, 91, 92, 93, 94, 95
+├── centroid_lon          double    -- longitude du centre
+├── centroid_lat          double    -- latitude du centre
+├── surface_km2           double    -- superficie
+│
+├── -- INSEE
+├── population_totale     long      -- population totale
+├── population_municipale long      -- population municipale
+├── densite_pop_km2       double    -- habitants/km²
+│
+├── -- DVF (transactions immobilières)
+├── prix_median_m2        double    -- prix médian au m²
+├── prix_moyen_m2         double    -- prix moyen au m²
+├── nb_transactions       long      -- nombre de ventes
+├── surface_moyenne       double    -- surface moyenne des biens vendus
+├── prix_median_transaction double  -- prix médian d'une transaction
+│
+├── -- DPE (performance énergétique)
+├── score_dpe_moyen       double    -- 1 (A) à 7 (G)
+├── conso_energie_moyenne double    -- kWh/m²/an
+├── emission_ges_moyenne  double    -- kgCO2/m²/an
+├── nb_dpe                long      -- nombre de DPE
+├── pct_dpe_bon           double    -- % de biens classés A ou B
+│
+└── -- OSM (points d'intérêt)
+    ├── nb_poi_total       long
+    ├── nb_transport       long
+    ├── nb_education       long
+    ├── nb_sante           long
+    ├── nb_commerce        long
+    ├── nb_restauration    long
+    ├── nb_parcs           long
+    ├── nb_services        long
+    └── nb_bio_bobo        long     -- signal gentrification
+```
+
+---
+
 ## 🗂️ Structure des fichiers à créer
 
 ```
 T-DAT-902-PAR_3/
 ├── rag/
-│   ├── requirements.txt          # dépendances Python
-│   ├── .env.example              # variables d'env
-│   ├── 01_build_corpus.py        # extrait données PG → documents texte
-│   ├── 02_index_chromadb.py      # encode + indexe dans ChromaDB
-│   ├── 03_rag_server.py          # API FastAPI /rag/query
-│   └── test_rag.py               # tests manuels
+│   ├── requirements.txt              # dépendances Python
+│   ├── .env.example                  # variables d'env
+│   ├── 01_index_from_databricks.py   # Databricks : Gold → ChromaDB (notebook)
+│   ├── 02_rag_server.py              # API FastAPI locale /rag/query
+│   └── test_rag.py                   # tests manuels
 ```
 
 ---
@@ -71,28 +119,19 @@ docker ps
 # homepedia_frontend   → port 3000
 ```
 
-Si les services ne tournent pas :
 ```bash
-cd /path/to/T-DAT-902-PAR_3
-docker compose up -d
-```
-
-### Tester ChromaDB
-
-```bash
+# Tester ChromaDB
 curl http://localhost:8001/api/v1/heartbeat
 # → {"nanosecond heartbeat": ...}
 ```
 
-### Environnement Python
+### Environnement Python local (pour le serveur RAG)
 
 ```bash
 cd T-DAT-902-PAR_3/rag/
 python3 -m venv venv
 source venv/bin/activate
-
-pip install chromadb sentence-transformers psycopg2-binary \
-            fastapi uvicorn python-dotenv requests
+pip install chromadb sentence-transformers fastapi uvicorn python-dotenv requests
 ```
 
 ---
@@ -102,7 +141,6 @@ pip install chromadb sentence-transformers psycopg2-binary \
 ```
 chromadb==0.5.0
 sentence-transformers==3.0.1
-psycopg2-binary==2.9.9
 fastapi==0.111.0
 uvicorn==0.30.1
 python-dotenv==1.0.1
@@ -113,16 +151,9 @@ requests==2.32.3
 
 ## Étape 2 — `.env`
 
-Créer `rag/.env` (copier depuis `.env.example`) :
+Créer `rag/.env` :
 
 ```bash
-# PostgreSQL (même config que le backend)
-POSTGRES_HOST=localhost
-POSTGRES_PORT=5433
-POSTGRES_DB=homepedia
-POSTGRES_USER=homepedia
-POSTGRES_PASSWORD=homepedia123
-
 # ChromaDB
 CHROMADB_HOST=localhost
 CHROMADB_PORT=8001
@@ -131,10 +162,10 @@ CHROMADB_PORT=8001
 # Option A : Mistral via API Mistral AI (gratuit jusqu'à 1M tokens/mois)
 MISTRAL_API_KEY=sk-...
 
-# Option B : Claude Sonnet (Anthropic)
+# Option B : Claude Haiku (Anthropic — rapide et pas cher)
 ANTHROPIC_API_KEY=sk-ant-...
 
-# Option C : Ollama local (mistral:7b, llama3, etc.) — gratuit, hors ligne
+# Option C : Ollama local (gratuit, hors ligne)
 OLLAMA_URL=http://localhost:11434
 OLLAMA_MODEL=mistral
 
@@ -144,356 +175,189 @@ LLM_PROVIDER=mistral
 
 ---
 
-## Étape 3 — `01_build_corpus.py` — Extraire les données → corpus texte
+## Étape 3 — Indexation depuis Databricks (Notebook)
 
-Ce script lit PostgreSQL et génère des **chunks de texte** (documents) à indexer dans ChromaDB.
+> **À exécuter dans un notebook Databricks** — les données Gold sont dans Azure ADLS Gen2, pas en local.
 
-```python
-"""
-01_build_corpus.py
-Extrait les données HomePedia depuis PostgreSQL et les formate
-en documents texte pour indexation RAG dans ChromaDB.
-"""
-
-import os
-import json
-import psycopg2
-from dotenv import load_dotenv
-
-load_dotenv()
-
-def get_pg_conn():
-    return psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST", "localhost"),
-        port=int(os.getenv("POSTGRES_PORT", 5433)),
-        dbname=os.getenv("POSTGRES_DB"),
-        user=os.getenv("POSTGRES_USER"),
-        password=os.getenv("POSTGRES_PASSWORD"),
-    )
-
-def build_commune_docs(conn) -> list[dict]:
-    """
-    Génère 1 document par commune avec ses métriques agrégées depuis transactions.
-    Note : la table commune_gold n'existe pas encore en base locale —
-    les métriques sont calculées directement depuis transactions.
-    """
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT
-            c.code_insee,
-            c.nom,
-            c.departement,
-            c.region,
-            c.population,
-            COUNT(t.id)                          AS nb_transactions,
-            PERCENTILE_CONT(0.5) WITHIN GROUP (
-                ORDER BY t.valeur_fonciere / NULLIF(t.surface_reelle_bati, 0)
-            )                                    AS prix_m2_median,
-            AVG(t.valeur_fonciere / NULLIF(t.surface_reelle_bati, 0)) AS prix_m2_moyen,
-            MODE() WITHIN GROUP (ORDER BY t.classe_energie) AS dpe_dominant,
-            AVG(CASE t.classe_energie
-                WHEN 'A' THEN 1 WHEN 'B' THEN 2 WHEN 'C' THEN 3
-                WHEN 'D' THEN 4 WHEN 'E' THEN 5 WHEN 'F' THEN 6
-                WHEN 'G' THEN 7 END)             AS score_dpe_moyen,
-            AVG(CASE WHEN t.type_local = 'Appartement' THEN 1.0 ELSE 0.0 END) * 100 AS pct_appartements,
-            AVG(t.surface_reelle_bati)           AS surface_moyenne
-        FROM communes c
-        LEFT JOIN transactions t
-            ON t.code_commune = c.code_insee
-            AND t.surface_reelle_bati > 9
-            AND t.valeur_fonciere > 10000
-        WHERE c.departement IN ('75','77','78','91','92','93','94','95')
-        GROUP BY c.code_insee, c.nom, c.departement, c.region, c.population
-        ORDER BY c.nom
-    """)
-    rows = cur.fetchall()
-    cols = [d[0] for d in cur.description]
-
-    docs = []
-    for row in rows:
-        r = dict(zip(cols, row))
-
-        # Construire le texte descriptif
-        text_parts = [
-            f"Commune : {r['nom']} (code INSEE {r['code_insee']})",
-            f"Département : {r['departement']}, Région : {r.get('region', 'Île-de-France')}",
-        ]
-        if r.get('population'):
-            text_parts.append(f"Population : {r['population']:,} habitants")
-        if r.get('prix_m2_median'):
-            text_parts.append(f"Prix médian au m² : {r['prix_m2_median']:.0f} €/m²")
-        if r.get('prix_m2_moyen'):
-            text_parts.append(f"Prix moyen au m² : {r['prix_m2_moyen']:.0f} €/m²")
-        if r.get('nb_transactions'):
-            text_parts.append(f"Nombre de transactions DVF : {r['nb_transactions']}")
-        if r.get('dpe_dominant'):
-            text_parts.append(f"Classe DPE dominante : {r['dpe_dominant']}")
-        if r.get('score_dpe_moyen'):
-            text_parts.append(f"Score DPE moyen : {r['score_dpe_moyen']:.1f}/7 (1=A, 7=G)")
-        if r.get('pct_appartements'):
-            text_parts.append(f"Part d'appartements : {r['pct_appartements']:.1f}%")
-        if r.get('surface_moyenne'):
-            text_parts.append(f"Surface moyenne des biens : {r['surface_moyenne']:.0f} m²")
-
-        docs.append({
-            "id": f"commune_{r['code_insee']}",
-            "text": ". ".join(text_parts) + ".",
-            "metadata": {
-                "type": "commune",
-                "code_insee": r['code_insee'],
-                "nom": r['nom'],
-                "departement": r['departement'],
-                "prix_m2_median": float(r['prix_m2_median']) if r.get('prix_m2_median') else None,
-            }
-        })
-
-    print(f"  → {len(docs)} documents communes générés")
-    return docs
-
-
-def build_transaction_summary_docs(conn) -> list[dict]:
-    """
-    Génère des documents de résumé par commune + type de bien.
-    Ex : "Les appartements à Montreuil coûtent en médiane 4 200 €/m²"
-    """
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT
-            code_commune,
-            commune,
-            type_local,
-            COUNT(*)                          AS nb,
-            PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY valeur_fonciere / NULLIF(surface_reelle_bati, 0)) AS prix_m2_median,
-            AVG(surface_reelle_bati)           AS surface_moy,
-            MIN(source_annee)                  AS annee_min,
-            MAX(source_annee)                  AS annee_max
-        FROM transactions
-        WHERE code_commune IS NOT NULL
-          AND surface_reelle_bati > 9
-          AND valeur_fonciere > 10000
-          AND type_local IN ('Appartement', 'Maison')
-        GROUP BY code_commune, commune, type_local
-        HAVING COUNT(*) >= 5
-        ORDER BY commune, type_local
-    """)
-    rows = cur.fetchall()
-    cols = [d[0] for d in cur.description]
-
-    docs = []
-    for row in rows:
-        r = dict(zip(cols, row))
-        type_label = "appartements" if r['type_local'] == 'Appartement' else "maisons"
-        text = (
-            f"Marché immobilier des {type_label} à {r['commune']} "
-            f"(code INSEE {r['code_commune']}) : "
-            f"{r['nb']} transactions recensées entre {r['annee_min']} et {r['annee_max']}. "
-        )
-        if r.get('prix_m2_median'):
-            text += f"Prix médian au m² : {float(r['prix_m2_median']):.0f} €/m². "
-        if r.get('surface_moy'):
-            text += f"Surface moyenne : {float(r['surface_moy']):.0f} m²."
-
-        docs.append({
-            "id": f"tx_{r['code_commune']}_{r['type_local'].lower()}",
-            "text": text,
-            "metadata": {
-                "type": "transaction_summary",
-                "code_insee": r['code_commune'],
-                "commune": r['commune'],
-                "type_local": r['type_local'],
-                "nb_transactions": int(r['nb']),
-                "prix_m2_median": float(r['prix_m2_median']) if r.get('prix_m2_median') else None,
-            }
-        })
-
-    print(f"  → {len(docs)} documents résumés transactions générés")
-    return docs
-
-
-def build_dpe_docs(conn) -> list[dict]:
-    """
-    Génère des documents sur la performance énergétique par commune.
-    """
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT
-            t.code_commune,
-            t.commune,
-            t.classe_energie,
-            COUNT(*) AS nb
-        FROM transactions t
-        WHERE t.classe_energie IS NOT NULL
-          AND t.code_commune IS NOT NULL
-        GROUP BY t.code_commune, t.commune, t.classe_energie
-        ORDER BY t.commune, t.classe_energie
-    """)
-    rows = cur.fetchall()
-
-    # Regrouper par commune
-    from collections import defaultdict
-    by_commune = defaultdict(list)
-    for row in rows:
-        by_commune[(row[0], row[1])].append((row[2], row[3]))
-
-    docs = []
-    for (code, nom), classes in by_commune.items():
-        total = sum(n for _, n in classes)
-        top_class = max(classes, key=lambda x: x[1])
-        distribution = ", ".join(f"{cl}:{n}" for cl, n in sorted(classes))
-        text = (
-            f"Performance énergétique (DPE) à {nom} ({code}) : "
-            f"sur {total} biens avec DPE renseigné, "
-            f"la classe dominante est {top_class[0]}. "
-            f"Distribution : {distribution}."
-        )
-        docs.append({
-            "id": f"dpe_{code}",
-            "text": text,
-            "metadata": {
-                "type": "dpe",
-                "code_insee": code,
-                "commune": nom,
-                "dpe_dominant": top_class[0],
-            }
-        })
-
-    print(f"  → {len(docs)} documents DPE générés")
-    return docs
-
-
-def main():
-    print("📚 Construction du corpus RAG HomePedia...")
-    conn = get_pg_conn()
-    all_docs = []
-    all_docs.extend(build_commune_docs(conn))
-    all_docs.extend(build_transaction_summary_docs(conn))
-    all_docs.extend(build_dpe_docs(conn))
-    conn.close()
-
-    # Sauvegarder en JSON pour inspection
-    with open("corpus.json", "w", encoding="utf-8") as f:
-        json.dump(all_docs, f, ensure_ascii=False, indent=2)
-
-    print(f"\n✅ Corpus total : {len(all_docs)} documents → corpus.json")
-    return all_docs
-
-
-if __name__ == "__main__":
-    main()
-```
-
-**Lancer :**
-```bash
-python 01_build_corpus.py
-# → corpus.json créé (~1000-5000 documents selon les données en base)
-```
-
----
-
-## Étape 4 — `02_index_chromadb.py` — Encoder + Indexer dans ChromaDB
+### `01_index_from_databricks.py` (notebook Databricks)
 
 ```python
-"""
-02_index_chromadb.py
-Encode les documents du corpus avec CamemBERT (sentence-transformers)
-et les indexe dans ChromaDB pour la recherche vectorielle.
-"""
+# Notebook Databricks — indexer gold/communes_agregat/ dans ChromaDB
+# Cluster requis : avec sentence-transformers installé
+# pip install sentence-transformers chromadb
 
-import os
-import json
 import chromadb
+import pandas as pd
 from sentence_transformers import SentenceTransformer
-from dotenv import load_dotenv
+from pyspark.sql import functions as F
 
-load_dotenv()
-
-CHROMA_HOST = os.getenv("CHROMADB_HOST", "localhost")
-CHROMA_PORT = int(os.getenv("CHROMADB_PORT", 8001))
-COLLECTION_NAME = "homepedia_docs"
-
-# Modèle CamemBERT optimisé pour le français
-# Alternative : "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+# ── Config ────────────────────────────────────────────────────────────────────
+GOLD = "abfss://gold@homepediadatalake.dfs.core.windows.net"
+CHROMA_HOST = dbutils.secrets.get(scope="homepedia", key="CHROMA_HOST")
+# Si pas de secret configuré, utiliser l'IP du poste local en accès réseau
+# CHROMA_HOST = "TON_IP_LOCALE"  # ex: "192.168.1.42"
+CHROMA_PORT = 8001
+COLLECTION_NAME = "communes_idf"
 MODEL_NAME = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
 
+# ── Étape 1 : Lire la table Gold ──────────────────────────────────────────────
+print("📖 Lecture de gold/communes_agregat/...")
+df_gold = spark.read.format("delta").load(f"{GOLD}/communes_agregat/")
+print(f"  → {df_gold.count()} communes")
 
-def main():
-    print("🔌 Connexion à ChromaDB...")
-    client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
+# ── Étape 2 : Générer les descriptions textuelles ─────────────────────────────
+df_text = df_gold.withColumn("description",
+    F.concat_ws(" ",
+        F.lit("La commune de"), F.col("city"),
+        F.lit("dans le département"), F.col("code_departement"),
+        F.lit("compte"), F.col("population_totale").cast("string"),
+        F.lit("habitants avec une densité de"),
+        F.round("densite_pop_km2", 0).cast("string"),
+        F.lit("habitants par km²."),
 
-    # Supprimer la collection si elle existe (pour ré-indexer)
-    try:
-        client.delete_collection(COLLECTION_NAME)
-        print(f"  → Collection '{COLLECTION_NAME}' supprimée (ré-indexation)")
-    except Exception:
-        pass
+        F.lit("Le prix médian au m² est de"),
+        F.round("prix_median_m2", 0).cast("string"),
+        F.lit("euros (moyenne :"),
+        F.round("prix_moyen_m2", 0).cast("string"),
+        F.lit("€/m²)."),
+        F.lit("Basé sur"), F.col("nb_transactions").cast("string"),
+        F.lit("transactions, la surface moyenne des biens est de"),
+        F.round("surface_moyenne", 0).cast("string"),
+        F.lit("m²."),
 
-    collection = client.create_collection(
-        name=COLLECTION_NAME,
-        metadata={"hnsw:space": "cosine"}  # distance cosinus pour le texte
+        F.lit("Performance énergétique (DPE) : score moyen"),
+        F.round("score_dpe_moyen", 1).cast("string"),
+        F.lit("sur 7 (1=A, 7=G),"),
+        F.round("conso_energie_moyenne", 0).cast("string"),
+        F.lit("kWh/m²/an de consommation,"),
+        F.round("emission_ges_moyenne", 1).cast("string"),
+        F.lit("kgCO2/m²/an d'émissions."),
+        F.round("pct_dpe_bon", 1).cast("string"),
+        F.lit("% des biens classés A ou B."),
+
+        F.lit("Équipements : "),
+        F.col("nb_transport").cast("string"), F.lit("arrêts de transport,"),
+        F.col("nb_education").cast("string"), F.lit("établissements scolaires,"),
+        F.col("nb_sante").cast("string"), F.lit("établissements de santé,"),
+        F.col("nb_commerce").cast("string"), F.lit("commerces,"),
+        F.col("nb_restauration").cast("string"), F.lit("restaurants,"),
+        F.col("nb_parcs").cast("string"), F.lit("parcs."),
+        F.col("nb_bio_bobo").cast("string"), F.lit("commerces bio/bobo (indicateur gentrification)."),
     )
+)
 
-    print(f"🤖 Chargement du modèle d'embedding : {MODEL_NAME}")
-    model = SentenceTransformer(MODEL_NAME)
+# Aperçu
+df_text.select("code_commune", "city", "description").show(3, truncate=False)
 
-    print("📂 Lecture du corpus...")
-    with open("corpus.json", "r", encoding="utf-8") as f:
-        docs = json.load(f)
-    print(f"  → {len(docs)} documents à indexer")
+# ── Étape 3 : Encoder avec sentence-transformers ──────────────────────────────
+print(f"🤖 Chargement modèle : {MODEL_NAME}")
+model = SentenceTransformer(MODEL_NAME)
 
-    # Encoder par batch (évite les problèmes mémoire)
-    BATCH_SIZE = 100
-    for i in range(0, len(docs), BATCH_SIZE):
-        batch = docs[i:i + BATCH_SIZE]
-        texts = [d["text"] for d in batch]
-        ids = [d["id"] for d in batch]
-        metadatas = [d["metadata"] for d in batch]
+df_pd = df_text.select(
+    "code_commune", "city", "code_departement",
+    "prix_median_m2", "score_dpe_moyen", "nb_transport", "description"
+).toPandas()
 
-        # Encoder → vecteurs 768d
-        embeddings = model.encode(texts, show_progress_bar=False).tolist()
+print(f"  → Encodage de {len(df_pd)} documents...")
+embeddings = model.encode(df_pd["description"].tolist(), show_progress_bar=True).tolist()
 
-        # Indexer dans ChromaDB
-        collection.add(
-            ids=ids,
-            documents=texts,
-            embeddings=embeddings,
-            metadatas=metadatas,
-        )
+# ── Étape 4 : Indexer dans ChromaDB ──────────────────────────────────────────
+print(f"🔌 Connexion ChromaDB {CHROMA_HOST}:{CHROMA_PORT}...")
+client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
 
-        print(f"  → Batch {i//BATCH_SIZE + 1}/{(len(docs)-1)//BATCH_SIZE + 1} indexé ({len(batch)} docs)")
+# Supprimer et recréer la collection (ré-indexation propre)
+try:
+    client.delete_collection(COLLECTION_NAME)
+except Exception:
+    pass
+collection = client.create_collection(
+    name=COLLECTION_NAME,
+    metadata={"hnsw:space": "cosine"}
+)
 
-    print(f"\n✅ Indexation terminée : {collection.count()} documents dans ChromaDB")
+# Indexer par batch
+BATCH_SIZE = 100
+for i in range(0, len(df_pd), BATCH_SIZE):
+    batch = df_pd.iloc[i:i + BATCH_SIZE]
+    collection.add(
+        ids=batch["code_commune"].tolist(),
+        documents=batch["description"].tolist(),
+        embeddings=embeddings[i:i + BATCH_SIZE],
+        metadatas=batch[["code_commune", "city", "code_departement",
+                          "prix_median_m2", "score_dpe_moyen", "nb_transport"]
+                        ].fillna(0).to_dict("records"),
+    )
+    print(f"  → Batch {i // BATCH_SIZE + 1} indexé ({len(batch)} docs)")
 
-    # Test rapide
-    print("\n🧪 Test de recherche : 'prix appartements Paris 13e'")
-    test_embedding = model.encode(["prix appartements Paris 13e"]).tolist()
-    results = collection.query(query_embeddings=test_embedding, n_results=3)
-    for i, doc in enumerate(results["documents"][0]):
-        print(f"  [{i+1}] {doc[:120]}...")
+print(f"\n✅ {collection.count()} communes indexées dans ChromaDB (collection '{COLLECTION_NAME}')")
 
-
-if __name__ == "__main__":
-    main()
+# ── Étape 5 : Test de recherche ───────────────────────────────────────────────
+print("\n🧪 Test : 'commune abordable avec beaucoup de transports dans le 92'")
+results = collection.query(
+    query_texts=["commune abordable avec beaucoup de transports dans le 92"],
+    n_results=3,
+)
+for i, (doc, meta) in enumerate(zip(results["documents"][0], results["metadatas"][0])):
+    print(f"  [{i+1}] {meta['city']} — {doc[:150]}...")
 ```
 
-**Lancer :**
-```bash
-python 02_index_chromadb.py
-# Première exécution : télécharge le modèle (~420 MB)
-# → Indexation de tous les documents dans ChromaDB
+> **Note accès ChromaDB depuis Databricks** : ChromaDB tourne en local (Docker). Pour y accéder depuis Databricks, soit tu exposes ChromaDB sur une IP publique, soit tu exécutes ce script localement après avoir exporté les données Gold en Parquet. Voir la section "Alternative locale" ci-dessous.
+
+### Alternative : indexer en local depuis un export Parquet
+
+Si ChromaDB n'est pas accessible depuis Databricks, exporter depuis Databricks :
+
+```python
+# Dans Databricks — exporter la table Gold en Parquet local
+df_text.select("code_commune", "city", "code_departement",
+               "prix_median_m2", "score_dpe_moyen", "nb_transport", "description") \
+       .write.mode("overwrite").parquet("/tmp/communes_agregat_for_rag/")
+# Puis télécharger avec dbutils.fs.cp ou depuis le portail Azure
+```
+
+Puis localement :
+
+```python
+# index_local.py — lancer depuis rag/ après téléchargement du Parquet
+import pandas as pd
+import chromadb
+from sentence_transformers import SentenceTransformer
+
+df_pd = pd.read_parquet("communes_agregat_for_rag/")
+model = SentenceTransformer("sentence-transformers/paraphrase-multilingual-mpnet-base-v2")
+embeddings = model.encode(df_pd["description"].tolist(), show_progress_bar=True).tolist()
+
+client = chromadb.HttpClient(host="localhost", port=8001)
+try:
+    client.delete_collection("communes_idf")
+except Exception:
+    pass
+collection = client.create_collection("communes_idf", metadata={"hnsw:space": "cosine"})
+
+for i in range(0, len(df_pd), 100):
+    batch = df_pd.iloc[i:i+100]
+    collection.add(
+        ids=batch["code_commune"].tolist(),
+        documents=batch["description"].tolist(),
+        embeddings=embeddings[i:i+100],
+        metadatas=batch[["code_commune", "city", "code_departement",
+                          "prix_median_m2", "score_dpe_moyen", "nb_transport"]
+                        ].fillna(0).to_dict("records"),
+    )
+print(f"✅ {collection.count()} communes indexées")
 ```
 
 ---
 
-## Étape 5 — `03_rag_server.py` — API FastAPI
+## Étape 4 — `02_rag_server.py` — API FastAPI locale
 
-Ce serveur expose `/rag/query` que le backend Go appellera.
+Ce serveur tourne en local (port 8002) et est appelé par le backend Go.
 
 ```python
 """
-03_rag_server.py
-Serveur FastAPI RAG — reçoit une question, cherche les chunks pertinents
-dans ChromaDB, construit un prompt et appelle un LLM pour générer la réponse.
-Port : 8002 (pour ne pas conflter avec ChromaDB:8001 et backend:8080)
+02_rag_server.py
+API RAG — reçoit une question, cherche dans ChromaDB, appelle un LLM.
+Port : 8002
 """
 
 import os
@@ -509,37 +373,27 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = FastAPI(title="HomePedia RAG API", version="1.0.0")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["POST", "GET"], allow_headers=["*"])
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["POST", "GET"],
-    allow_headers=["*"],
-)
-
-# ─── Config ───────────────────────────────────────────────────────────────────
 CHROMA_HOST = os.getenv("CHROMADB_HOST", "localhost")
 CHROMA_PORT = int(os.getenv("CHROMADB_PORT", 8001))
-COLLECTION_NAME = "homepedia_docs"
+COLLECTION_NAME = "communes_idf"
 MODEL_NAME = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "mistral")
-TOP_K = 5  # nombre de chunks récupérés
+TOP_K = 5
 
-# ─── Initialisation ───────────────────────────────────────────────────────────
 print("🔌 Connexion ChromaDB...")
 chroma_client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
 collection = chroma_client.get_collection(COLLECTION_NAME)
 
-print(f"🤖 Chargement modèle embedding : {MODEL_NAME}")
+print(f"🤖 Chargement modèle embedding...")
 embed_model = SentenceTransformer(MODEL_NAME)
+print(f"✅ RAG prêt — {collection.count()} communes indexées")
 
-print(f"✅ RAG prêt — {collection.count()} documents indexés")
 
-
-# ─── Modèles Pydantic ─────────────────────────────────────────────────────────
 class QueryRequest(BaseModel):
     question: str
-    commune_filter: str | None = None   # code_insee optionnel pour filtrer
+    departement_filter: str | None = None  # ex: "92" pour filtrer sur un département
     top_k: int = TOP_K
 
 class QueryResponse(BaseModel):
@@ -548,20 +402,12 @@ class QueryResponse(BaseModel):
     latency_ms: int
 
 
-# ─── Fonctions LLM ────────────────────────────────────────────────────────────
 def call_mistral(prompt: str) -> str:
-    api_key = os.getenv("MISTRAL_API_KEY")
-    if not api_key:
-        raise ValueError("MISTRAL_API_KEY non défini dans .env")
     resp = requests.post(
         "https://api.mistral.ai/v1/chat/completions",
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json={
-            "model": "mistral-small-latest",
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.2,
-            "max_tokens": 512,
-        },
+        headers={"Authorization": f"Bearer {os.getenv('MISTRAL_API_KEY')}", "Content-Type": "application/json"},
+        json={"model": "mistral-small-latest", "messages": [{"role": "user", "content": prompt}],
+              "temperature": 0.2, "max_tokens": 512},
         timeout=30,
     )
     resp.raise_for_status()
@@ -569,21 +415,12 @@ def call_mistral(prompt: str) -> str:
 
 
 def call_claude(prompt: str) -> str:
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise ValueError("ANTHROPIC_API_KEY non défini dans .env")
     resp = requests.post(
         "https://api.anthropic.com/v1/messages",
-        headers={
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-            "Content-Type": "application/json",
-        },
-        json={
-            "model": "claude-haiku-4-5-20251001",
-            "max_tokens": 512,
-            "messages": [{"role": "user", "content": prompt}],
-        },
+        headers={"x-api-key": os.getenv("ANTHROPIC_API_KEY"), "anthropic-version": "2023-06-01",
+                 "Content-Type": "application/json"},
+        json={"model": "claude-haiku-4-5-20251001", "max_tokens": 512,
+              "messages": [{"role": "user", "content": prompt}]},
         timeout=30,
     )
     resp.raise_for_status()
@@ -591,11 +428,9 @@ def call_claude(prompt: str) -> str:
 
 
 def call_ollama(prompt: str) -> str:
-    url = os.getenv("OLLAMA_URL", "http://localhost:11434")
-    model = os.getenv("OLLAMA_MODEL", "mistral")
     resp = requests.post(
-        f"{url}/api/generate",
-        json={"model": model, "prompt": prompt, "stream": False},
+        f"{os.getenv('OLLAMA_URL', 'http://localhost:11434')}/api/generate",
+        json={"model": os.getenv("OLLAMA_MODEL", "mistral"), "prompt": prompt, "stream": False},
         timeout=60,
     )
     resp.raise_for_status()
@@ -603,18 +438,9 @@ def call_ollama(prompt: str) -> str:
 
 
 def call_llm(prompt: str) -> str:
-    provider = LLM_PROVIDER.lower()
-    if provider == "mistral":
-        return call_mistral(prompt)
-    elif provider == "claude":
-        return call_claude(prompt)
-    elif provider == "ollama":
-        return call_ollama(prompt)
-    else:
-        raise ValueError(f"LLM_PROVIDER inconnu : {provider}")
+    return {"mistral": call_mistral, "claude": call_claude, "ollama": call_ollama}[LLM_PROVIDER](prompt)
 
 
-# ─── Construction du prompt ───────────────────────────────────────────────────
 def build_prompt(question: str, chunks: list[str]) -> str:
     context = "\n\n".join(f"[{i+1}] {c}" for i, c in enumerate(chunks))
     return f"""Tu es un assistant spécialisé dans l'immobilier en Île-de-France.
@@ -630,18 +456,15 @@ QUESTION : {question}
 RÉPONSE :"""
 
 
-# ─── Endpoint principal ───────────────────────────────────────────────────────
 @app.post("/rag/query", response_model=QueryResponse)
 async def rag_query(req: QueryRequest):
     t0 = time.time()
 
-    # 1. Encoder la question
     query_vec = embed_model.encode([req.question]).tolist()
 
-    # 2. Chercher dans ChromaDB
     where_filter = None
-    if req.commune_filter:
-        where_filter = {"code_insee": req.commune_filter}
+    if req.departement_filter:
+        where_filter = {"code_departement": req.departement_filter}
 
     try:
         results = collection.query(
@@ -663,39 +486,25 @@ async def rag_query(req: QueryRequest):
             latency_ms=int((time.time() - t0) * 1000),
         )
 
-    # 3. Construire le prompt
     prompt = build_prompt(req.question, chunks)
 
-    # 4. Appeler le LLM
     try:
         answer = call_llm(prompt)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Erreur LLM ({LLM_PROVIDER}) : {e}")
 
-    # 5. Formater les sources
     sources = [
-        {
-            "text": chunk[:200] + "...",
-            "metadata": meta,
-            "score": round(1 - dist, 3),  # cosine → similarité
-        }
+        {"text": chunk[:200] + "...", "metadata": meta, "score": round(1 - dist, 3)}
         for chunk, meta, dist in zip(chunks, metadatas, distances)
     ]
 
-    return QueryResponse(
-        answer=answer.strip(),
-        sources=sources,
-        latency_ms=int((time.time() - t0) * 1000),
-    )
+    return QueryResponse(answer=answer.strip(), sources=sources,
+                         latency_ms=int((time.time() - t0) * 1000))
 
 
 @app.get("/rag/health")
 async def health():
-    return {
-        "status": "ok",
-        "docs_indexed": collection.count(),
-        "llm_provider": LLM_PROVIDER,
-    }
+    return {"status": "ok", "docs_indexed": collection.count(), "llm_provider": LLM_PROVIDER}
 
 
 if __name__ == "__main__":
@@ -705,65 +514,49 @@ if __name__ == "__main__":
 
 **Lancer :**
 ```bash
-python 03_rag_server.py
+python 02_rag_server.py
 # → http://localhost:8002
-# → Docs Swagger : http://localhost:8002/docs
+# → Swagger : http://localhost:8002/docs
 ```
 
 ---
 
-## Étape 6 — Tests manuels
-
-### Test via curl
-
-```bash
-# Test basique
-curl -X POST http://localhost:8002/rag/query \
-  -H "Content-Type: application/json" \
-  -d '{"question": "Quel est le prix moyen au m² à Montreuil ?"}'
-
-# Test avec filtre commune (93048 = Montreuil)
-curl -X POST http://localhost:8002/rag/query \
-  -H "Content-Type: application/json" \
-  -d '{"question": "Quelle est la classe DPE dominante ?", "commune_filter": "93048"}'
-```
-
-### `test_rag.py` — Jeu de tests
+## Étape 5 — Tests manuels
 
 ```python
-"""test_rag.py — Valider le comportement du RAG"""
+# test_rag.py
 import requests
 
 BASE = "http://localhost:8002"
 
 questions = [
-    "Quel est le prix médian au m² à Vincennes ?",
-    "Quelles communes du 93 ont le prix au m² le plus bas ?",
-    "Comment est la performance énergétique à Neuilly-sur-Seine ?",
-    "Combien de transactions DVF ont eu lieu à Montreuil entre 2020 et 2024 ?",
-    "Quel est le prix moyen d'un appartement à Boulogne-Billancourt ?",
-    "Quelle est la différence de prix entre Paris et la banlieue ?",
+    ("Quelle est la commune la plus abordable du 92 ?", "92"),
+    ("Où habiter si je veux beaucoup de parcs et de commerces ?", None),
+    ("Quelle commune a la meilleure performance énergétique en Seine-Saint-Denis ?", "93"),
+    ("Comparaison entre Vincennes et Montreuil ?", None),
+    ("Quelles communes ont un fort indicateur de gentrification ?", None),
+    ("Où trouver beaucoup d'établissements de santé en banlieue ouest ?", "92"),
 ]
 
-for q in questions:
-    resp = requests.post(f"{BASE}/rag/query", json={"question": q})
+for question, dept in questions:
+    body = {"question": question}
+    if dept:
+        body["departement_filter"] = dept
+    resp = requests.post(f"{BASE}/rag/query", json=body)
     data = resp.json()
-    print(f"\n❓ {q}")
+    print(f"\n❓ {question}")
     print(f"💬 {data['answer']}")
-    print(f"⏱️  {data['latency_ms']}ms | {len(data['sources'])} sources")
+    print(f"⏱️  {data['latency_ms']}ms | Sources : {[s['metadata']['city'] for s in data['sources']]}")
     print("-" * 80)
 ```
 
 ---
 
-## Étape 7 — Intégration avec le backend Go
+## Étape 6 — Intégration Backend Go
 
-Une fois le serveur RAG fonctionnel, le backend Go doit lui proxyfier les requêtes.
-
-### Nouveau handler Go à créer : `rag.go`
+### `backend/internal/handlers/rag.go`
 
 ```go
-// backend/internal/handlers/rag.go
 package handlers
 
 import (
@@ -777,8 +570,8 @@ import (
 )
 
 type RAGRequest struct {
-    Question      string  `json:"question" binding:"required"`
-    CommuneFilter *string `json:"commune_filter,omitempty"`
+    Question           string  `json:"question" binding:"required"`
+    DepartementFilter  *string `json:"departement_filter,omitempty"`
 }
 
 type RAGResponse struct {
@@ -814,19 +607,17 @@ func RAGQuery(c *gin.Context) {
         c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid RAG response"})
         return
     }
-
     c.JSON(http.StatusOK, ragResp)
 }
 ```
 
-### Enregistrer la route dans `main.go`
+### Enregistrer la route dans `cmd/server/main.go`
 
 ```go
-// Dans cmd/server/main.go, ajouter dans le groupe v1 :
 v1.POST("/rag/query", handlers.RAGQuery)
 ```
 
-### Variable d'environnement à ajouter dans `.env`
+### Variable d'env à ajouter dans `.env`
 
 ```bash
 RAG_SERVICE_URL=http://localhost:8002
@@ -834,21 +625,18 @@ RAG_SERVICE_URL=http://localhost:8002
 
 ---
 
-## Étape 8 — Intégration Frontend React
-
-Ajouter un composant `ChatRAG.jsx` dans `frontend/src/components/` :
+## Étape 7 — Composant React `ChatRAG.jsx`
 
 ```jsx
 // frontend/src/components/ChatRAG.jsx
 import { useState } from "react";
 
-export default function ChatRAG({ communeFilter }) {
+export default function ChatRAG({ departementFilter }) {
   const [messages, setMessages] = useState([
     { role: "assistant", text: "Bonjour ! Posez-moi vos questions sur l'immobilier en Île-de-France." }
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-
   const API = import.meta.env.VITE_API_URL || "http://localhost:8080";
 
   async function sendMessage() {
@@ -862,13 +650,14 @@ export default function ChatRAG({ communeFilter }) {
       const resp = await fetch(`${API}/api/v1/rag/query`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question,
-          commune_filter: communeFilter || null,
-        }),
+        body: JSON.stringify({ question, departement_filter: departementFilter || null }),
       });
       const data = await resp.json();
-      setMessages(prev => [...prev, { role: "assistant", text: data.answer }]);
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        text: data.answer,
+        sources: data.sources,
+      }]);
     } catch {
       setMessages(prev => [...prev, { role: "assistant", text: "Erreur de connexion au serveur." }]);
     } finally {
@@ -877,23 +666,45 @@ export default function ChatRAG({ communeFilter }) {
   }
 
   return (
-    <div className="chat-rag">
-      <div className="chat-messages">
+    <div style={{ display: "flex", flexDirection: "column", height: "400px", border: "1px solid #ddd", borderRadius: "8px" }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: "12px" }}>
         {messages.map((m, i) => (
-          <div key={i} className={`chat-bubble ${m.role}`}>
-            {m.text}
+          <div key={i} style={{
+            marginBottom: "8px",
+            textAlign: m.role === "user" ? "right" : "left",
+          }}>
+            <span style={{
+              display: "inline-block", padding: "8px 12px", borderRadius: "12px",
+              background: m.role === "user" ? "#2563eb" : "#f3f4f6",
+              color: m.role === "user" ? "white" : "black",
+              maxWidth: "80%",
+            }}>
+              {m.text}
+            </span>
+            {m.sources && (
+              <div style={{ fontSize: "11px", color: "#888", marginTop: "2px" }}>
+                Sources : {m.sources.map(s => s.metadata.city).join(", ")}
+              </div>
+            )}
           </div>
         ))}
-        {loading && <div className="chat-bubble assistant">...</div>}
+        {loading && <div style={{ color: "#888" }}>...</div>}
       </div>
-      <div className="chat-input">
+      <div style={{ display: "flex", gap: "8px", padding: "8px", borderTop: "1px solid #ddd" }}>
         <input
+          style={{ flex: 1, padding: "8px", borderRadius: "6px", border: "1px solid #ddd" }}
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === "Enter" && sendMessage()}
-          placeholder="Ex: Quel est le prix au m² à Vincennes ?"
+          placeholder="Ex : Quelle commune du 92 est la plus abordable ?"
         />
-        <button onClick={sendMessage} disabled={loading}>Envoyer</button>
+        <button
+          onClick={sendMessage}
+          disabled={loading}
+          style={{ padding: "8px 16px", background: "#2563eb", color: "white", border: "none", borderRadius: "6px", cursor: "pointer" }}
+        >
+          Envoyer
+        </button>
       </div>
     </div>
   );
@@ -902,85 +713,58 @@ export default function ChatRAG({ communeFilter }) {
 
 ---
 
-## Étape 9 — Améliorations optionnelles
+## Étape 8 — Améliorations optionnelles
 
-Si le temps le permet, voici des axes d'amélioration par ordre de priorité :
+### Enrichir les descriptions avec d'autres colonnes Gold
 
-### 9.1 — Enrichir le corpus avec les données GTFS transport
+Le corpus peut être affiné selon les questions fréquentes. Par exemple :
 
 ```python
-# Dans 01_build_corpus.py, ajouter cette fonction :
-def build_transport_docs(conn) -> list[dict]:
-    """Ajouter des docs sur l'accessibilité transport par commune."""
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT commune, code_commune,
-               COUNT(*) FILTER (WHERE transport_type = 'METRO') AS nb_metro,
-               COUNT(*) FILTER (WHERE transport_type = 'RER') AS nb_rer,
-               COUNT(*) FILTER (WHERE transport_type = 'BUS') AS nb_bus
-        FROM transport_stops
-        GROUP BY commune, code_commune
-    """)
-    # ... (une fois que Ludo a intégré les données silver transport dans PG)
+# Ajouter le score d'investissement (si disponible dans Gold)
+F.lit("Score d'attractivité investissement :"),
+F.round("score_investissement", 1).cast("string"), F.lit("/ 10.")
 ```
 
-### 9.2 — Historique de conversation (mémoire des échanges)
+### Filtrage par commune (pas seulement département)
 
-Passer l'historique dans le prompt :
 ```python
-def build_prompt_with_history(question, chunks, history):
-    history_text = "\n".join(
-        f"{'Utilisateur' if m['role'] == 'user' else 'Assistant'} : {m['content']}"
-        for m in history[-4:]  # garder les 4 derniers échanges
-    )
-    return f"""...\nHISTORIQUE :\n{history_text}\n\nCONTEXTE :\n..."""
+# Dans la requête ChromaDB, filtrer sur code_commune
+where_filter = {"code_commune": "92049"}  # Levallois-Perret
 ```
 
-### 9.3 — Re-ranking des chunks
+### Historique de conversation
 
-Après récupération ChromaDB (top-k=10), ré-ordonner avec un modèle cross-encoder :
+Passer les derniers échanges dans le prompt pour des questions de suivi :
 ```python
-from sentence_transformers import CrossEncoder
-reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
-scores = reranker.predict([(question, chunk) for chunk in chunks])
-# → garder les 5 meilleurs
+history_text = "\n".join(
+    f"{'Utilisateur' if m['role'] == 'user' else 'Assistant'}: {m['content']}"
+    for m in history[-4:]
+)
+# Ajouter au prompt : f"HISTORIQUE :\n{history_text}\n\n"
 ```
 
 ---
 
 ## Checklist de livraison
 
-- [ ] `rag/requirements.txt` créé
-- [ ] `rag/.env` configuré (clé API LLM)
-- [ ] `01_build_corpus.py` → `corpus.json` généré avec >500 documents
-- [ ] `02_index_chromadb.py` → collection `homepedia_docs` indexée dans ChromaDB
-- [ ] `03_rag_server.py` → serveur FastAPI sur port 8002 fonctionnel
-- [ ] `test_rag.py` → toutes les questions de test reçoivent une réponse pertinente
-- [ ] Handler Go `rag.go` créé + route `/api/v1/rag/query` enregistrée
+- [ ] Notebook Databricks `01_index_from_databricks.py` exécuté — `communes_idf` indexée dans ChromaDB
+- [ ] `02_rag_server.py` → serveur FastAPI port 8002 fonctionnel (`/rag/health` répond)
+- [ ] `test_rag.py` → toutes les questions reçoivent une réponse pertinente
+- [ ] Handler Go `rag.go` créé + route `/api/v1/rag/query` enregistrée dans `main.go`
 - [ ] Composant React `ChatRAG.jsx` intégré dans l'interface
-- [ ] Test end-to-end : question depuis le frontend → réponse affichée
+- [ ] Test end-to-end : question depuis le frontend → réponse affichée avec sources
 
 ---
 
 ## Contacts & Ressources
 
-| Qui | Rôle | Contact |
-|-----|------|---------|
-| **Christophe** | Backend Go + Infrastructure | (à compléter) |
-| **Ludo** | Databricks silver GTFS (pour enrichir le corpus transport) | (à compléter) |
+| Qui | Rôle |
+|-----|------|
+| **Christophe** | Backend Go — pour intégrer la route `/api/v1/rag/query` |
+| **Ludo** | Databricks — pour accès à `gold/communes_agregat/` et secrets ChromaDB |
 
-**Ressources utiles :**
+**Ressources :**
 - ChromaDB docs : https://docs.trychroma.com
 - sentence-transformers : https://www.sbert.net
-- Mistral API (gratuit) : https://console.mistral.ai
-- Ollama (local, gratuit) : https://ollama.com
-
-**Pour démarrer Ollama localement (option gratuite sans clé API) :**
-```bash
-# Installer Ollama
-curl -fsSL https://ollama.com/install.sh | sh
-# Télécharger un modèle français (3.8GB)
-ollama pull mistral
-# Tester
-ollama run mistral "Quelle est la capitale de la France ?"
-```
+- Mistral API (gratuit jusqu'à 1M tokens/mois) : https://console.mistral.ai
+- Ollama (local, gratuit) : https://ollama.com — `ollama pull mistral`
