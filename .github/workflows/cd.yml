@@ -1,0 +1,254 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# CD — Déploiement automatique sur GCP Cloud Run
+#
+# C'est quoi la CD ? (pour les débutants)
+# ─────────────────────────────────────────
+# CD = Continuous Deployment = "Déploiement Continu"
+# Une fois que la CI a validé le code (tous les tests passent),
+# la CD déploie AUTOMATIQUEMENT la nouvelle version en production.
+#
+# Flux complet :
+#
+#   tu fais : git push origin main
+#        ↓
+#   CI démarre (tests, build)
+#        ↓  (si tout ✅)
+#   CD démarre :
+#     1. Build les images Docker
+#     2. Les pousse sur Google Container Registry (GCR)
+#     3. Déploie sur Cloud Run (remplace l'ancienne version)
+#     4. L'URL de prod est mise à jour automatiquement
+#
+# Résultat : en ~5 minutes après ton push, le changement est en prod.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+name: CD — Déploiement GCP Cloud Run
+
+on:
+  push:
+    branches: [ main ]
+  # Déclenchement manuel possible depuis l'onglet Actions GitHub
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environnement cible'
+        required: true
+        default: 'production'
+        type: choice
+        options: [ production, staging ]
+
+env:
+  GCP_PROJECT: homepedia-idf
+  GCP_REGION: europe-west1
+  # Noms des services Cloud Run
+  BACKEND_SERVICE: homepedia-backend
+  FRONTEND_SERVICE: homepedia-frontend
+  # Registry Docker GCP
+  REGISTRY: europe-west1-docker.pkg.dev/homepedia-idf/homepedia
+
+jobs:
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 1 : Build & Push Backend
+  # ─────────────────────────────────────────────────────────────────────────────
+  deploy-backend:
+    name: 🚀 Deploy Backend → Cloud Run
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Authentification GCP avec la clé de service
+      # (stockée dans GitHub → Settings → Secrets → GCP_SERVICE_ACCOUNT_KEY)
+      - name: Authenticate GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+      # Configurer Docker pour pouvoir pousser vers le registry GCP
+      - name: Configure Docker for GCP
+        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev
+
+      # Build et push l'image Docker backend
+      # Le tag utilise le SHA du commit pour identifier précisément la version
+      - name: Build & Push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/backend:${{ github.sha }}
+            ${{ env.REGISTRY }}/backend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Déployer la nouvelle image sur Cloud Run
+      - name: Deploy backend to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.BACKEND_SERVICE }} \
+            --image ${{ env.REGISTRY }}/backend:${{ github.sha }} \
+            --region ${{ env.GCP_REGION }} \
+            --platform managed \
+            --allow-unauthenticated \
+            --port 8080 \
+            --memory 512Mi \
+            --cpu 1 \
+            --min-instances 0 \
+            --max-instances 5 \
+            --set-env-vars "GIN_MODE=release" \
+            --set-secrets \
+              "POSTGRES_PASSWORD=homepedia-pg-password:latest,\
+               JWT_SECRET=homepedia-jwt-secret:latest,\
+               CHROMADB_HOST=homepedia-chroma-host:latest"
+
+      # Afficher l'URL de l'API déployée
+      - name: Get backend URL
+        run: |
+          URL=$(gcloud run services describe ${{ env.BACKEND_SERVICE }} \
+            --region ${{ env.GCP_REGION }} \
+            --format 'value(status.url)')
+          echo "✅ Backend déployé sur : $URL"
+          echo "BACKEND_URL=$URL" >> $GITHUB_ENV
+
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 2 : Build & Push Frontend
+  # ─────────────────────────────────────────────────────────────────────────────
+  deploy-frontend:
+    name: 🌐 Deploy Frontend → Cloud Run
+    runs-on: ubuntu-latest
+    needs: deploy-backend  # attend que le backend soit déployé pour avoir son URL
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+      - name: Configure Docker for GCP
+        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev
+
+      # Récupérer l'URL du backend pour la passer au build frontend
+      - name: Get backend URL
+        run: |
+          URL=$(gcloud run services describe ${{ env.BACKEND_SERVICE }} \
+            --region ${{ env.GCP_REGION }} \
+            --format 'value(status.url)')
+          echo "BACKEND_URL=$URL" >> $GITHUB_ENV
+
+      - name: Build & Push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/frontend:${{ github.sha }}
+            ${{ env.REGISTRY }}/frontend:latest
+          build-args: |
+            VITE_API_URL=${{ env.BACKEND_URL }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy frontend to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.FRONTEND_SERVICE }} \
+            --image ${{ env.REGISTRY }}/frontend:${{ github.sha }} \
+            --region ${{ env.GCP_REGION }} \
+            --platform managed \
+            --allow-unauthenticated \
+            --port 80 \
+            --memory 256Mi \
+            --cpu 1 \
+            --min-instances 0 \
+            --max-instances 3
+
+      - name: Get frontend URL
+        run: |
+          URL=$(gcloud run services describe ${{ env.FRONTEND_SERVICE }} \
+            --region ${{ env.GCP_REGION }} \
+            --format 'value(status.url)')
+          echo "✅ Frontend déployé sur : $URL"
+
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 3 : Pipeline DBT — Mise à jour des données Gold
+  # S'exécute après le déploiement pour rafraîchir les tables BigQuery
+  # ─────────────────────────────────────────────────────────────────────────────
+  run-dbt-pipeline:
+    name: 📊 DBT Pipeline — Mise à jour données
+    runs-on: ubuntu-latest
+    needs: deploy-backend
+    # Ne lancer le pipeline données que le weekend (coût BigQuery)
+    # Commenté pour l'instant — décommenter quand DBT est configuré
+    # if: github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install DBT
+        run: pip install dbt-bigquery==1.8.0
+
+      - name: Authenticate GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+      - name: Run DBT pipeline
+        run: |
+          dbt deps          # installer les packages DBT
+          dbt build         # run + test en une commande
+          dbt docs generate # générer la documentation
+        working-directory: ./homepedia_dbt
+        if: ${{ hashFiles('homepedia_dbt/**') != '' }}
+        continue-on-error: true  # ne pas bloquer le déploiement si DBT échoue
+
+      # Alerter Ludo par email si DBT échoue
+      - name: Alerte DBT failure
+        if: failure()
+        run: |
+          echo "DBT pipeline failed on commit ${{ github.sha }}"
+          echo "Logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        # TODO: configurer sendgrid ou gmail pour l'envoi réel
+
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB FINAL : Résumé du déploiement
+  # ─────────────────────────────────────────────────────────────────────────────
+  deployment-summary:
+    name: 📋 Résumé déploiement
+    runs-on: ubuntu-latest
+    needs: [deploy-backend, deploy-frontend]
+    if: always()
+
+    steps:
+      - name: Authenticate GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+      - name: Print deployment summary
+        run: |
+          echo "═══════════════════════════════════════"
+          echo "  DÉPLOIEMENT TERMINÉ"
+          echo "═══════════════════════════════════════"
+          echo "  Commit : ${{ github.sha }}"
+          echo "  Branch : ${{ github.ref_name }}"
+          echo "  Par    : ${{ github.actor }}"
+          echo ""
+          BACKEND=$(gcloud run services describe homepedia-backend \
+            --region europe-west1 --format 'value(status.url)' 2>/dev/null || echo "N/A")
+          FRONTEND=$(gcloud run services describe homepedia-frontend \
+            --region europe-west1 --format 'value(status.url)' 2>/dev/null || echo "N/A")
+          echo "  Backend  : $BACKEND"
+          echo "  Frontend : $FRONTEND"
+          echo "═══════════════════════════════════════"

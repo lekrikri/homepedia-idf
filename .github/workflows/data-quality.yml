@@ -1,0 +1,76 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Pipeline Qualité des données — s'exécute chaque nuit à 6h UTC
+#
+# Pourquoi un pipeline séparé pour la qualité ?
+# ───────────────────────────────────────────────
+# Les données peuvent se dégrader SANS que le code change.
+# Ex : DVF ajoute des lignes avec des coordonnées nulles,
+#      ImmoData renvoie des prix aberrants, etc.
+#
+# Ce pipeline vérifie chaque matin que les données sont saines.
+# Si des anomalies sont détectées → email à Ludo.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+name: Qualité données — Vérification nocturne
+
+on:
+  schedule:
+    - cron: '0 6 * * *'   # chaque jour à 6h UTC (8h Paris heure d'été)
+  workflow_dispatch:        # déclenchement manuel possible
+
+jobs:
+  data-quality-check:
+    name: 🔍 Vérification qualité données
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install dbt-bigquery great-expectations psycopg2-binary
+
+      - name: Authenticate GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+      # ── Vérifications PostgreSQL ──────────────────────────────────────────
+      - name: Check PostgreSQL data quality
+        run: python .github/scripts/check_postgres.py
+        env:
+          POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+
+      # ── Tests DBT ─────────────────────────────────────────────────────────
+      - name: Run DBT tests
+        run: dbt test --profiles-dir ~/.dbt
+        working-directory: ./homepedia_dbt
+        if: ${{ hashFiles('homepedia_dbt/**') != '' }}
+
+      # ── Notification si échec ─────────────────────────────────────────────
+      - name: Notify on failure
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.GMAIL_USER }}
+          password: ${{ secrets.GMAIL_APP_PASSWORD }}
+          subject: "⚠️ [HomePedia] Anomalie qualité données détectée"
+          to: ludovicbetam@gmail.com
+          from: HomePedia Alerts
+          body: |
+            Une anomalie a été détectée dans le pipeline qualité données HomePedia.
+
+            Date : ${{ github.event.head_commit.timestamp }}
+            Commit : ${{ github.sha }}
+
+            Voir les logs : ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            — HomePedia CI/CD

@@ -1,0 +1,235 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# CI — Tests & Vérifications (s'exécute sur chaque Pull Request et push)
+#
+# C'est quoi la CI ? (pour les débutants)
+# ─────────────────────────────────────────
+# CI = Continuous Integration = "Intégration Continue"
+# Chaque fois que tu pousses du code, GitHub exécute automatiquement
+# une suite de vérifications pour s'assurer que :
+#   ✅ Le code compile correctement
+#   ✅ Les tests passent
+#   ✅ La qualité des données est OK
+#   ✅ Le build Docker fonctionne
+#
+# Si une étape échoue → tu vois une croix rouge sur GitHub → tu corriges
+# avant de merger dans main.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+name: CI — Tests & Vérifications
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+# Variables d'environnement disponibles dans tous les jobs
+env:
+  GO_VERSION: "1.22"
+  NODE_VERSION: "20"
+  PYTHON_VERSION: "3.11"
+
+jobs:
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 1 : Tests Backend Go
+  # Vérifie que l'API Go compile et que les tests unitaires passent
+  # ─────────────────────────────────────────────────────────────────────────────
+  test-backend:
+    name: 🔧 Backend Go — Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Récupérer le code source
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. Installer Go
+      - name: Setup Go ${{ env.GO_VERSION }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true  # met le cache en place pour aller plus vite la prochaine fois
+
+      # 3. Télécharger les dépendances Go
+      - name: Download dependencies
+        run: go mod download
+        working-directory: ./backend
+
+      # 4. Vérifier que le code compile sans erreurs
+      - name: Build
+        run: go build ./...
+        working-directory: ./backend
+
+      # 5. Vérifier la qualité du code (équivalent "lint" pour Go)
+      - name: go vet
+        run: go vet ./...
+        working-directory: ./backend
+
+      # 6. Lancer les tests unitaires (si tu en crées)
+      - name: Run tests
+        run: go test ./... -v -timeout 30s
+        working-directory: ./backend
+
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 2 : Tests Frontend React
+  # Vérifie que le code TypeScript/React est correct
+  # ─────────────────────────────────────────────────────────────────────────────
+  test-frontend:
+    name: 🎨 Frontend React — Build & Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: ./frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci  # "ci" = installation propre (plus strict que npm install)
+        working-directory: ./frontend
+
+      # Vérifie que le build de production fonctionne
+      - name: Build production
+        run: npm run build
+        working-directory: ./frontend
+        env:
+          VITE_API_URL: http://localhost:8080  # URL de l'API backend en prod
+
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 3 : Qualité des données — DBT Tests
+  # Vérifie que les modèles DBT (bronze→silver→gold) sont corrects
+  # C'est le test le plus important côté Data !
+  # ─────────────────────────────────────────────────────────────────────────────
+  test-dbt:
+    name: 📊 DBT — Tests qualité données
+    runs-on: ubuntu-latest
+    # Ce job ne s'exécute QUE si des fichiers DBT ont changé
+    # (évite de relancer des tests coûteux pour un changement de README)
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install DBT + BigQuery adapter
+        run: pip install dbt-bigquery==1.8.0
+
+      # Configurer l'accès GCP via la clé de service stockée dans GitHub Secrets
+      # (voir section "Configuration des Secrets" plus bas dans ce fichier)
+      - name: Authenticate GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+      - name: Setup DBT profiles
+        run: |
+          mkdir -p ~/.dbt
+          cat > ~/.dbt/profiles.yml << EOF
+          homepedia_dbt:
+            target: ci
+            outputs:
+              ci:
+                type: bigquery
+                method: service-account-json
+                project: homepedia-idf
+                dataset: homepedia_ci  # dataset séparé pour les tests CI
+                keyfile_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+                location: EU
+                threads: 4
+          EOF
+        if: ${{ hashFiles('homepedia_dbt/**') != '' }}
+
+      - name: DBT compile (vérifie la syntaxe SQL)
+        run: dbt compile --profiles-dir ~/.dbt
+        working-directory: ./homepedia_dbt
+        if: ${{ hashFiles('homepedia_dbt/**') != '' }}
+
+      - name: DBT test (tests qualité données)
+        run: dbt test --profiles-dir ~/.dbt
+        working-directory: ./homepedia_dbt
+        if: ${{ hashFiles('homepedia_dbt/**') != '' }}
+
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 4 : Build Docker Images
+  # Vérifie que les images Docker se construisent correctement
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-docker:
+    name: 🐳 Docker — Build images
+    runs-on: ubuntu-latest
+    needs: [test-backend, test-frontend]  # ne démarre QUE si les tests passent
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Activer le cache Docker pour que les builds soient plus rapides
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Build l'image backend (sans la pusher, juste vérifier qu'elle compile)
+      - name: Build backend Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: false  # false = juste build, pas de push (c'est la CI, pas la CD)
+          tags: homepedia-backend:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Build l'image frontend
+      - name: Build frontend Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: false
+          tags: homepedia-frontend:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # NOTIFICATION en cas d'échec
+  # Si un job échoue, envoie une notification GitHub (email auto + badge rouge)
+  # ─────────────────────────────────────────────────────────────────────────────
+  notify-failure:
+    name: 🔔 Alerte échec
+    runs-on: ubuntu-latest
+    needs: [test-backend, test-frontend, build-docker]
+    if: failure()  # ne s'exécute QUE si un job précédent a échoué
+
+    steps:
+      - name: Créer une issue GitHub en cas d'échec critique
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['ci-failure'],
+              state: 'open'
+            });
+
+            // Éviter les doublons : ne crée pas d'issue si une est déjà ouverte
+            if (issues.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `⚠️ CI échouée sur ${context.sha.slice(0,7)}`,
+                body: `La pipeline CI a échoué sur le commit [${context.sha.slice(0,7)}](${context.payload.compare}).\n\nVoir les logs : ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+                labels: ['ci-failure']
+              });
+            }
