@@ -1,6 +1,11 @@
 # Stage 1: Builder
 FROM node:20-alpine AS builder
 
+# Déclarer l'ARG pour que Docker accepte la variable passée par --build-arg
+# VITE_API_URL est baked dans le JS au moment du build (Vite remplace import.meta.env.VITE_API_URL)
+ARG VITE_API_URL=""
+ENV VITE_API_URL=$VITE_API_URL
+
 WORKDIR /app
 
 COPY package.json ./
