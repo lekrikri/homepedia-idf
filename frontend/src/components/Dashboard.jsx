@@ -185,14 +185,20 @@ export default function Dashboard() {
             </p>
           </div>
           <div className="flex gap-2 flex-wrap">
-            {["Macro IDF", "Méso Département", "Micro Commune"].map((lvl, i) => (
-              <span key={lvl} className={`px-3 py-1 rounded-full text-xs font-semibold border ${
-                i === 0
-                  ? "bg-primary/20 border-primary/40 text-primary"
-                  : "bg-slate-800 border-slate-700 text-slate-400"
-              }`}>
-                {lvl}
-              </span>
+            {[
+              { label: "Macro IDF",        id: "section-macro" },
+              { label: "Méso Département", id: "section-meso"  },
+              { label: "Micro Commune",    id: "section-micro" },
+            ].map(({ label, id }, i) => (
+              <button key={label}
+                onClick={() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                className={`px-3 py-1 rounded-full text-xs font-semibold border cursor-pointer transition-all ${
+                  i === 0
+                    ? "bg-primary/20 border-primary/40 text-primary hover:bg-primary/30"
+                    : "bg-slate-800 border-slate-700 text-slate-400 hover:border-primary/40 hover:text-primary hover:bg-primary/10"
+                }`}>
+                {label}
+              </button>
             ))}
           </div>
         </div>
@@ -200,7 +206,7 @@ export default function Dashboard() {
         {/* ══════════════════════════════════════════════════════════════════
             NIVEAU 1 — MACRO : Vue IDF globale
         ══════════════════════════════════════════════════════════════════ */}
-        <section>
+        <section id="section-macro">
           <SectionTitle icon="public" title="Niveau 1 — IDF Global" badge="Macro" />
 
           {/* KPIs */}
@@ -271,7 +277,7 @@ export default function Dashboard() {
         {/* ══════════════════════════════════════════════════════════════════
             NIVEAU 2 — MÉSO : Comparaison par département
         ══════════════════════════════════════════════════════════════════ */}
-        <section>
+        <section id="section-meso">
           <SectionTitle icon="map" title="Niveau 2 — Par Département" badge="Méso" />
 
           <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
@@ -336,7 +342,7 @@ export default function Dashboard() {
         {/* ══════════════════════════════════════════════════════════════════
             NIVEAU 3 — MICRO : Explorateur de commune
         ══════════════════════════════════════════════════════════════════ */}
-        <section>
+        <section id="section-micro">
           <SectionTitle icon="travel_explore" title="Niveau 3 — Explorer une Commune" badge="Micro" />
 
           {/* Search bar + autocomplete */}
