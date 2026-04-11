@@ -392,10 +392,12 @@ export default function MapView() {
   const mapContainer = useRef(null);
   const map = useRef(null);
   const markersRef = useRef([]);
-  const highlightMarkerRef = useRef(null); // marqueur surbrillance commune cliquée
-  const mapClickHandlerRef = useRef(null); // ref stable pour le click handler
+  const highlightMarkerRef = useRef(null);
+  const mapClickHandlerRef = useRef(null);
+  const allCommunesRef = useRef([]);       // ref stable → accessible dans les handlers map
+  const handleSelectRef = useRef(null);   // idem pour handleSelectCommune
   const navigate = useNavigate();
-  const initialSelectDone = useRef(false); // empêche le re-select auto après reset IDF
+  const initialSelectDone = useRef(false);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [allCommunes, setAllCommunes] = useState([]);
@@ -493,6 +495,10 @@ export default function MapView() {
     loadAgregat(commune);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadTransactions, loadAgregat, activeTypes, anneeMax]);
+
+  // Garder les refs à jour pour les handlers enregistrés sur la carte
+  useEffect(() => { allCommunesRef.current = allCommunes; }, [allCommunes]);
+  useEffect(() => { handleSelectRef.current = handleSelectCommune; }, [handleSelectCommune]);
 
   const handleToggleType = (type) => {
     setActiveTypes(prev => {
@@ -609,6 +615,91 @@ export default function MapView() {
       zoom: 12,
     });
     map.current.addControl(new maplibregl.NavigationControl(), "bottom-right");
+
+    // ── Chargement polygones IDF + hover ────────────────────────────────────
+    map.current.on("load", async () => {
+      try {
+        const res = await fetch(
+          "https://geo.api.gouv.fr/communes?codeRegion=11&geometry=contour&format=geojson&fields=nom,code"
+        );
+        const geojson = await res.json();
+        if (!map.current) return;
+
+        map.current.addSource("communes-geo", {
+          type: "geojson",
+          data: geojson,
+          generateId: true,
+        });
+
+        // Fill hover
+        map.current.addLayer({
+          id: "communes-fill",
+          type: "fill",
+          source: "communes-geo",
+          paint: {
+            "fill-color": "#3778E2",
+            "fill-opacity": ["case", ["boolean", ["feature-state", "hover"], false], 0.18, 0],
+          },
+        });
+
+        // Bordure commune
+        map.current.addLayer({
+          id: "communes-border",
+          type: "line",
+          source: "communes-geo",
+          paint: {
+            "line-color": "#3778E2",
+            "line-width": ["case", ["boolean", ["feature-state", "hover"], false], 1.8, 0.25],
+            "line-opacity": ["case", ["boolean", ["feature-state", "hover"], false], 1, 0.2],
+          },
+        });
+
+        // Tooltip nom commune au hover
+        const hoverPopup = new maplibregl.Popup({
+          closeButton: false, closeOnClick: false, offset: 14,
+          className: "commune-hover-tip",
+        });
+
+        let hoveredId = null;
+
+        map.current.on("mousemove", "communes-fill", (e) => {
+          if (!e.features?.length) return;
+          map.current.getCanvas().style.cursor = "pointer";
+          if (hoveredId !== null) {
+            map.current.setFeatureState({ source: "communes-geo", id: hoveredId }, { hover: false });
+          }
+          hoveredId = e.features[0].id;
+          map.current.setFeatureState({ source: "communes-geo", id: hoveredId }, { hover: true });
+          hoverPopup
+            .setLngLat(e.lngLat)
+            .setHTML(`<span style="font-size:12px;font-weight:700;color:#e2e8f0">${e.features[0].properties.nom}</span>`)
+            .addTo(map.current);
+        });
+
+        map.current.on("mouseleave", "communes-fill", () => {
+          map.current.getCanvas().style.cursor = "";
+          if (hoveredId !== null) {
+            map.current.setFeatureState({ source: "communes-geo", id: hoveredId }, { hover: false });
+          }
+          hoveredId = null;
+          hoverPopup.remove();
+        });
+
+        // Click sur le layer GeoJSON → sélection directe (plus rapide, sans géocodage)
+        map.current.on("click", "communes-fill", (e) => {
+          if (!e.features?.length) return;
+          e.originalEvent._communeHandled = true; // évite double-traitement dans le handler générique
+          const { code, nom } = e.features[0].properties;
+          const found = allCommunesRef.current.find(c => c.code_insee === code)
+            || allCommunesRef.current.find(c => c.nom.toLowerCase() === nom.toLowerCase());
+          if (found && handleSelectRef.current) handleSelectRef.current(found);
+        });
+
+      } catch (err) {
+        console.warn("GeoJSON IDF non chargé:", err);
+      }
+    });
+
     return () => { map.current?.remove(); map.current = null; };
   }, []);
 
@@ -622,7 +713,8 @@ export default function MapView() {
     }
 
     mapClickHandlerRef.current = async (e) => {
-      // Ignorer les clics sur les marqueurs (popups)
+      // Ignorer si déjà traité par le layer GeoJSON ou un marqueur
+      if (e.originalEvent?._communeHandled) return;
       if (e.originalEvent?.target?.closest?.(".maplibregl-marker, .maplibregl-popup")) return;
 
       const { lng, lat } = e.lngLat;

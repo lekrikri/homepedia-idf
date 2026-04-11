@@ -84,6 +84,15 @@
 }
 .maplibregl-popup-tip { display: none !important; }
 
+/* Tooltip hover commune — minimaliste */
+.commune-hover-tip .maplibregl-popup-content {
+  background: rgba(16,23,34,0.92) !important;
+  border: 1px solid rgba(55,120,226,0.5) !important;
+  border-radius: 8px !important;
+  padding: 5px 10px !important;
+  pointer-events: none;
+}
+
 /* MapLibre dark overrides */
 .maplibregl-ctrl-group {
   background: #1e293b !important;
