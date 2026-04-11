@@ -118,23 +118,38 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Vérifier si le projet DBT existe avant de faire quoi que ce soit
+      # → tant que homepedia_dbt/ n'est pas créé, tous les steps suivants sont skippés
+      - name: Vérifier si le projet DBT existe
+        id: check-dbt
+        run: |
+          if [ -d "homepedia_dbt" ] && [ "$(ls -A homepedia_dbt 2>/dev/null)" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "✅ homepedia_dbt/ trouvé — lancement des tests DBT"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "ℹ️  homepedia_dbt/ absent — tests DBT ignorés (normal si DBT pas encore configuré)"
+          fi
+
       - name: Setup Python ${{ env.PYTHON_VERSION }}
+        if: steps.check-dbt.outputs.exists == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: "pip"
 
       - name: Install DBT + BigQuery adapter
+        if: steps.check-dbt.outputs.exists == 'true'
         run: pip install dbt-bigquery==1.8.0
 
-      # Configurer l'accès GCP via la clé de service stockée dans GitHub Secrets
-      # (voir section "Configuration des Secrets" plus bas dans ce fichier)
       - name: Authenticate GCP
+        if: steps.check-dbt.outputs.exists == 'true'
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
 
       - name: Setup DBT profiles
+        if: steps.check-dbt.outputs.exists == 'true'
         run: |
           mkdir -p ~/.dbt
           cat > ~/.dbt/profiles.yml << EOF
@@ -144,23 +159,22 @@ jobs:
               ci:
                 type: bigquery
                 method: service-account-json
-                project: homepedia-idf
-                dataset: homepedia_ci  # dataset séparé pour les tests CI
+                project: homepedia-493013
+                dataset: homepedia_ci
                 keyfile_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
                 location: EU
                 threads: 4
           EOF
-        if: ${{ hashFiles('homepedia_dbt/**') != '' }}
 
       - name: DBT compile (vérifie la syntaxe SQL)
+        if: steps.check-dbt.outputs.exists == 'true'
         run: dbt compile --profiles-dir ~/.dbt
         working-directory: ./homepedia_dbt
-        if: ${{ hashFiles('homepedia_dbt/**') != '' }}
 
       - name: DBT test (tests qualité données)
+        if: steps.check-dbt.outputs.exists == 'true'
         run: dbt test --profiles-dir ~/.dbt
         working-directory: ./homepedia_dbt
-        if: ${{ hashFiles('homepedia_dbt/**') != '' }}
 
 
   # ─────────────────────────────────────────────────────────────────────────────
