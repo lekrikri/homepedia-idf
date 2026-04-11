@@ -177,10 +177,12 @@ jobs:
         run: dbt compile --profiles-dir ~/.dbt
         working-directory: ./homepedia_dbt
 
-      - name: DBT test (tests qualité données)
-        if: steps.check-dbt.outputs.exists == 'true'
-        run: dbt test --profiles-dir ~/.dbt
-        working-directory: ./homepedia_dbt
+      # NOTE : dbt test nécessite les vraies tables BigQuery chargées.
+      # En CI on vérifie seulement la syntaxe SQL (compile).
+      # Les tests sur les données tournent dans la CD (data-quality.yml) après
+      # que dbt run a créé les tables bronze/silver/gold dans BigQuery.
+      # - name: DBT test
+      #   run: dbt test --profiles-dir ~/.dbt
 
 
   # ─────────────────────────────────────────────────────────────────────────────
