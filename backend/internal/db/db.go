@@ -16,12 +16,13 @@ var Pool *pgxpool.Pool
 // Call once at startup; returns an error if the database is unreachable.
 func Connect(ctx context.Context) error {
 	dsn := fmt.Sprintf(
-		"host=%s port=%s dbname=%s user=%s password=%s sslmode=disable",
+		"host=%s port=%s dbname=%s user=%s password=%s sslmode=%s",
 		getenv("POSTGRES_HOST", "localhost"),
 		getenv("POSTGRES_PORT", "5432"),
 		getenv("POSTGRES_DB", "homepedia"),
 		getenv("POSTGRES_USER", "homepedia"),
 		getenv("POSTGRES_PASSWORD", "homepedia"),
+		getenv("POSTGRES_SSLMODE", "disable"),
 	)
 
 	cfg, err := pgxpool.ParseConfig(dsn)

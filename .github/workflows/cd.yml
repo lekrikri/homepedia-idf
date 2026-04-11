@@ -84,6 +84,8 @@ jobs:
           cache-to: type=gha,mode=max
 
       # Déployer la nouvelle image sur Cloud Run
+      # Les secrets GitHub (SUPABASE_PASSWORD, JWT_SECRET) sont injectés
+      # comme variables d'environnement dans le conteneur Cloud Run.
       - name: Deploy backend to Cloud Run
         run: |
           gcloud run deploy ${{ env.BACKEND_SERVICE }} \
@@ -96,11 +98,16 @@ jobs:
             --cpu 1 \
             --min-instances 0 \
             --max-instances 5 \
-            --set-env-vars "GIN_MODE=release" \
-            --set-secrets \
-              "POSTGRES_PASSWORD=homepedia-pg-password:latest,\
-               JWT_SECRET=homepedia-jwt-secret:latest,\
-               CHROMADB_HOST=homepedia-chroma-host:latest"
+            --set-env-vars "\
+              GIN_MODE=release,\
+              POSTGRES_HOST=aws-0-eu-west-1.pooler.supabase.com,\
+              POSTGRES_PORT=5432,\
+              POSTGRES_DB=postgres,\
+              POSTGRES_USER=postgres.iugsfmvqddburvufzacy,\
+              POSTGRES_SSLMODE=require" \
+            --update-secrets \
+              "POSTGRES_PASSWORD=homepedia-supabase-password:latest,\
+               JWT_SECRET=homepedia-jwt-secret:latest"
 
       # Afficher l'URL de l'API déployée
       - name: Get backend URL
