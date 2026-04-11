@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import maplibregl from "maplibre-gl";
 import axios from "axios";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -225,7 +225,7 @@ function RightPanel({ commune, transactions, agregat }) {
 }
 
 // ─── Left Sidebar ──────────────────────────────────────────────────────────────
-function LeftSidebar({ communes, transactions, selectedCommune, onSelectCommune, search, onSearch,
+function LeftSidebar({ communes, transactions, selectedCommune, onSelectCommune, onSelectTransaction, search, onSearch,
   activeTypes, onToggleType, anneeMax, onAnneeChange, onReset, sortDesc, onToggleSort }) {
   const [showSuggestions, setShowSuggestions] = useState(false);
 
@@ -356,6 +356,7 @@ function LeftSidebar({ communes, transactions, selectedCommune, onSelectCommune,
               const dpeS = t.classe_energie ? DPE_COLORS[t.classe_energie] : null;
               return (
                 <div key={t.id}
+                  onClick={() => onSelectTransaction(t)}
                   className={`p-3 rounded-lg cursor-pointer transition-all group ${
                     i === 0 ? "border border-primary/25" : "bg-slate-900/40 border border-slate-800 hover:border-primary/20"
                   }`}
@@ -391,6 +392,7 @@ export default function MapView() {
   const mapContainer = useRef(null);
   const map = useRef(null);
   const markersRef = useRef([]);
+  const navigate = useNavigate();
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [allCommunes, setAllCommunes] = useState([]);
@@ -509,6 +511,20 @@ export default function MapView() {
     loadTransactions(selectedCommune, new Set(TYPES_ALL), ANNEE_MAX);
   };
 
+  const handleSelectTransaction = useCallback((t) => {
+    if (!t.longitude || !t.latitude || !map.current) return;
+    map.current.flyTo({ center: [t.longitude, t.latitude], zoom: 17, duration: 700 });
+    // open the matching marker popup
+    const marker = markersRef.current.find(m => {
+      const ll = m.getLngLat();
+      return Math.abs(ll.lng - t.longitude) < 0.00001 && Math.abs(ll.lat - t.latitude) < 0.00001;
+    });
+    if (marker) {
+      markersRef.current.forEach(m => { if (m.getPopup()?.isOpen()) m.togglePopup(); });
+      marker.togglePopup();
+    }
+  }, []);
+
   useEffect(() => {
     if (allCommunes.length && !selectedCommune) {
       const paris15 = allCommunes.find(c => c.code_insee === "75115") || allCommunes[0];
@@ -575,6 +591,7 @@ export default function MapView() {
         transactions={sortDesc ? [...transactions].sort((a,b) => (b.valeur_fonciere||0)-(a.valeur_fonciere||0)) : transactions}
         selectedCommune={selectedCommune}
         onSelectCommune={handleSelectCommune}
+        onSelectTransaction={handleSelectTransaction}
         search={search}
         onSearch={setSearch}
         activeTypes={activeTypes}
@@ -605,7 +622,10 @@ export default function MapView() {
           style={{ background: "rgba(16,23,34,0.8)", backdropFilter: "blur(12px)", border: "1px solid rgba(60,131,246,0.2)" }}>
           {breadcrumb.map((s, i, a) => (
             <React.Fragment key={s}>
-              <span className={i === a.length-1 ? "text-slate-100 font-semibold" : "text-slate-400 hover:text-primary cursor-pointer"}>{s}</span>
+              <span
+                className={i === a.length-1 ? "text-slate-100 font-semibold" : "text-slate-400 hover:text-primary cursor-pointer transition-colors"}
+                onClick={i === 0 && a.length > 1 ? () => navigate("/dashboard") : undefined}
+              >{s}</span>
               {i < a.length-1 && <span className="material-symbols-outlined text-slate-600" style={{ fontSize: 14 }}>chevron_right</span>}
             </React.Fragment>
           ))}
