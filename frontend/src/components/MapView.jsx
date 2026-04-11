@@ -511,6 +511,17 @@ export default function MapView() {
     loadTransactions(selectedCommune, new Set(TYPES_ALL), ANNEE_MAX);
   };
 
+  const handleResetToIDF = useCallback(() => {
+    setSelectedCommune(null);
+    setTransactions([]);
+    setAgregat(null);
+    markersRef.current.forEach(m => m.remove());
+    markersRef.current = [];
+    if (map.current) {
+      map.current.flyTo({ center: [2.3488, 48.85], zoom: 9, duration: 900 });
+    }
+  }, []);
+
   const handleSelectTransaction = useCallback((t) => {
     if (!t.longitude || !t.latitude || !map.current) return;
     map.current.flyTo({ center: [t.longitude, t.latitude], zoom: 17, duration: 700 });
@@ -624,7 +635,7 @@ export default function MapView() {
             <React.Fragment key={s}>
               <span
                 className={i === a.length-1 ? "text-slate-100 font-semibold" : "text-slate-400 hover:text-primary cursor-pointer transition-colors"}
-                onClick={i === 0 && a.length > 1 ? () => navigate("/dashboard") : undefined}
+                onClick={i === 0 && a.length > 1 ? handleResetToIDF : undefined}
               >{s}</span>
               {i < a.length-1 && <span className="material-symbols-outlined text-slate-600" style={{ fontSize: 14 }}>chevron_right</span>}
             </React.Fragment>

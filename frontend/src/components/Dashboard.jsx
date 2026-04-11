@@ -112,12 +112,46 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
+  // ── Explorateur commune (Niveau 3) ────────────────────────────────────────
+  const [allCommunes, setAllCommunes] = useState([]);
+  const [communeSearch, setCommuneSearch] = useState("");
+  const [communeSuggestions, setCommuneSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [microCommune, setMicroCommune] = useState(null);
+  const [microStats, setMicroStats] = useState(null);
+  const [microLoading, setMicroLoading] = useState(false);
+
   useEffect(() => {
     Promise.all([
       axios.get("/api/v1/stats").then(r => r.data),
       axios.get("/api/v1/health").then(r => r.data).catch(() => null),
     ]).then(([s]) => setStats(s)).finally(() => setLoading(false));
+
+    axios.get("/api/v1/communes/gold?limit=1300").then(r => {
+      if (r.data?.data) setAllCommunes(r.data.data);
+    }).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!communeSearch) { setCommuneSuggestions([]); return; }
+    const q = communeSearch.toLowerCase();
+    setCommuneSuggestions(
+      allCommunes.filter(c => c.nom.toLowerCase().includes(q) || (c.code_postal || "").includes(communeSearch)).slice(0, 6)
+    );
+  }, [communeSearch, allCommunes]);
+
+  const handleSelectMicroCommune = (c) => {
+    setMicroCommune(c);
+    setCommuneSearch("");
+    setShowSuggestions(false);
+    setMicroStats(null);
+    setMicroLoading(true);
+    const code = c.code_insee.startsWith("751") && c.code_insee !== "75056" ? "75056" : c.code_insee;
+    axios.get(`/api/v1/communes/${code}/agregat`)
+      .then(r => setMicroStats(r.data))
+      .catch(() => setMicroStats(null))
+      .finally(() => setMicroLoading(false));
+  };
 
   const fmt = n => {
     if (!n) return "—";
@@ -300,10 +334,152 @@ export default function Dashboard() {
         </section>
 
         {/* ══════════════════════════════════════════════════════════════════
-            NIVEAU 3 — MICRO : Top communes + DPE
+            NIVEAU 3 — MICRO : Explorateur de commune
         ══════════════════════════════════════════════════════════════════ */}
         <section>
-          <SectionTitle icon="location_city" title="Niveau 3 — Communes" badge="Micro" />
+          <SectionTitle icon="travel_explore" title="Niveau 3 — Explorer une Commune" badge="Micro" />
+
+          {/* Search bar + autocomplete */}
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 mb-4">
+            <p className="text-xs text-slate-400 mb-3">Sélectionnez une commune pour voir ses indicateurs clés</p>
+            <div className="relative">
+              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" style={{fontSize:18}}>search</span>
+              <input
+                value={communeSearch}
+                onChange={e => { setCommuneSearch(e.target.value); setShowSuggestions(true); }}
+                onFocus={() => setShowSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                placeholder="Rechercher une commune IDF… ex: Boulogne, Vincennes"
+                className="w-full bg-slate-800 border border-slate-700 focus:border-primary rounded-xl py-3 pl-10 pr-4 text-sm text-slate-100 placeholder:text-slate-600 outline-none transition-colors"
+              />
+              {showSuggestions && communeSuggestions.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1 rounded-xl overflow-hidden z-50 shadow-2xl"
+                  style={{ background: "#0d1422", border: "1px solid rgba(60,131,246,0.25)" }}>
+                  {communeSuggestions.map(c => (
+                    <button key={c.code_insee} onMouseDown={() => handleSelectMicroCommune(c)}
+                      className="w-full text-left px-4 py-3 flex items-center justify-between hover:bg-primary/10 transition-colors border-b border-slate-800/60 last:border-0">
+                      <div className="flex items-center gap-2">
+                        <span className="material-symbols-outlined text-slate-600" style={{fontSize:15}}>location_city</span>
+                        <span className="text-sm font-medium text-slate-200">{c.nom}</span>
+                      </div>
+                      <span className="text-xs text-slate-500 mono-nums">{c.code_postal} · Dept. {c.departement?.trim()}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Chips communes suggérées */}
+            {!communeSearch && !microCommune && allCommunes.length > 0 && (
+              <div className="mt-3">
+                <p className="text-[10px] text-slate-600 uppercase tracking-wider mb-2">Suggestions</p>
+                <div className="flex flex-wrap gap-2">
+                  {["Paris", "Boulogne-Billancourt", "Vincennes", "Versailles", "Montreuil", "Créteil", "Nanterre"].map(name => {
+                    const c = allCommunes.find(x => x.nom.toLowerCase() === name.toLowerCase());
+                    return c ? (
+                      <button key={name} onClick={() => handleSelectMicroCommune(c)}
+                        className="px-3 py-1.5 rounded-full text-xs font-medium bg-slate-800 border border-slate-700 text-slate-300 hover:border-primary/50 hover:text-primary hover:bg-primary/5 transition-all">
+                        {c.nom}
+                      </button>
+                    ) : null;
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Résultat commune sélectionnée */}
+          {microLoading && (
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 flex items-center justify-center gap-3">
+              <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+              <span className="text-slate-400 text-sm">Chargement des données…</span>
+            </div>
+          )}
+
+          {microCommune && !microLoading && (
+            <div className="bg-slate-900 border border-primary/20 rounded-xl overflow-hidden"
+              style={{ boxShadow: "0 0 0 1px rgba(60,131,246,0.1), 0 8px 32px rgba(60,131,246,0.08)" }}>
+
+              {/* Header commune */}
+              <div className="px-5 py-4 flex items-center justify-between border-b border-slate-800"
+                style={{ background: "rgba(60,131,246,0.05)" }}>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
+                    <span className="material-symbols-outlined text-primary" style={{fontSize:18}}>location_on</span>
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-white">{microCommune.nom}</h3>
+                    <p className="text-xs text-slate-400">{microCommune.code_postal} · Département {microCommune.departement?.trim()}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => navigate(`/transactions?commune=${encodeURIComponent(microCommune.nom)}`)}
+                    className="text-xs text-slate-400 border border-slate-700 px-3 py-1.5 rounded-lg hover:border-slate-500 hover:text-slate-200 transition-colors">
+                    Transactions
+                  </button>
+                  <button onClick={() => navigate(`/carte?q=${encodeURIComponent(microCommune.nom)}`)}
+                    className="text-xs font-semibold bg-primary/10 border border-primary/40 text-primary px-3 py-1.5 rounded-lg hover:bg-primary/20 transition-colors flex items-center gap-1">
+                    <span className="material-symbols-outlined" style={{fontSize:14}}>map</span>
+                    Voir sur la carte
+                  </button>
+                  <button onClick={() => { setMicroCommune(null); setMicroStats(null); }}
+                    className="text-slate-600 hover:text-slate-400 transition-colors ml-1">
+                    <span className="material-symbols-outlined" style={{fontSize:18}}>close</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* KPIs grid */}
+              <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-y divide-slate-800">
+                {[
+                  {
+                    icon: "payments", label: "Prix médian / m²",
+                    value: microStats?.prix_median_m2 ? `${Math.round(microStats.prix_median_m2).toLocaleString()} €` : microCommune?.prix_m2_median ? `${Math.round(microCommune.prix_m2_median).toLocaleString()} €` : "—",
+                    color: "text-amber-400",
+                  },
+                  {
+                    icon: "handshake", label: "Transactions",
+                    value: (microStats?.nb_transactions ?? microCommune?.nb_transactions ?? "—").toLocaleString?.() ?? "—",
+                    color: "text-primary",
+                  },
+                  {
+                    icon: "bolt", label: "DPE dominant",
+                    value: microStats?.dpe_dominant ?? microCommune?.dpe_dominant ?? "—",
+                    color: microStats?.dpe_dominant ? `text-${{"A":"green","B":"green","C":"yellow","D":"orange","E":"orange","F":"red","G":"red"}[microStats.dpe_dominant] || "slate"}-400` : "text-slate-300",
+                  },
+                  {
+                    icon: "square_foot", label: "Surface moy.",
+                    value: microStats?.surface_moyenne ? `${Math.round(microStats.surface_moyenne)} m²` : "—",
+                    color: "text-slate-200",
+                  },
+                ].map(({ icon, label, value, color }) => (
+                  <div key={label} className="px-5 py-4 flex flex-col gap-1">
+                    <div className="flex items-center gap-1.5 text-slate-500">
+                      <span className="material-symbols-outlined" style={{fontSize:14}}>{icon}</span>
+                      <span className="text-[10px] uppercase tracking-wider">{label}</span>
+                    </div>
+                    <span className={`text-2xl font-bold mono-nums ${color}`}>{value}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Barre DPE si dispo */}
+              {microStats?.pct_dpe_bon != null && (
+                <div className="px-5 py-3 border-t border-slate-800 flex items-center gap-3">
+                  <span className="text-[10px] text-slate-500 uppercase tracking-wider">Biens classés A/B</span>
+                  <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full bg-emerald-500" style={{ width: `${(microStats.pct_dpe_bon * 100).toFixed(1)}%` }} />
+                  </div>
+                  <span className="text-xs font-bold text-emerald-400 mono-nums">{(microStats.pct_dpe_bon * 100).toFixed(1)}%</span>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+
+        {/* Top communes + DPE (données agrégées) */}
+        <section>
+          <SectionTitle icon="location_city" title="Top Communes & DPE" badge="Micro" />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
