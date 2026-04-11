@@ -392,6 +392,8 @@ export default function MapView() {
   const mapContainer = useRef(null);
   const map = useRef(null);
   const markersRef = useRef([]);
+  const highlightMarkerRef = useRef(null); // marqueur surbrillance commune cliquée
+  const mapClickHandlerRef = useRef(null); // ref stable pour le click handler
   const navigate = useNavigate();
   const initialSelectDone = useRef(false); // empêche le re-select auto après reset IDF
 
@@ -411,6 +413,7 @@ export default function MapView() {
   // ── Filtres actifs ────────────────────────────────────────────────────────
   const [activeTypes, setActiveTypes] = useState(new Set(TYPES_ALL));
   const [anneeMax, setAnneeMax] = useState(ANNEE_MAX);
+  const [mapClickLoading, setMapClickLoading] = useState(false); // spinner pendant géocodage
 
   useEffect(() => {
     axios.get("/api/v1/communes/gold?limit=1300").then(r => {
@@ -609,6 +612,67 @@ export default function MapView() {
     return () => { map.current?.remove(); map.current = null; };
   }, []);
 
+  // ── Clic sur la carte → géocoder la commune ───────────────────────────────
+  useEffect(() => {
+    if (!map.current) return;
+
+    // Dé-enregistrer l'ancien handler
+    if (mapClickHandlerRef.current) {
+      map.current.off("click", mapClickHandlerRef.current);
+    }
+
+    mapClickHandlerRef.current = async (e) => {
+      // Ignorer les clics sur les marqueurs (popups)
+      if (e.originalEvent?.target?.closest?.(".maplibregl-marker, .maplibregl-popup")) return;
+
+      const { lng, lat } = e.lngLat;
+
+      // Marqueur surbrillance pulsant au point cliqué
+      if (highlightMarkerRef.current) highlightMarkerRef.current.remove();
+      const hlEl = document.createElement("div");
+      hlEl.style.cssText = [
+        "width:36px;height:36px;border-radius:50%;",
+        "border:2px solid rgba(60,131,246,0.9);",
+        "background:rgba(60,131,246,0.15);",
+        "box-shadow:0 0 0 6px rgba(60,131,246,0.12),0 0 20px rgba(60,131,246,0.5);",
+        "animation:pulse-ring 1.2s infinite;pointer-events:none;"
+      ].join("");
+      highlightMarkerRef.current = new maplibregl.Marker({ element: hlEl, anchor: "center" })
+        .setLngLat([lng, lat])
+        .addTo(map.current);
+
+      setMapClickLoading(true);
+      try {
+        const res = await fetch(
+          `https://geo.api.gouv.fr/communes?lat=${lat}&lon=${lng}&fields=nom,code,codesPostaux&limit=1`
+        );
+        const json = await res.json();
+        if (json[0]) {
+          const { code, nom } = json[0];
+          const found = allCommunes.find(c => c.code_insee === code)
+            || allCommunes.find(c => c.nom.toLowerCase() === nom.toLowerCase());
+          if (found) {
+            handleSelectCommune(found);
+            // Déplacer le highlight sur le centroïde connu de la commune
+            const coords = COMMUNE_COORDS[found.code_insee];
+            if (coords) highlightMarkerRef.current?.setLngLat(coords);
+          }
+        }
+      } catch {}
+      setMapClickLoading(false);
+    };
+
+    // Attendre que la carte soit prête avant d'écouter
+    if (map.current.loaded()) {
+      map.current.on("click", mapClickHandlerRef.current);
+    } else {
+      map.current.once("load", () => {
+        map.current?.on("click", mapClickHandlerRef.current);
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allCommunes, handleSelectCommune]);
+
   const breadcrumb = selectedCommune
     ? ["Île-de-France", selectedCommune.nom, selectedCommune.code_postal]
     : ["Île-de-France"];
@@ -634,7 +698,7 @@ export default function MapView() {
 
       <div className="relative flex-1">
         {/* MapLibre 2D — toujours monté pour garder l'état, juste caché en mode 3D */}
-        <div ref={mapContainer} className="w-full h-full" style={{ display: is3D ? "none" : "block" }} />
+        <div ref={mapContainer} className="w-full h-full" style={{ display: is3D ? "none" : "block", cursor: mapClickLoading ? "wait" : "crosshair" }} />
 
         {/* Cesium 3D — monté uniquement quand activé */}
         {is3D && (
@@ -646,7 +710,7 @@ export default function MapView() {
           />
         )}
 
-        {/* Breadcrumb */}
+        {/* Breadcrumb + loading indicator */}
         <div className="absolute top-4 left-4 flex items-center gap-2 z-10 rounded-full px-4 py-1.5 text-xs font-medium"
           style={{ background: "rgba(16,23,34,0.8)", backdropFilter: "blur(12px)", border: "1px solid rgba(60,131,246,0.2)" }}>
           {breadcrumb.map((s, i, a) => (
@@ -658,7 +722,21 @@ export default function MapView() {
               {i < a.length-1 && <span className="material-symbols-outlined text-slate-600" style={{ fontSize: 14 }}>chevron_right</span>}
             </React.Fragment>
           ))}
+          {mapClickLoading && (
+            <span className="w-3 h-3 border-2 border-primary/30 border-t-primary rounded-full animate-spin ml-1" />
+          )}
         </div>
+
+        {/* Hint clic carte — visible seulement quand pas de commune sélectionnée */}
+        {!selectedCommune && !mapClickLoading && (
+          <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-10 pointer-events-none"
+            style={{ background: "rgba(16,23,34,0.85)", border: "1px solid rgba(60,131,246,0.25)", borderRadius: 24, padding: "6px 14px" }}>
+            <span className="text-[11px] text-slate-400 flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-primary" style={{ fontSize: 14 }}>touch_app</span>
+              Cliquez sur la carte pour sélectionner une commune
+            </span>
+          </div>
+        )}
 
         {/* Mode badge 3D */}
         {is3D && (
