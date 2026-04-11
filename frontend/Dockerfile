@@ -14,21 +14,16 @@ FROM nginx:alpine
 
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Custom nginx config: forward unknown routes to index.html (SPA routing)
+# nginx config SPA + Cloud Run compatible (PORT env var)
+# En prod (Cloud Run), les appels /api/ sont faits directement vers VITE_API_URL
+# donc pas besoin de proxy_pass ici — le JS gère l'URL du backend.
 RUN printf 'server {\n\
-    listen 80;\n\
+    listen 8080;\n\
     root /usr/share/nginx/html;\n\
     index index.html;\n\
-\n\
     location / {\n\
         try_files $uri $uri/ /index.html;\n\
     }\n\
-\n\
-    location /api/ {\n\
-        proxy_pass http://backend:8080;\n\
-        proxy_set_header Host $host;\n\
-        proxy_set_header X-Real-IP $remote_addr;\n\
-    }\n\
 }\n' > /etc/nginx/conf.d/default.conf
 
-EXPOSE 80
+EXPOSE 8080
