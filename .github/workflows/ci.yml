@@ -167,6 +167,11 @@ jobs:
                 threads: 4
           EOF
 
+      - name: DBT deps (installe les packages)
+        if: steps.check-dbt.outputs.exists == 'true'
+        run: dbt deps --profiles-dir ~/.dbt
+        working-directory: ./homepedia_dbt
+
       - name: DBT compile (vérifie la syntaxe SQL)
         if: steps.check-dbt.outputs.exists == 'true'
         run: dbt compile --profiles-dir ~/.dbt
