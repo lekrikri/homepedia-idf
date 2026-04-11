@@ -70,6 +70,10 @@ jobs:
       - name: Configure Docker for GCP
         run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev
 
+      # Nécessaire pour utiliser le cache GitHub Actions avec Docker Buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       # Build et push l'image Docker backend
       # Le tag utilise le SHA du commit pour identifier précisément la version
       - name: Build & Push backend image
@@ -138,6 +142,9 @@ jobs:
 
       - name: Configure Docker for GCP
         run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       # Récupérer l'URL du backend pour la passer au build frontend
       - name: Get backend URL
