@@ -49,7 +49,8 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache: true  # met le cache en place pour aller plus vite la prochaine fois
+          cache: true
+          cache-dependency-path: backend/go.sum
 
       # 3. Télécharger les dépendances Go
       - name: Download dependencies
