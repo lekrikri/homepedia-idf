@@ -333,10 +333,10 @@ function LeftSidebar({ communes, transactions, selectedCommune, onSelectCommune,
             <h3 className="text-[10px] font-bold text-primary uppercase tracking-widest">
               Résultats <span className="text-slate-500">({transactions.length})</span>
             </h3>
-            <span onClick={onToggleSort} title={sortDesc ? "Trier par prix croissant" : "Trier par prix décroissant"}
-              className="material-symbols-outlined text-slate-500 hover:text-primary cursor-pointer transition-colors" style={{ fontSize: 16 }}>
+            <button onClick={onToggleSort} title={sortDesc ? "Trier par prix croissant" : "Trier par prix décroissant"}
+              className="material-symbols-outlined text-slate-500 hover:text-primary transition-colors" style={{ fontSize: 16 }}>
               {sortDesc ? "arrow_downward" : "arrow_upward"}
-            </span>
+            </button>
           </div>
 
           {transactions.length === 0 ? (
@@ -674,7 +674,14 @@ export default function MapView() {
             </span>
           </button>
 
-          <button className="size-11 rounded-xl glass-panel flex items-center justify-center hover:bg-primary/20 transition-all">
+          <button
+            onClick={() => map.current && map.current.setStyle(
+              map.current.getStyle().name?.includes("dark")
+                ? "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
+                : "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
+            )}
+            title="Changer le fond de carte"
+            className="size-11 rounded-xl glass-panel flex items-center justify-center hover:bg-primary/20 transition-all">
             <span className="material-symbols-outlined text-slate-300" style={{ fontSize: 20 }}>layers</span>
           </button>
 
@@ -689,10 +696,13 @@ export default function MapView() {
           )}
         </div>
 
-        {/* FAB assistant */}
-        <button className="absolute bottom-10 right-4 z-10 bg-primary rounded-full flex items-center justify-center shadow-2xl shadow-primary/40 hover:scale-105 transition-transform"
+        {/* FAB → dashboard macro */}
+        <button
+          onClick={() => navigate("/dashboard")}
+          title="Voir l'analyse macro IDF"
+          className="absolute bottom-10 right-4 z-10 bg-primary rounded-full flex items-center justify-center shadow-2xl shadow-primary/40 hover:scale-105 transition-transform"
           style={{ width: 52, height: 52 }}>
-          <span className="material-symbols-outlined text-white" style={{ fontSize: 26 }}>smart_toy</span>
+          <span className="material-symbols-outlined text-white" style={{ fontSize: 26 }}>analytics</span>
           <span className="absolute -top-1 -right-1 size-4 bg-green-500 border-2 border-background-dark rounded-full animate-pulse" />
         </button>
 

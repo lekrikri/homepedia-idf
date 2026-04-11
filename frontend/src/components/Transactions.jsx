@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import axios from "axios";
 
 const DPE_COLOR = { A: "bg-green-500/20 text-green-400 border-green-500/30", B: "bg-green-500/20 text-green-400 border-green-500/30", C: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30", D: "bg-orange-500/20 text-orange-400 border-orange-500/30", E: "bg-orange-500/20 text-orange-400 border-orange-500/30", F: "bg-red-500/20 text-red-400 border-red-500/30", G: "bg-red-500/20 text-red-400 border-red-500/30" };
@@ -21,6 +22,7 @@ const STATS = [
 ];
 
 export default function Transactions() {
+  const navigate = useNavigate();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -57,6 +59,21 @@ export default function Transactions() {
   const paged = data.slice((page-1)*PER_PAGE, page*PER_PAGE);
   const totalPages = Math.ceil(data.length / PER_PAGE);
 
+  const exportCSV = () => {
+    const headers = ["date_mutation","commune","adresse","type_local","surface_reelle_bati","valeur_fonciere","prix_m2","classe_energie"];
+    const rows = data.map(t => [
+      t.date_mutation, t.commune, [t.adresse_numero, t.adresse].filter(Boolean).join(" "),
+      t.type_local, t.surface_reelle_bati, t.valeur_fonciere,
+      t.valeur_fonciere && t.surface_reelle_bati ? Math.round(t.valeur_fonciere / t.surface_reelle_bati) : "",
+      t.classe_energie,
+    ].map(v => `"${v ?? ""}"`).join(","));
+    const csv = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = `homepedia_transactions_${Date.now()}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="h-full overflow-y-auto bg-background-dark px-6 py-8 lg:px-20 flex flex-col gap-6">
       {/* Header */}
@@ -67,9 +84,9 @@ export default function Transactions() {
             {loading ? "Chargement…" : <>Found <span className="text-slate-300 font-semibold">{data.length}</span> transactions en Île-de-France.</>}
           </p>
         </div>
-        <button className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-primary/90 w-fit">
+        <button onClick={exportCSV} className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-primary/90 w-fit">
           <span className="material-symbols-outlined" style={{ fontSize: 20 }}>file_download</span>
-          Export Data
+          Export CSV ({data.length})
         </button>
       </div>
 
@@ -135,7 +152,15 @@ export default function Transactions() {
                       }
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button className="p-1 hover:text-primary">
+                      <button
+                        onClick={() => {
+                          if (t.longitude && t.latitude)
+                            navigate(`/carte?lat=${t.latitude}&lng=${t.longitude}&zoom=17&q=${encodeURIComponent([t.adresse_numero, t.adresse].filter(Boolean).join(" ") || t.commune || "")}`);
+                          else if (t.commune)
+                            navigate(`/carte?q=${encodeURIComponent(t.commune)}`);
+                        }}
+                        title="Voir sur la carte"
+                        className="p-1 text-slate-500 hover:text-primary transition-colors">
                         <span className="material-symbols-outlined" style={{ fontSize: 18 }}>open_in_new</span>
                       </button>
                     </td>
