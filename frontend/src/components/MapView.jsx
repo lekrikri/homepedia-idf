@@ -393,6 +393,7 @@ export default function MapView() {
   const map = useRef(null);
   const markersRef = useRef([]);
   const navigate = useNavigate();
+  const initialSelectDone = useRef(false); // empêche le re-select auto après reset IDF
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [allCommunes, setAllCommunes] = useState([]);
@@ -536,19 +537,36 @@ export default function MapView() {
     }
   }, []);
 
+  // Auto-select Paris 15e à l'ouverture UNIQUEMENT (pas après un reset IDF)
   useEffect(() => {
-    if (allCommunes.length && !selectedCommune) {
+    if (allCommunes.length && !initialSelectDone.current) {
+      initialSelectDone.current = true;
       const paris15 = allCommunes.find(c => c.code_insee === "75115") || allCommunes[0];
       handleSelectCommune(paris15);
     }
-  }, [allCommunes, selectedCommune, handleSelectCommune]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allCommunes]);
 
-  // FlyTo depuis les URL params (recherche adresse dans le Header)
+  // FlyTo / sélection commune depuis les URL params
   useEffect(() => {
     const lat  = parseFloat(searchParams.get("lat"));
     const lng  = parseFloat(searchParams.get("lng"));
     const zoom = parseFloat(searchParams.get("zoom") || "16");
     const q    = searchParams.get("q");
+
+    // Cas ?q=CommuneName sans coordonnées → sélectionner la commune depuis la liste
+    if (q && !lat && !lng && allCommunes.length) {
+      const found = allCommunes.find(c => c.nom.toLowerCase() === q.toLowerCase())
+        || allCommunes.find(c => c.nom.toLowerCase().includes(q.toLowerCase()));
+      if (found) {
+        handleSelectCommune(found);
+        const coords = COMMUNE_COORDS[found.code_insee];
+        if (coords && map.current) map.current.flyTo({ center: coords, zoom: 13, duration: 900 });
+      }
+      setSearchParams({});
+      return;
+    }
+
     if (!lat || !lng || !map.current) return;
 
     map.current.flyTo({ center: [lng, lat], zoom, duration: 800 });
@@ -577,7 +595,7 @@ export default function MapView() {
     // Nettoyer les params après usage
     setSearchParams({});
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  }, [searchParams, allCommunes]);
 
   useEffect(() => {
     if (map.current) return;
