@@ -132,6 +132,38 @@ func GetStats(c *gin.Context) {
 		}
 	}
 
+	// 6. Stats par département (niveau méso : entre IDF global et commune)
+	type DeptStat struct {
+		Dept       string  `json:"dept"`
+		NbTx       int     `json:"nb_transactions"`
+		PrixMedian float64 `json:"prix_median_m2"`
+		PrixMoyen  float64 `json:"prix_moyen_m2"`
+	}
+	rows5, err := db.Pool.Query(ctx, `
+		SELECT
+			code_departement,
+			COUNT(*) AS nb_tx,
+			ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY valeur_fonciere / NULLIF(surface_reelle_bati, 0))::numeric, 0)::float AS prix_median,
+			ROUND(AVG(valeur_fonciere / NULLIF(surface_reelle_bati, 0))::numeric, 0)::float AS prix_moyen
+		FROM transactions
+		WHERE code_departement IS NOT NULL
+		  AND valeur_fonciere IS NOT NULL
+		  AND surface_reelle_bati > 0
+		  AND valeur_fonciere / surface_reelle_bati BETWEEN 500 AND 50000
+		GROUP BY code_departement
+		ORDER BY prix_median DESC
+	`)
+	byDept := []DeptStat{}
+	if err == nil {
+		defer rows5.Close()
+		for rows5.Next() {
+			var d DeptStat
+			if rows5.Scan(&d.Dept, &d.NbTx, &d.PrixMedian, &d.PrixMoyen) == nil {
+				byDept = append(byDept, d)
+			}
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"total_volume":    totalVolume,
 		"nb_transactions": nbTransactions,
@@ -140,5 +172,6 @@ func GetStats(c *gin.Context) {
 		"by_type":         byType,
 		"dpe":             dpe,
 		"top_communes":    topCommunes,
+		"by_dept":         byDept,
 	})
 }
