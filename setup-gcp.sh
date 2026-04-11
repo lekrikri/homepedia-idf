@@ -5,7 +5,7 @@
 # Prérequis :
 #   - gcloud installé : source ~/google-cloud-sdk/path.bash.inc
 #   - gcloud auth login
-#   - gcloud config set project homepedia-idf
+#   - gcloud config set project homepedia-493013
 #
 # Ce script :
 #   1. Active les APIs GCP nécessaires
@@ -18,7 +18,7 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 set -euo pipefail
 
-PROJECT="homepedia-idf"
+PROJECT="homepedia-493013"
 REGION="europe-west1"
 SA_NAME="homepedia-cicd"
 SA_EMAIL="${SA_NAME}@${PROJECT}.iam.gserviceaccount.com"
@@ -156,7 +156,30 @@ create_secret "homepedia-jwt-secret" "$(openssl rand -base64 32)"
 echo "✅ Secrets créés"
 echo ""
 
-# ── 7. Clé JSON pour GitHub Secrets ──────────────────────────────────────────
+# ── 7. Alerte budget 5€ (protection contre les mauvaises surprises) ──────────
+echo "💰 Configuration alerte budget 5€..."
+# Nécessite d'avoir un compte de facturation lié au projet
+BILLING_ACCOUNT=$(gcloud billing projects describe "$PROJECT" \
+  --format='value(billingAccountName)' 2>/dev/null | sed 's|billingAccounts/||' || echo "")
+
+if [ -n "$BILLING_ACCOUNT" ]; then
+  # Crée un budget de 5€ avec alerte à 50% et 90%
+  gcloud billing budgets create \
+    --billing-account="$BILLING_ACCOUNT" \
+    --display-name="HomePedia - Alerte 5€" \
+    --budget-amount=5EUR \
+    --threshold-rule=percent=50 \
+    --threshold-rule=percent=90 \
+    --threshold-rule=percent=100 \
+    2>/dev/null || echo "  ℹ️  Budget déjà configuré ou API Billing Budget non activée"
+  echo "  ✅ Alerte budget 5€ configurée"
+else
+  echo "  ⚠️  Pas de compte de facturation lié — configure manuellement :"
+  echo "     GCP Console → Facturation → Budgets → Créer un budget → 5€"
+fi
+echo ""
+
+# ── 8. Clé JSON pour GitHub Secrets ──────────────────────────────────────────
 KEY_FILE="/tmp/homepedia-cicd-key.json"
 echo "📥 Génération de la clé JSON du compte de service..."
 gcloud iam service-accounts keys create "$KEY_FILE" \

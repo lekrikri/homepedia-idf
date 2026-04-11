@@ -38,13 +38,13 @@ on:
         options: [ production, staging ]
 
 env:
-  GCP_PROJECT: homepedia-idf
+  GCP_PROJECT: homepedia-493013
   GCP_REGION: europe-west1
   # Noms des services Cloud Run
   BACKEND_SERVICE: homepedia-backend
   FRONTEND_SERVICE: homepedia-frontend
   # Registry Docker GCP
-  REGISTRY: europe-west1-docker.pkg.dev/homepedia-idf/homepedia
+  REGISTRY: europe-west1-docker.pkg.dev/homepedia-493013/homepedia
 
 jobs:
 
