@@ -1,0 +1,43 @@
+version: 2
+
+# Sources = tables BigQuery chargées depuis GCS Parquet (hors DBT)
+# DBT ne crée pas ces tables, il les lit comme point de départ
+
+sources:
+  - name: bronze_raw
+    description: "Données brutes chargées depuis GCS Parquet vers BigQuery"
+    database: homepedia-493013
+    schema: bronze_raw
+    tables:
+
+      - name: dvf_transactions
+        description: "Demandes de Valeurs Foncières — transactions immobilières IDF 2020-2024"
+        columns:
+          - name: id_mutation
+            description: "Identifiant unique de la mutation notariale"
+            tests:
+              - not_null
+          - name: valeur_fonciere
+            description: "Prix de vente en euros"
+          - name: code_commune
+            description: "Code INSEE de la commune (5 chiffres)"
+            tests:
+              - not_null
+          - name: date_mutation
+            description: "Date de la transaction"
+            tests:
+              - not_null
+
+      - name: dpe_ademe
+        description: "Diagnostics de Performance Energétique — base ADEME"
+        columns:
+          - name: numero_dpe
+            description: "Numéro unique du DPE"
+            tests:
+              - not_null
+              - unique
+          - name: classe_energie
+            description: "Classe énergie A à G"
+            tests:
+              - accepted_values:
+                  values: ['A', 'B', 'C', 'D', 'E', 'F', 'G']

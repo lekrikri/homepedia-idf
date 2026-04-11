@@ -1,0 +1,53 @@
+version: 2
+
+models:
+  - name: gold_communes_agregat
+    description: >
+      Table gold finale — 1 ligne par commune IDF.
+      Agrège transactions DVF + DPE ADEME par commune.
+      Consommée directement par l'API Go via Supabase/PostgreSQL.
+      Rechargée complètement à chaque run DBT (stratégie 'table').
+
+    columns:
+      - name: code_commune
+        description: "Code INSEE commune (clé primaire, 5 chiffres)"
+        tests:
+          - unique
+          - not_null
+
+      - name: nb_transactions
+        description: "Nombre de transactions immobilières 2020-2024"
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 5"
+
+      - name: prix_median_m2
+        description: "Prix médian au m² en euros"
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "BETWEEN 500 AND 50000"
+
+      - name: prix_moyen_m2
+        description: "Prix moyen au m² en euros"
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: "IS NULL OR prix_moyen_m2 BETWEEN 500 AND 50000"
+
+      - name: score_dpe_moyen
+        description: "Score DPE moyen (1=A excellent, 7=G très énergivore)"
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: "IS NULL OR score_dpe_moyen BETWEEN 1 AND 7"
+
+      - name: pct_dpe_bon
+        description: "Pourcentage de logements avec DPE A, B ou C"
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: "IS NULL OR pct_dpe_bon BETWEEN 0 AND 100"
+
+      - name: updated_at
+        description: "Timestamp de la dernière mise à jour par DBT"
+        tests:
+          - not_null

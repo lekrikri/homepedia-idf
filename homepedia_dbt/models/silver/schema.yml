@@ -1,0 +1,78 @@
+version: 2
+
+models:
+  - name: silver_transactions
+    description: >
+      Transactions DVF nettoyées et dédupliquées.
+      Filtrage des prix aberrants, normalisation communes Paris, calcul prix/m².
+    columns:
+      - name: transaction_id
+        description: "Clé surrogate unique (hash id_mutation + type_local)"
+        tests:
+          - unique
+          - not_null
+
+      - name: id_mutation
+        description: "Identifiant notarial de la mutation"
+        tests:
+          - not_null
+
+      - name: code_commune
+        description: "Code INSEE commune (5 chiffres)"
+        tests:
+          - not_null
+
+      - name: valeur_fonciere
+        description: "Prix de vente en euros"
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "> 0"
+
+      - name: prix_m2
+        description: "Prix au m² calculé"
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: "IS NULL OR (prix_m2 BETWEEN 500 AND 50000)"
+
+      - name: date_mutation
+        description: "Date de la transaction"
+        tests:
+          - not_null
+
+      - name: categorie
+        description: "Catégorie simplifiée du bien"
+        tests:
+          - accepted_values:
+              values: ['appartement', 'maison', 'commercial', 'autre']
+
+  - name: silver_dpe
+    description: >
+      DPE nettoyés avec score numérique (A=1, G=7).
+      Utilisé pour calculer la performance énergétique par commune.
+    columns:
+      - name: numero_dpe
+        description: "Numéro unique du DPE"
+        tests:
+          - unique
+          - not_null
+
+      - name: classe_energie
+        description: "Classe énergie A à G"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['A', 'B', 'C', 'D', 'E', 'F', 'G']
+
+      - name: score_dpe
+        description: "Score numérique 1 (A) à 7 (G)"
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "BETWEEN 1 AND 7"
+
+      - name: conso_energie
+        description: "Consommation énergétique kWh/m²/an"
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: "> 0"

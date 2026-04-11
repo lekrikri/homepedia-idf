@@ -1,0 +1,33 @@
+# profiles.yml — Configuration des connexions DBT
+# NE PAS COMMITTER ce fichier avec de vraies credentials !
+# En CI/CD, ce fichier est généré dynamiquement par le workflow GitHub Actions.
+#
+# Pour utiliser en local :
+#   export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+#   dbt run --profiles-dir .
+
+homepedia_dbt:
+  target: dev
+  outputs:
+
+    # ── Développement local ──────────────────────────────────────────────────
+    dev:
+      type: bigquery
+      method: service-account
+      project: homepedia-493013
+      dataset: homepedia_dev        # dataset séparé pour ne pas polluer la prod
+      keyfile: "{{ env_var('GOOGLE_APPLICATION_CREDENTIALS') }}"
+      location: EU
+      threads: 4
+      timeout_seconds: 300
+
+    # ── Production (utilisé par GitHub Actions CD) ───────────────────────────
+    prod:
+      type: bigquery
+      method: service-account-json
+      project: homepedia-493013
+      dataset: homepedia_warehouse   # dataset de production
+      keyfile_json: "{{ env_var('GCP_SERVICE_ACCOUNT_KEY_JSON') }}"
+      location: EU
+      threads: 8
+      timeout_seconds: 600

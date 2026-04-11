@@ -1,0 +1,4 @@
+packages:
+  # dbt-utils : fonctions utilitaires (generate_surrogate_key, date_trunc, etc.)
+  - package: dbt-labs/dbt_utils
+    version: [">=1.0.0", "<2.0.0"]

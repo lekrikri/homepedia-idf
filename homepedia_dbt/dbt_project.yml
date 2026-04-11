@@ -1,0 +1,44 @@
+name: 'homepedia_dbt'
+version: '1.0.0'
+config-version: 2
+
+# Ce fichier configure le projet DBT HomePedia
+# DBT remplace Spark PySpark pour les transformations SQL (bronze → silver → gold)
+# Avantages vs Spark : plus simple, SQL natif, tests intégrés, moins coûteux
+
+profile: 'homepedia_dbt'
+
+model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+seed-paths: ["seeds"]
+
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  homepedia_dbt:
+
+    # ── BRONZE : données brutes, chargées depuis GCS Parquet ──────────────────
+    # Stratégie : vue (view) — pas de stockage, juste une lecture des sources
+    # Pourquoi view ? Les données bronze changent rarement, inutile de stocker
+    bronze:
+      +materialized: view
+      +schema: bronze
+      +tags: ["bronze", "raw"]
+
+    # ── SILVER : données nettoyées et validées ────────────────────────────────
+    # Stratégie : table incrémentale — on n'ajoute que les nouveaux enregistrements
+    # Pourquoi incremental ? DVF a 50k+ lignes, rebuild complet = lent et coûteux
+    silver:
+      +materialized: incremental
+      +schema: silver
+      +tags: ["silver", "cleaned"]
+
+    # ── GOLD : agrégats par commune (ce que le frontend consomme) ─────────────
+    # Stratégie : table complète — recalcul total à chaque run
+    # Pourquoi table ? La gold est petite (1300 communes) et doit être cohérente
+    gold:
+      +materialized: table
+      +schema: gold
+      +tags: ["gold", "aggregated"]
