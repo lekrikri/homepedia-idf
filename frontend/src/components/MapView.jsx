@@ -54,7 +54,9 @@ function RightPanel({ commune, transactions, agregat }) {
 
   const dpeStyle = dpePrincipal ? DPE_COLORS[dpePrincipal] : null;
   const nbTransactions = agregat?.nb_transactions ?? commune?.nb_transactions ?? transactions.length;
-  const score = prixMedian ? Math.min(95, Math.max(25, Math.round(100 - prixMedian / 280))) : 82;
+  const scoreInv  = agregat?.score_investissement != null ? Math.round(agregat.score_investissement) : null;
+  const scoreQV   = agregat?.score_qualite_vie    != null ? Math.round(agregat.score_qualite_vie)    : null;
+  const scoreStab = agregat?.score_stabilite      != null ? Math.round(agregat.score_stabilite)      : null;
   const lastSales = transactions.slice(0, 4);
 
   if (!commune) return (
@@ -171,24 +173,84 @@ function RightPanel({ commune, transactions, agregat }) {
           </div>
         )}
 
-        {/* Score investissement */}
-        <div className="bg-slate-900/50 p-4 rounded-xl border border-primary/20 mb-4 flex items-center gap-4">
-          <div className="relative shrink-0" style={{ width: 56, height: 56 }}>
-            <svg className="-rotate-90" width="56" height="56" viewBox="0 0 56 56">
-              <circle cx="28" cy="28" r="24" fill="transparent" stroke="#1e293b" strokeWidth="4" />
-              <circle cx="28" cy="28" r="24" fill="transparent" stroke="#3c83f6" strokeWidth="4"
-                strokeDasharray="150" strokeDashoffset={Math.round(150 - (score / 100) * 150)}
-                strokeLinecap="round" />
-            </svg>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-base font-black mono-nums text-slate-100">{score}</span>
+        {/* Scores composites HomePedia */}
+        {(scoreQV != null || scoreInv != null || scoreStab != null) && (
+          <div className="bg-slate-900/50 p-3 rounded-xl border border-primary/20 mb-4">
+            <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-3">Scores HomePedia</p>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { label: "Qualité Vie", val: scoreQV,   color: "#10b981" },
+                { label: "Investissement", val: scoreInv,  color: "#3c83f6" },
+                { label: "Stabilité DPE",  val: scoreStab, color: "#f59e0b" },
+              ].map(({ label, val, color }) => val != null && (
+                <div key={label} className="flex flex-col items-center gap-1">
+                  <div className="relative" style={{ width: 52, height: 52 }}>
+                    <svg className="-rotate-90" width="52" height="52" viewBox="0 0 52 52">
+                      <circle cx="26" cy="26" r="22" fill="transparent" stroke="#1e293b" strokeWidth="4" />
+                      <circle cx="26" cy="26" r="22" fill="transparent" stroke={color} strokeWidth="4"
+                        strokeDasharray="138" strokeDashoffset={Math.round(138 - (val / 100) * 138)}
+                        strokeLinecap="round" />
+                    </svg>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="text-sm font-black mono-nums text-slate-100">{val}</span>
+                    </div>
+                  </div>
+                  <p className="text-[9px] text-center text-slate-400 leading-tight">{label}</p>
+                </div>
+              ))}
             </div>
           </div>
-          <div>
-            <p className="text-xs font-bold text-slate-100">Score Investissement</p>
-            <p className="text-[10px] text-slate-400 mt-0.5">Indicateur composite</p>
+        )}
+
+        {/* IPS Écoles */}
+        {agregat?.ips_moyen != null && (
+          <div className="bg-slate-900/50 p-3 rounded-xl border border-primary/10 mb-4">
+            <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Environnement Scolaire</p>
+            <div className="flex justify-between text-[11px] mb-2">
+              <span className="text-slate-400">IPS moyen</span>
+              <span className="font-bold mono-nums" style={{ color: agregat.ips_moyen >= 110 ? "#10b981" : agregat.ips_moyen >= 80 ? "#f59e0b" : "#ef4444" }}>
+                {agregat.ips_moyen.toFixed(0)} / 200
+              </span>
+            </div>
+            <div className="w-full h-1.5 rounded-full bg-slate-800 mb-2">
+              <div className="h-full rounded-full" style={{ width: `${Math.min(100, (agregat.ips_moyen / 200) * 100)}%`, background: agregat.ips_moyen >= 110 ? "#10b981" : agregat.ips_moyen >= 80 ? "#f59e0b" : "#ef4444" }} />
+            </div>
+            <div className="flex justify-between text-[11px]">
+              {agregat.pct_ecoles_favorisees != null && (
+                <>
+                  <span className="text-slate-400">% écoles favorisées</span>
+                  <span className="text-slate-200 mono-nums">{agregat.pct_ecoles_favorisees.toFixed(0)} %</span>
+                </>
+              )}
+            </div>
+            {agregat.nb_ecoles > 0 && (
+              <p className="text-[10px] text-slate-600 mt-1">{agregat.nb_ecoles} établissement{agregat.nb_ecoles > 1 ? "s" : ""} recensé{agregat.nb_ecoles > 1 ? "s" : ""}</p>
+            )}
           </div>
-        </div>
+        )}
+
+        {/* Énergie ENEDIS/GRDF */}
+        {(agregat?.conso_elec_par_logement != null || agregat?.conso_gaz_par_logement != null) && (
+          <div className="bg-slate-900/50 p-3 rounded-xl border border-primary/10 mb-4">
+            <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Conso Énergie / Logement</p>
+            {agregat.conso_elec_par_logement != null && (
+              <div className="flex justify-between text-[11px] mb-1">
+                <span className="text-slate-400 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-yellow-400" style={{ fontSize: 11 }}>bolt</span>Électricité
+                </span>
+                <span className="text-slate-200 mono-nums">{agregat.conso_elec_par_logement.toFixed(1)} MWh/an</span>
+              </div>
+            )}
+            {agregat.conso_gaz_par_logement != null && (
+              <div className="flex justify-between text-[11px]">
+                <span className="text-slate-400 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-orange-400" style={{ fontSize: 11 }}>local_fire_department</span>Gaz
+                </span>
+                <span className="text-slate-200 mono-nums">{agregat.conso_gaz_par_logement.toFixed(1)} MWh/an</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Dernières ventes */}
         <div>
