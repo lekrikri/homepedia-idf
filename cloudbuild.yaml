@@ -32,6 +32,28 @@ options:
 steps:
 
   # ─────────────────────────────────────────────────────────────────────────────
+  # ÉTAPE 0 : Quality Check données PostgreSQL/Supabase
+  # Vérifie la qualité AVANT de déployer (IPS, énergie, scores, DPE, prix)
+  # Si des ERRORs sont détectées → le build échoue → pas de déploiement
+  # ─────────────────────────────────────────────────────────────────────────────
+  - name: python:3.11-slim
+    id: quality-check
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        pip install psycopg2-binary --quiet
+        python ingestion/quality_check.py --exit-on-error
+    secretEnv: ['POSTGRES_PASSWORD']
+    env:
+      - 'POSTGRES_HOST=aws-0-eu-west-1.pooler.supabase.com'
+      - 'POSTGRES_PORT=5432'
+      - 'POSTGRES_DB=postgres'
+      - 'POSTGRES_USER=postgres.iugsfmvqddburvufzacy'
+      - 'POSTGRES_SSLMODE=require'
+    waitFor: ['-']  # démarre immédiatement en parallèle du build Docker
+
+  # ─────────────────────────────────────────────────────────────────────────────
   # ÉTAPE 1 : Build image Backend (Go)
   # ─────────────────────────────────────────────────────────────────────────────
   - name: gcr.io/cloud-builders/docker
@@ -179,3 +201,9 @@ images:
   - ${_REGISTRY}/backend:latest
   - ${_REGISTRY}/frontend:${COMMIT_SHA}
   - ${_REGISTRY}/frontend:latest
+
+# Secrets injectés depuis Secret Manager GCP
+availableSecrets:
+  secretManager:
+    - versionName: projects/homepedia-493013/secrets/homepedia-supabase-password/versions/latest
+      env: POSTGRES_PASSWORD

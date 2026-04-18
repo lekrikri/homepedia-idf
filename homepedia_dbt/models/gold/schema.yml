@@ -4,26 +4,31 @@ models:
   - name: gold_communes_agregat
     description: >
       Table gold finale — 1 ligne par commune IDF.
-      Agrège transactions DVF + DPE ADEME par commune.
+      Agrège transactions DVF + DPE ADEME par commune (produit par DBT sur BigQuery).
+      Enrichie après export par des scripts Python indépendants :
+        • IPS écoles (data.gouv.fr) → ips_moyen, pct_ecoles_favorisees, nb_ecoles
+        • Énergie ENEDIS/GRDF → conso_elec_par_logement, conso_gaz_par_logement
+        • Scores composites homepedia → score_qualite_vie, score_investissement, score_stabilite
       Consommée directement par l'API Go via Supabase/PostgreSQL.
-      Rechargée complètement à chaque run DBT (stratégie 'table').
 
     columns:
+      # ── Clé primaire ─────────────────────────────────────────────────────────
       - name: code_commune
         description: "Code INSEE commune (clé primaire, 5 chiffres)"
         tests:
           - unique
           - not_null
 
+      # ── DVF — Prix & Transactions ─────────────────────────────────────────────
       - name: nb_transactions
-        description: "Nombre de transactions immobilières 2020-2024"
+        description: "Nombre de transactions immobilières 2021-2024 (filtre >= 5 appliqué)"
         tests:
           - not_null
           - dbt_utils.expression_is_true:
               expression: ">= 5"
 
       - name: prix_median_m2
-        description: "Prix médian au m² en euros"
+        description: "Prix médian au m² en euros (APPROX_QUANTILES p50)"
         tests:
           - not_null
           - dbt_utils.expression_is_true:
@@ -35,19 +40,137 @@ models:
           - dbt_utils.expression_is_true:
               expression: "IS NULL OR prix_moyen_m2 BETWEEN 500 AND 50000"
 
+      - name: surface_moyenne
+        description: "Surface bâtie moyenne des biens vendus (m²)"
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: "IS NULL OR surface_moyenne BETWEEN 5 AND 2000"
+
+      - name: prix_median_transaction
+        description: "Prix médian de la transaction complète (pas /m²) en euros"
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: "IS NULL OR prix_median_transaction BETWEEN 1000 AND 50000000"
+
+      # ── DPE ADEME ──────────────────────────────────────────────────────────────
       - name: score_dpe_moyen
         description: "Score DPE moyen (1=A excellent, 7=G très énergivore)"
         tests:
           - dbt_utils.expression_is_true:
               expression: "IS NULL OR score_dpe_moyen BETWEEN 1 AND 7"
 
-      - name: pct_dpe_bon
-        description: "Pourcentage de logements avec DPE A, B ou C"
+      - name: conso_energie_moyenne
+        description: "Consommation énergie primaire moyenne (kWh/m²/an) — source ADEME"
         tests:
           - dbt_utils.expression_is_true:
-              expression: "IS NULL OR pct_dpe_bon BETWEEN 0 AND 100"
+              expression: "IS NULL OR conso_energie_moyenne BETWEEN 0 AND 2000"
 
+      - name: emission_ges_moyenne
+        description: "Émissions GES moyennes (kgCO₂/m²/an) — source ADEME"
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: "IS NULL OR emission_ges_moyenne BETWEEN 0 AND 200"
+
+      - name: nb_dpe
+        description: "Nombre de DPE disponibles pour la commune"
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: "IS NULL OR nb_dpe >= 0"
+
+      - name: pct_dpe_bon
+        description: "Part de logements classés A ou B (DPE favorable), en décimal 0-1"
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: "IS NULL OR pct_dpe_bon BETWEEN 0 AND 1"
+
+      # ── IPS Écoles (enrichissement Python — non produit par DBT) ─────────────
+      - name: ips_moyen
+        description: >
+          Indice de Position Sociale moyen des écoles de la commune (échelle 0-200).
+          Source : data.gouv.fr — Ministère de l'Éducation nationale.
+          < 80 = défavorisé | 80-110 = intermédiaire | > 110 = favorisé.
+          ATTENTION : colonne enrichie post-DBT par ingestion/ips/download_gcs.py
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: "IS NULL OR ips_moyen BETWEEN 50 AND 200"
+              config:
+                severity: warn   # warn car enrichissement externe non garanti
+
+      - name: pct_ecoles_favorisees
+        description: >
+          Pourcentage d'établissements avec IPS > 110 (seuil «favorisé»).
+          Calculé sur les écoles primaires/collèges/lycées de la commune.
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: "IS NULL OR pct_ecoles_favorisees BETWEEN 0 AND 100"
+              config:
+                severity: warn
+
+      - name: nb_ecoles
+        description: "Nombre d'établissements scolaires avec données IPS disponibles"
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: "IS NULL OR nb_ecoles >= 0"
+              config:
+                severity: warn
+
+      # ── Énergie ENEDIS/GRDF (enrichissement Python) ───────────────────────────
+      - name: conso_elec_par_logement
+        description: >
+          Consommation électricité moyenne par logement (MWh/an).
+          Source : ENEDIS open data. Moyenne IDF ≈ 5.1 MWh/logement/an.
+          ATTENTION : colonne enrichie post-DBT.
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: "IS NULL OR conso_elec_par_logement BETWEEN 0 AND 50"
+              config:
+                severity: warn
+
+      - name: conso_gaz_par_logement
+        description: >
+          Consommation gaz moyenne par logement (MWh/an).
+          Source : GRDF open data. Moyenne IDF ≈ 12.5 MWh/logement/an.
+          ATTENTION : colonne enrichie post-DBT.
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: "IS NULL OR conso_gaz_par_logement BETWEEN 0 AND 100"
+              config:
+                severity: warn
+
+      # ── Scores composites HomePedia (enrichissement Python) ───────────────────
+      - name: score_qualite_vie
+        description: >
+          Score qualité de vie (0-100, percentile IDF).
+          Composition : IPS 30% + DPE A/B 20% + densité POI 20% + conso élec inv. 15% + écoles favorisées 15%.
+          ATTENTION : colonne enrichie post-DBT par ingestion/scores/compute_scores.py.
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: "IS NULL OR score_qualite_vie BETWEEN 0 AND 100"
+              config:
+                severity: warn
+
+      - name: score_investissement
+        description: >
+          Score attractivité investissement (0-100, percentile IDF).
+          Composition : nb_transactions 25% + IPS 25% + DPE A/B 20% + prix inv. 15% + bio/bobo 15%.
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: "IS NULL OR score_investissement BETWEEN 0 AND 100"
+              config:
+                severity: warn
+
+      - name: score_stabilite
+        description: >
+          Score stabilité DPE (0-100, percentile IDF).
+          Composition : score DPE inv. 30% + conso énergie inv. 25% + GES inv. 25% + pct_dpe_bon 20%.
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: "IS NULL OR score_stabilite BETWEEN 0 AND 100"
+              config:
+                severity: warn
+
+      # ── Méta ──────────────────────────────────────────────────────────────────
       - name: updated_at
-        description: "Timestamp de la dernière mise à jour par DBT"
+        description: "Timestamp de la dernière mise à jour par DBT (BigQuery)"
         tests:
           - not_null
