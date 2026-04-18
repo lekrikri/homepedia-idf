@@ -1,0 +1,181 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Google Cloud Build — Pipeline CI/CD HomePedia
+#
+# Pourquoi Cloud Build ?
+# ──────────────────────
+# GitHub Actions facture les minutes sur les repos d'une organisation payante.
+# Cloud Build offre 120 build-minutes/jour GRATUITEMENT sur GCP.
+# Le build Docker se fait ici, pas sur GitHub → 0 minute GitHub consommée.
+#
+# Déclenchement :
+#   - Via GitHub Actions (cd.yml) : gcloud builds submit --config cloudbuild.yaml
+#   - Via Cloud Build Trigger GCP : push sur main (configurable en console GCP)
+#   - Manuellement : gcloud builds submit --config cloudbuild.yaml .
+#
+# Variables disponibles automatiquement :
+#   $COMMIT_SHA  — SHA du commit Git
+#   $BRANCH_NAME — Nom de la branche
+#   $PROJECT_ID  — ID du projet GCP (homepedia-493013)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+substitutions:
+  _REGION: europe-west1
+  _REGISTRY: europe-west1-docker.pkg.dev/homepedia-493013/homepedia
+  _BACKEND_SERVICE: homepedia-backend
+  _FRONTEND_SERVICE: homepedia-frontend
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  # Utilise une machine n1-highcpu-8 pour les builds Docker (plus rapide)
+  machineType: E2_HIGHCPU_8
+
+steps:
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ÉTAPE 1 : Build image Backend (Go)
+  # ─────────────────────────────────────────────────────────────────────────────
+  - name: gcr.io/cloud-builders/docker
+    id: build-backend
+    args:
+      - build
+      - -t
+      - ${_REGISTRY}/backend:${COMMIT_SHA}
+      - -t
+      - ${_REGISTRY}/backend:latest
+      - --cache-from
+      - ${_REGISTRY}/backend:latest
+      - ./backend
+    waitFor: ['-']  # démarre immédiatement
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ÉTAPE 2 : Push Backend
+  # ─────────────────────────────────────────────────────────────────────────────
+  - name: gcr.io/cloud-builders/docker
+    id: push-backend
+    args:
+      - push
+      - --all-tags
+      - ${_REGISTRY}/backend
+    waitFor: [build-backend]
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ÉTAPE 3 : Déployer Backend sur Cloud Run
+  # ─────────────────────────────────────────────────────────────────────────────
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    id: deploy-backend
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_BACKEND_SERVICE}
+      - --image=${_REGISTRY}/backend:${COMMIT_SHA}
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated
+      - --port=8080
+      - --memory=512Mi
+      - --cpu=1
+      - --min-instances=0
+      - --max-instances=5
+      - --set-env-vars=GIN_MODE=release,POSTGRES_HOST=aws-0-eu-west-1.pooler.supabase.com,POSTGRES_PORT=5432,POSTGRES_DB=postgres,POSTGRES_USER=postgres.iugsfmvqddburvufzacy,POSTGRES_SSLMODE=require
+      - --update-secrets=POSTGRES_PASSWORD=homepedia-supabase-password:latest,JWT_SECRET=homepedia-jwt-secret:latest
+      - --quiet
+    waitFor: [push-backend]
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ÉTAPE 4 : Récupérer l'URL du backend (pour injecter dans le build frontend)
+  # ─────────────────────────────────────────────────────────────────────────────
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    id: get-backend-url
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        URL=$(gcloud run services describe ${_BACKEND_SERVICE} \
+          --region ${_REGION} \
+          --format 'value(status.url)')
+        echo "BACKEND_URL=$URL"
+        echo "$URL" > /workspace/backend_url.txt
+        echo "✅ Backend déployé : $URL"
+    waitFor: [deploy-backend]
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ÉTAPE 5 : Build image Frontend (React + Vite) avec l'URL du backend
+  # ─────────────────────────────────────────────────────────────────────────────
+  - name: gcr.io/cloud-builders/docker
+    id: build-frontend
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        BACKEND_URL=$(cat /workspace/backend_url.txt)
+        echo "→ Build frontend avec VITE_API_URL=$BACKEND_URL"
+        docker build \
+          --build-arg VITE_API_URL="$BACKEND_URL" \
+          --cache-from ${_REGISTRY}/frontend:latest \
+          -t ${_REGISTRY}/frontend:${COMMIT_SHA} \
+          -t ${_REGISTRY}/frontend:latest \
+          ./frontend
+    waitFor: [get-backend-url]
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ÉTAPE 6 : Push Frontend
+  # ─────────────────────────────────────────────────────────────────────────────
+  - name: gcr.io/cloud-builders/docker
+    id: push-frontend
+    args:
+      - push
+      - --all-tags
+      - ${_REGISTRY}/frontend
+    waitFor: [build-frontend]
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ÉTAPE 7 : Déployer Frontend sur Cloud Run
+  # ─────────────────────────────────────────────────────────────────────────────
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    id: deploy-frontend
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_FRONTEND_SERVICE}
+      - --image=${_REGISTRY}/frontend:${COMMIT_SHA}
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated
+      - --port=8080
+      - --memory=256Mi
+      - --cpu=1
+      - --min-instances=0
+      - --max-instances=3
+      - --quiet
+    waitFor: [push-frontend]
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ÉTAPE 8 : Résumé final
+  # ─────────────────────────────────────────────────────────────────────────────
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    id: summary
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        BACKEND=$(gcloud run services describe ${_BACKEND_SERVICE} \
+          --region ${_REGION} --format 'value(status.url)' 2>/dev/null || echo "N/A")
+        FRONTEND=$(gcloud run services describe ${_FRONTEND_SERVICE} \
+          --region ${_REGION} --format 'value(status.url)' 2>/dev/null || echo "N/A")
+        echo "═══════════════════════════════════════"
+        echo "  ✅ DÉPLOIEMENT TERMINÉ"
+        echo "═══════════════════════════════════════"
+        echo "  Commit  : ${COMMIT_SHA}"
+        echo "  Backend : $BACKEND"
+        echo "  Frontend: $FRONTEND"
+        echo "═══════════════════════════════════════"
+    waitFor: [deploy-backend, deploy-frontend]
+
+# Images à conserver dans Artifact Registry après le build
+images:
+  - ${_REGISTRY}/backend:${COMMIT_SHA}
+  - ${_REGISTRY}/backend:latest
+  - ${_REGISTRY}/frontend:${COMMIT_SHA}
+  - ${_REGISTRY}/frontend:latest

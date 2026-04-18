@@ -29,8 +29,54 @@ const DPE_COLORS = {
   G: { bg: "bg-red-600",     text: "text-red-500",     ring: "ring-red-600/40"     },
 };
 
+// Moyennes IDF de référence (ENEDIS/GRDF 2022)
+const IDF_AVG_ELEC_MWH = 5.1;   // MWh/logement/an
+const IDF_AVG_GAZ_MWH  = 12.5;  // MWh/logement/an
+const IPS_NATIONAL_AVG = 100;   // échelle 0-200
+
+const DPE_COLORS_HEX = { A:"#22c55e", B:"#84cc16", C:"#eab308", D:"#f97316", E:"#ef4444", F:"#dc2626", G:"#991b1b" };
+const DPE_LETTERS = ["A","B","C","D","E","F","G"];
+
+// Score tooltips descriptions
+const SCORE_DETAILS = {
+  qv: {
+    label: "Qualité de Vie",
+    color: "#10b981",
+    items: [
+      { pct: "30%", desc: "IPS moyen (environnement scolaire)" },
+      { pct: "20%", desc: "% logements DPE A/B" },
+      { pct: "20%", desc: "Densité équipements de proximité" },
+      { pct: "15%", desc: "Conso électricité (inversée)" },
+      { pct: "15%", desc: "% écoles favorisées" },
+    ],
+  },
+  inv: {
+    label: "Investissement",
+    color: "#3c83f6",
+    items: [
+      { pct: "25%", desc: "Volume de transactions" },
+      { pct: "25%", desc: "IPS moyen (attractivité)" },
+      { pct: "20%", desc: "% logements DPE A/B" },
+      { pct: "15%", desc: "Prix médian au m² (inversé)" },
+      { pct: "15%", desc: "Commerces bio/premium" },
+    ],
+  },
+  stab: {
+    label: "Stabilité DPE",
+    color: "#f59e0b",
+    items: [
+      { pct: "30%", desc: "Score DPE moyen (inversé)" },
+      { pct: "25%", desc: "Conso énergie moyenne (inversée)" },
+      { pct: "25%", desc: "Émissions GES (inversées)" },
+      { pct: "20%", desc: "% logements bons DPE (A/B)" },
+    ],
+  },
+};
+
 // ─── Right Panel ───────────────────────────────────────────────────────────────
 function RightPanel({ commune, transactions, agregat }) {
+  const [activeScoreTip, setActiveScoreTip] = useState(null);
+
   // Prix médian — Gold agregat en priorité, fallback gold calculé, fallback client-side
   const prixMedian = agregat?.prix_median_m2
     ? Math.round(agregat.prix_median_m2)
@@ -58,6 +104,11 @@ function RightPanel({ commune, transactions, agregat }) {
   const scoreQV   = agregat?.score_qualite_vie    != null ? Math.round(agregat.score_qualite_vie)    : null;
   const scoreStab = agregat?.score_stabilite      != null ? Math.round(agregat.score_stabilite)      : null;
   const lastSales = transactions.slice(0, 4);
+
+  // DPE dominant calculé depuis score_dpe_moyen (1=A…7=G)
+  const dpeMoyenLetter = agregat?.score_dpe_moyen != null
+    ? DPE_LETTERS[Math.min(6, Math.max(0, Math.round(agregat.score_dpe_moyen) - 1))]
+    : null;
 
   if (!commune) return (
     <aside className="w-80 h-full flex-shrink-0 flex items-center justify-center"
@@ -114,32 +165,51 @@ function RightPanel({ commune, transactions, agregat }) {
           </div>
         </div>
 
-        {/* DPE énergie détail */}
-        {agregat?.score_dpe_moyen && (
+        {/* DPE Distribution A→G — graphique barres */}
+        {agregat?.score_dpe_moyen != null && (
           <div className="bg-slate-900/50 p-3 rounded-xl border border-primary/10 mb-4">
-            <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Performance Énergétique</p>
-            <div className="flex justify-between text-[11px]">
-              <span className="text-slate-400">Score DPE moyen</span>
-              <span className="text-slate-200 font-bold mono-nums">{agregat.score_dpe_moyen.toFixed(1)} / 7</span>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[10px] uppercase tracking-wider text-slate-500">Distribution DPE</p>
+              {dpeMoyenLetter && (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: DPE_COLORS_HEX[dpeMoyenLetter] + "25", color: DPE_COLORS_HEX[dpeMoyenLetter], border: `1px solid ${DPE_COLORS_HEX[dpeMoyenLetter]}50` }}>
+                  Dominant : {dpeMoyenLetter}
+                </span>
+              )}
             </div>
-            {agregat.conso_energie_moyenne && (
-              <div className="flex justify-between text-[11px] mt-1">
-                <span className="text-slate-400">Conso énergie</span>
-                <span className="text-slate-200 mono-nums">{Math.round(agregat.conso_energie_moyenne)} kWh/m²/an</span>
+            {/* Barres A→G avec hauteur gaussienne centrée sur score_dpe_moyen */}
+            <div className="flex items-end gap-1 h-10 mb-1">
+              {DPE_LETTERS.map((l, i) => {
+                const idx = i + 1; // 1-7
+                const gaussian = Math.exp(-0.5 * Math.pow((idx - agregat.score_dpe_moyen) / 1.3, 2));
+                const isMode = l === dpeMoyenLetter;
+                const barH = Math.max(12, Math.round(40 * gaussian));
+                return (
+                  <div key={l} className="flex-1 flex flex-col items-center gap-0.5">
+                    <div className="w-full rounded-sm" style={{
+                      height: barH,
+                      background: DPE_COLORS_HEX[l],
+                      opacity: isMode ? 1 : 0.35,
+                      boxShadow: isMode ? `0 0 6px ${DPE_COLORS_HEX[l]}80` : "none",
+                      transition: "all .2s",
+                    }} />
+                    <span style={{ fontSize: 8, fontWeight: isMode ? 900 : 400, color: isMode ? DPE_COLORS_HEX[l] : "#475569" }}>{l}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex justify-between text-[10px] mt-1 pt-1 border-t border-slate-800">
+              {agregat.pct_dpe_bon != null && (
+                <span className="text-green-400 font-bold">{(agregat.pct_dpe_bon * 100).toFixed(0)} % classés A/B</span>
+              )}
+              <div className="flex gap-3 text-slate-500 ml-auto">
+                {agregat.conso_energie_moyenne && (
+                  <span>{Math.round(agregat.conso_energie_moyenne)} kWh/m²</span>
+                )}
+                {agregat.emission_ges_moyenne && (
+                  <span>{agregat.emission_ges_moyenne.toFixed(1)} kgCO₂</span>
+                )}
               </div>
-            )}
-            {agregat.emission_ges_moyenne && (
-              <div className="flex justify-between text-[11px] mt-1">
-                <span className="text-slate-400">Émissions GES</span>
-                <span className="text-slate-200 mono-nums">{agregat.emission_ges_moyenne.toFixed(1)} kgCO₂/m²/an</span>
-              </div>
-            )}
-            {agregat.pct_dpe_bon != null && (
-              <div className="flex justify-between text-[11px] mt-1">
-                <span className="text-slate-400">Biens classés A/B</span>
-                <span className="text-green-400 font-bold mono-nums">{(agregat.pct_dpe_bon * 100).toFixed(1)} %</span>
-              </div>
-            )}
+            </div>
           </div>
         )}
 
@@ -173,17 +243,18 @@ function RightPanel({ commune, transactions, agregat }) {
           </div>
         )}
 
-        {/* Scores composites HomePedia */}
+        {/* Scores composites HomePedia — avec tooltips interactifs */}
         {(scoreQV != null || scoreInv != null || scoreStab != null) && (
           <div className="bg-slate-900/50 p-3 rounded-xl border border-primary/20 mb-4">
             <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-3">Scores HomePedia</p>
             <div className="grid grid-cols-3 gap-2">
               {[
-                { label: "Qualité Vie", val: scoreQV,   color: "#10b981" },
-                { label: "Investissement", val: scoreInv,  color: "#3c83f6" },
-                { label: "Stabilité DPE",  val: scoreStab, color: "#f59e0b" },
-              ].map(({ label, val, color }) => val != null && (
-                <div key={label} className="flex flex-col items-center gap-1">
+                { key: "qv",   val: scoreQV,   ...SCORE_DETAILS.qv   },
+                { key: "inv",  val: scoreInv,  ...SCORE_DETAILS.inv  },
+                { key: "stab", val: scoreStab, ...SCORE_DETAILS.stab },
+              ].map(({ key, label, val, color, items }) => val != null && (
+                <div key={key} className="flex flex-col items-center gap-1 relative">
+                  {/* Anneau SVG */}
                   <div className="relative" style={{ width: 52, height: 52 }}>
                     <svg className="-rotate-90" width="52" height="52" viewBox="0 0 52 52">
                       <circle cx="26" cy="26" r="22" fill="transparent" stroke="#1e293b" strokeWidth="4" />
@@ -194,61 +265,151 @@ function RightPanel({ commune, transactions, agregat }) {
                     <div className="absolute inset-0 flex items-center justify-center">
                       <span className="text-sm font-black mono-nums text-slate-100">{val}</span>
                     </div>
+                    {/* Bouton ℹ️ */}
+                    <button
+                      onClick={() => setActiveScoreTip(activeScoreTip === key ? null : key)}
+                      className="absolute -top-1 -right-1 size-4 rounded-full flex items-center justify-center transition-colors"
+                      style={{ background: activeScoreTip === key ? color : "rgba(30,41,59,0.9)", border: `1px solid ${color}60` }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 9, color: activeScoreTip === key ? "white" : color }}>info</span>
+                    </button>
                   </div>
                   <p className="text-[9px] text-center text-slate-400 leading-tight">{label}</p>
+
+                  {/* Tooltip détail composition */}
+                  {activeScoreTip === key && (
+                    <div className="absolute top-full mt-1 left-1/2 -translate-x-1/2 z-50 w-52 rounded-xl p-3 shadow-2xl"
+                      style={{ background: "#0f1724", border: `1px solid ${color}40` }}>
+                      <p className="text-[10px] font-bold mb-2" style={{ color }}>{label}</p>
+                      <div className="space-y-1">
+                        {items.map(({ pct, desc }) => (
+                          <div key={desc} className="flex items-start gap-2">
+                            <span className="text-[9px] font-bold shrink-0 mono-nums" style={{ color }}>{pct}</span>
+                            <span className="text-[9px] text-slate-400 leading-snug">{desc}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-[8px] text-slate-600 mt-2 pt-1.5 border-t border-slate-800">Score percentile 0-100 · données IDF</p>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* IPS Écoles */}
+        {/* IPS Écoles — badge coloré + delta nationale */}
         {agregat?.ips_moyen != null && (
           <div className="bg-slate-900/50 p-3 rounded-xl border border-primary/10 mb-4">
             <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Environnement Scolaire</p>
-            <div className="flex justify-between text-[11px] mb-2">
-              <span className="text-slate-400">IPS moyen</span>
-              <span className="font-bold mono-nums" style={{ color: agregat.ips_moyen >= 110 ? "#10b981" : agregat.ips_moyen >= 80 ? "#f59e0b" : "#ef4444" }}>
-                {agregat.ips_moyen.toFixed(0)} / 200
-              </span>
+            {/* Badge + valeur */}
+            <div className="flex items-center justify-between mb-2">
+              {(() => {
+                const ips = agregat.ips_moyen;
+                const [badge, badgeColor, badgeBg] = ips >= 110
+                  ? ["Très favorisé",    "#10b981", "#10b98118"]
+                  : ips >= 80
+                    ? ["Intermédiaire",  "#f59e0b", "#f59e0b18"]
+                    : ["Défavorisé",     "#ef4444", "#ef444418"];
+                const delta = ips - IPS_NATIONAL_AVG;
+                return (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg font-black mono-nums" style={{ color: badgeColor }}>{ips.toFixed(0)}</span>
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: badgeColor, background: badgeBg, border: `1px solid ${badgeColor}40` }}>{badge}</span>
+                    </div>
+                    <span className="text-[10px] font-bold mono-nums" style={{ color: delta >= 0 ? "#10b981" : "#ef4444" }}>
+                      {delta >= 0 ? "+" : ""}{delta.toFixed(0)} vs nationale
+                    </span>
+                  </>
+                );
+              })()}
             </div>
-            <div className="w-full h-1.5 rounded-full bg-slate-800 mb-2">
-              <div className="h-full rounded-full" style={{ width: `${Math.min(100, (agregat.ips_moyen / 200) * 100)}%`, background: agregat.ips_moyen >= 110 ? "#10b981" : agregat.ips_moyen >= 80 ? "#f59e0b" : "#ef4444" }} />
+            {/* Barre de progression calibrée 60-160 */}
+            <div className="relative w-full h-2 rounded-full bg-slate-800 mb-2">
+              <div className="absolute left-0 top-0 h-full rounded-full" style={{
+                width: `${Math.min(100, Math.max(0, ((agregat.ips_moyen - 60) / 100) * 100))}%`,
+                background: agregat.ips_moyen >= 110 ? "#10b981" : agregat.ips_moyen >= 80 ? "#f59e0b" : "#ef4444",
+              }} />
+              {/* Repère moyenne nationale */}
+              <div className="absolute top-0 h-full w-px bg-slate-400/60" style={{ left: `${((IPS_NATIONAL_AVG - 60) / 100) * 100}%` }} />
             </div>
-            <div className="flex justify-between text-[11px]">
+            <div className="flex justify-between text-[9px] text-slate-600 mb-2">
+              <span>Défavorisé (&lt;80)</span><span>Moy. nat. (100)</span><span>Favorisé (&gt;110)</span>
+            </div>
+            {/* Stats écoles */}
+            <div className="flex justify-between text-[10px]">
               {agregat.pct_ecoles_favorisees != null && (
-                <>
-                  <span className="text-slate-400">% écoles favorisées</span>
-                  <span className="text-slate-200 mono-nums">{agregat.pct_ecoles_favorisees.toFixed(0)} %</span>
-                </>
+                <span className="text-slate-400">{agregat.pct_ecoles_favorisees.toFixed(0)} % d'écoles favorisées</span>
+              )}
+              {agregat.nb_ecoles > 0 && (
+                <span className="text-slate-600">{agregat.nb_ecoles} étab.</span>
               )}
             </div>
-            {agregat.nb_ecoles > 0 && (
-              <p className="text-[10px] text-slate-600 mt-1">{agregat.nb_ecoles} établissement{agregat.nb_ecoles > 1 ? "s" : ""} recensé{agregat.nb_ecoles > 1 ? "s" : ""}</p>
-            )}
           </div>
         )}
 
-        {/* Énergie ENEDIS/GRDF */}
+        {/* Énergie ENEDIS/GRDF — avec benchmark IDF */}
         {(agregat?.conso_elec_par_logement != null || agregat?.conso_gaz_par_logement != null) && (
           <div className="bg-slate-900/50 p-3 rounded-xl border border-primary/10 mb-4">
             <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Conso Énergie / Logement</p>
-            {agregat.conso_elec_par_logement != null && (
-              <div className="flex justify-between text-[11px] mb-1">
-                <span className="text-slate-400 flex items-center gap-1">
-                  <span className="material-symbols-outlined text-yellow-400" style={{ fontSize: 11 }}>bolt</span>Électricité
-                </span>
-                <span className="text-slate-200 mono-nums">{agregat.conso_elec_par_logement.toFixed(1)} MWh/an</span>
-              </div>
-            )}
-            {agregat.conso_gaz_par_logement != null && (
-              <div className="flex justify-between text-[11px]">
-                <span className="text-slate-400 flex items-center gap-1">
-                  <span className="material-symbols-outlined text-orange-400" style={{ fontSize: 11 }}>local_fire_department</span>Gaz
-                </span>
-                <span className="text-slate-200 mono-nums">{agregat.conso_gaz_par_logement.toFixed(1)} MWh/an</span>
-              </div>
-            )}
+            {/* Électricité */}
+            {agregat.conso_elec_par_logement != null && (() => {
+              const val = agregat.conso_elec_par_logement;
+              const diff = val - IDF_AVG_ELEC_MWH;
+              const pct = Math.round((diff / IDF_AVG_ELEC_MWH) * 100);
+              const isHigh = diff > 0;
+              return (
+                <div className="mb-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-slate-400 text-[11px] flex items-center gap-1">
+                      <span className="material-symbols-outlined text-yellow-400" style={{ fontSize: 11 }}>bolt</span>Électricité
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-200 mono-nums text-[11px] font-bold">{val.toFixed(1)} MWh</span>
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full mono-nums"
+                        style={{ background: isHigh ? "#ef444420" : "#10b98120", color: isHigh ? "#ef4444" : "#10b981", border: `1px solid ${isHigh ? "#ef444440" : "#10b98140"}` }}>
+                        {isHigh ? "+" : ""}{pct}% vs IDF
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-1 rounded-full bg-slate-800">
+                      <div className="h-full rounded-full bg-yellow-400/70" style={{ width: `${Math.min(100, (val / (IDF_AVG_ELEC_MWH * 2)) * 100)}%` }} />
+                    </div>
+                    <span className="text-[9px] text-slate-600 mono-nums">moy. {IDF_AVG_ELEC_MWH}</span>
+                  </div>
+                </div>
+              );
+            })()}
+            {/* Gaz */}
+            {agregat.conso_gaz_par_logement != null && (() => {
+              const val = agregat.conso_gaz_par_logement;
+              const diff = val - IDF_AVG_GAZ_MWH;
+              const pct = Math.round((diff / IDF_AVG_GAZ_MWH) * 100);
+              const isHigh = diff > 0;
+              return (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-slate-400 text-[11px] flex items-center gap-1">
+                      <span className="material-symbols-outlined text-orange-400" style={{ fontSize: 11 }}>local_fire_department</span>Gaz
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-200 mono-nums text-[11px] font-bold">{val.toFixed(1)} MWh</span>
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full mono-nums"
+                        style={{ background: isHigh ? "#ef444420" : "#10b98120", color: isHigh ? "#ef4444" : "#10b981", border: `1px solid ${isHigh ? "#ef444440" : "#10b98140"}` }}>
+                        {isHigh ? "+" : ""}{pct}% vs IDF
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-1 rounded-full bg-slate-800">
+                      <div className="h-full rounded-full bg-orange-400/70" style={{ width: `${Math.min(100, (val / (IDF_AVG_GAZ_MWH * 2)) * 100)}%` }} />
+                    </div>
+                    <span className="text-[9px] text-slate-600 mono-nums">moy. {IDF_AVG_GAZ_MWH}</span>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
 
