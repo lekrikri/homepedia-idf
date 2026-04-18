@@ -1,62 +1,60 @@
 -- ══════════════════════════════════════════════════════════════════════════════
 -- SILVER : DPE nettoyés
--- Transformations : déduplication, score numérique, normalisation commune
+-- Transformations : déduplication, filtrage, normalisation commune Paris
 -- ══════════════════════════════════════════════════════════════════════════════
 
 {{
   config(
     materialized='incremental',
-    unique_key='numero_dpe',
+    unique_key='id_dpe',
     incremental_strategy='merge'
   )
 }}
 
-WITH scored AS (
+WITH cleaned AS (
     SELECT
-        numero_dpe,
-        CAST(date_etablissement_dpe AS DATE) AS date_dpe,
-        EXTRACT(YEAR FROM CAST(date_etablissement_dpe AS DATE)) AS annee_dpe,
-        code_insee_ban AS code_commune,
-        code_postal_ban AS code_postal,
+        id_dpe,
+        CAST(date_dpe AS DATE)                              AS date_dpe,
+        annee_dpe,
+
+        -- Normalisation commune Paris (même logique que silver_transactions)
+        CASE
+            WHEN CAST(code_commune AS STRING) LIKE '751%'
+             AND code_commune != '75056'
+            THEN '75056'
+            ELSE CAST(code_commune AS STRING)
+        END AS code_commune,
+
+        nom_commune,
+        code_postal,
         code_departement,
-        classe_energie,
+        etiquette_dpe,
         etiquette_ges,
-        CAST(conso_energie AS FLOAT64) AS conso_energie,
-        CAST(emission_ges AS FLOAT64) AS emission_ges,
-        CAST(surface_habitable_logement AS FLOAT64) AS surface,
-        CAST(annee_construction AS INT64) AS annee_construction,
+
+        CAST(conso_energie_kwh_m2 AS FLOAT64)               AS conso_energie,
+        CAST(emission_ges_kg_m2   AS FLOAT64)               AS emission_ges,
+        CAST(surface_m2           AS FLOAT64)               AS surface,
         type_batiment,
-
-        -- Score numérique A=1 (excellent) → G=7 (très énergivore)
-        -- Permet de calculer une moyenne par commune
-        CASE classe_energie
-            WHEN 'A' THEN 1
-            WHEN 'B' THEN 2
-            WHEN 'C' THEN 3
-            WHEN 'D' THEN 4
-            WHEN 'E' THEN 5
-            WHEN 'F' THEN 6
-            WHEN 'G' THEN 7
-            ELSE NULL
-        END AS score_dpe,
-
-        -- Indicateur "bon DPE" (A, B ou C) pour le calcul du pourcentage
-        CASE WHEN classe_energie IN ('A', 'B', 'C') THEN 1 ELSE 0 END AS est_bon_dpe,
+        periode_construction,
+        CAST(score_dpe   AS INT64)                          AS score_dpe,
+        CAST(est_bon_dpe AS INT64)                          AS est_bon_dpe,
 
         _ingested_at
 
     FROM {{ ref('bronze_dpe') }}
     WHERE
-        numero_dpe IS NOT NULL
-        AND classe_energie IN ('A', 'B', 'C', 'D', 'E', 'F', 'G')
-        AND conso_energie IS NOT NULL
-        AND conso_energie > 0
+        id_dpe IS NOT NULL
+        AND etiquette_dpe IN ('A', 'B', 'C', 'D', 'E', 'F', 'G')
+        AND conso_energie_kwh_m2 IS NOT NULL
+        AND conso_energie_kwh_m2 > 0
+        -- DPE récents seulement (avant 2013 = méthode obsolète)
+        AND annee_dpe >= 2013
 )
 
 {% if is_incremental() %}
-SELECT s.*
-FROM scored s
-WHERE s.numero_dpe NOT IN (SELECT numero_dpe FROM {{ this }})
+SELECT c.*
+FROM cleaned c
+WHERE c.id_dpe NOT IN (SELECT id_dpe FROM {{ this }})
 {% else %}
-SELECT * FROM scored
+SELECT * FROM cleaned
 {% endif %}

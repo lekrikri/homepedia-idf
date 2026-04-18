@@ -1,26 +1,28 @@
 -- ══════════════════════════════════════════════════════════════════════════════
 -- BRONZE : diagnostics de performance énergétique (DPE) bruts
 -- Source : fichiers Parquet ADEME depuis GCS (gs://homepedia-datalake/bronze/dpe/)
+-- Colonnes = celles générées par ingestion/ademe_dpe/download_gcs.py
 -- ══════════════════════════════════════════════════════════════════════════════
 
 SELECT
-    numero_dpe,
-    date_etablissement_dpe,
-    date_visite_diagnostiqueur,
-    version_dpe,
-    methode_dpe,
-    code_postal_ban,
-    numero_rue_ban,
-    nom_rue_ban,
-    code_insee_ban,
-    classe_energie,
-    etiquette_ges,
-    conso_energie,
-    emission_ges,
-    surface_habitable_logement,
-    annee_construction,
-    type_batiment,
+    id_dpe,
+    date_dpe,
+    code_commune,
+    nom_commune,
+    code_postal,
     code_departement,
+    etiquette_dpe,
+    etiquette_ges,
+    conso_energie_kwh_m2,
+    emission_ges_kg_m2,
+    surface_m2,
+    type_batiment,
+    periode_construction,
+    longitude,
+    latitude,
+    score_dpe,
+    est_bon_dpe,
+    annee_dpe,
     CURRENT_TIMESTAMP() AS _ingested_at
 
 FROM {{ source('bronze_raw', 'dpe_ademe') }}

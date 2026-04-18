@@ -58,7 +58,7 @@ type CommuneGold struct {
 }
 
 // CommuneAgregat représente une commune avec toutes les métriques Gold
-// importées depuis Databricks (gold/communes_agregat/).
+// importées depuis BigQuery + enrichies (DPE, IPS, énergie, scores composites).
 type CommuneAgregat struct {
 	CodeCommune           string   `json:"code_commune"`
 	City                  string   `json:"city"`
@@ -74,11 +74,13 @@ type CommuneAgregat struct {
 	NbTransactions        *int64   `json:"nb_transactions,omitempty"`
 	SurfaceMoyenne        *float64 `json:"surface_moyenne,omitempty"`
 	PrixMedianTransaction *float64 `json:"prix_median_transaction,omitempty"`
+	// DPE
 	ScoreDPEMoyen         *float64 `json:"score_dpe_moyen,omitempty"`
 	ConsoEnergieMoyenne   *float64 `json:"conso_energie_moyenne,omitempty"`
 	EmissionGESMoyenne    *float64 `json:"emission_ges_moyenne,omitempty"`
 	NbDPE                 *int64   `json:"nb_dpe,omitempty"`
 	PctDPEBon             *float64 `json:"pct_dpe_bon,omitempty"`
+	// POI OSM
 	NbPOITotal            *int64   `json:"nb_poi_total,omitempty"`
 	NbTransport           *int64   `json:"nb_transport,omitempty"`
 	NbEducation           *int64   `json:"nb_education,omitempty"`
@@ -88,6 +90,17 @@ type CommuneAgregat struct {
 	NbParcs               *int64   `json:"nb_parcs,omitempty"`
 	NbServices            *int64   `json:"nb_services,omitempty"`
 	NbBioBobo             *int64   `json:"nb_bio_bobo,omitempty"`
+	// Énergie ENEDIS/GRDF
+	ConsoElecParLogement  *float64 `json:"conso_elec_par_logement,omitempty"`
+	ConsoGazParLogement   *float64 `json:"conso_gaz_par_logement,omitempty"`
+	// IPS écoles
+	IPSMoyen              *float64 `json:"ips_moyen,omitempty"`
+	PctEcolesFavorisees   *float64 `json:"pct_ecoles_favorisees,omitempty"`
+	NbEcoles              *int64   `json:"nb_ecoles,omitempty"`
+	// Scores composites (0-100)
+	ScoreQualiteVie       *float64 `json:"score_qualite_vie,omitempty"`
+	ScoreInvestissement   *float64 `json:"score_investissement,omitempty"`
+	ScoreStabilite        *float64 `json:"score_stabilite,omitempty"`
 }
 
 // ScoreIris représente les agrégats calculés pour une zone IRIS.

@@ -13,10 +13,9 @@ homepedia_dbt:
     # ── Développement local ──────────────────────────────────────────────────
     dev:
       type: bigquery
-      method: service-account
+      method: oauth
       project: homepedia-493013
       dataset: homepedia_dev        # dataset séparé pour ne pas polluer la prod
-      keyfile: "{{ env_var('GOOGLE_APPLICATION_CREDENTIALS') }}"
       location: EU
       threads: 4
       timeout_seconds: 300

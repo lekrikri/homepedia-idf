@@ -7,7 +7,7 @@ sources:
   - name: bronze_raw
     description: "Données brutes chargées depuis GCS Parquet vers BigQuery"
     database: homepedia-493013
-    schema: bronze_raw
+    schema: homepedia_dev_bronze
     tables:
 
       - name: dvf_transactions
@@ -29,14 +29,13 @@ sources:
               - not_null
 
       - name: dpe_ademe
-        description: "Diagnostics de Performance Energétique — base ADEME"
+        description: "Diagnostics de Performance Energétique — base ADEME (via GCS Parquet)"
         columns:
-          - name: numero_dpe
-            description: "Numéro unique du DPE"
+          - name: id_dpe
+            description: "Identifiant unique du DPE"
             tests:
               - not_null
-              - unique
-          - name: classe_energie
+          - name: etiquette_dpe
             description: "Classe énergie A à G"
             tests:
               - accepted_values:

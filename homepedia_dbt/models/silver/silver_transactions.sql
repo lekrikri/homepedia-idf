@@ -1,7 +1,7 @@
 -- ══════════════════════════════════════════════════════════════════════════════
 -- SILVER : transactions DVF nettoyées
 --
--- Transformations appliquées (ce que Spark faisait, maintenant en SQL pur) :
+-- Transformations appliquées :
 --   1. Déduplication sur id_mutation + type_local
 --   2. Filtrage des prix aberrants (< 500 €/m² ou > 50 000 €/m²)
 --   3. Filtrage géographique (coordonnées dans l'IDF uniquement)
@@ -66,7 +66,7 @@ normalized AS (
     -- Étape 3 : Normalisation
     SELECT
         -- Identifiant unique stable
-        {{ dbt_utils.generate_surrogate_key(['id_mutation', 'COALESCE(type_local, "INCONNU")']) }} AS transaction_id,
+        {{ dbt_utils.generate_surrogate_key(['id_mutation', "COALESCE(type_local, 'INCONNU')"]) }} AS transaction_id,
 
         id_mutation,
         CAST(date_mutation AS DATE) AS date_mutation,
@@ -123,7 +123,6 @@ normalized AS (
 
 {% if is_incremental() %}
 -- En mode incrémental : on ne traite que les nouvelles mutations
--- pas encore présentes dans la table silver
 final AS (
     SELECT n.*
     FROM normalized n

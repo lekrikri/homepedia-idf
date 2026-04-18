@@ -29,7 +29,10 @@ func GetCommunesAgregat(c *gin.Context) {
 			prix_median_m2, prix_moyen_m2, nb_transactions, surface_moyenne, prix_median_transaction,
 			score_dpe_moyen, conso_energie_moyenne, emission_ges_moyenne, nb_dpe, pct_dpe_bon,
 			nb_poi_total, nb_transport, nb_education, nb_sante,
-			nb_commerce, nb_restauration, nb_parcs, nb_services, nb_bio_bobo
+			nb_commerce, nb_restauration, nb_parcs, nb_services, nb_bio_bobo,
+			conso_elec_par_logement, conso_gaz_par_logement,
+			ips_moyen, pct_ecoles_favorisees, nb_ecoles,
+			score_qualite_vie, score_investissement, score_stabilite
 		FROM communes_agregat
 		WHERE ($1 = '' OR TRIM(code_departement) = $1)
 		ORDER BY nb_transactions DESC NULLS LAST
@@ -53,6 +56,9 @@ func GetCommunesAgregat(c *gin.Context) {
 			&a.ScoreDPEMoyen, &a.ConsoEnergieMoyenne, &a.EmissionGESMoyenne, &a.NbDPE, &a.PctDPEBon,
 			&a.NbPOITotal, &a.NbTransport, &a.NbEducation, &a.NbSante,
 			&a.NbCommerce, &a.NbRestauration, &a.NbParcs, &a.NbServices, &a.NbBioBobo,
+			&a.ConsoElecParLogement, &a.ConsoGazParLogement,
+			&a.IPSMoyen, &a.PctEcolesFavorisees, &a.NbEcoles,
+			&a.ScoreQualiteVie, &a.ScoreInvestissement, &a.ScoreStabilite,
 		); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "scan error: " + err.Error()})
 			return
@@ -80,7 +86,10 @@ func GetCommuneAgregat(c *gin.Context) {
 			prix_median_m2, prix_moyen_m2, nb_transactions, surface_moyenne, prix_median_transaction,
 			score_dpe_moyen, conso_energie_moyenne, emission_ges_moyenne, nb_dpe, pct_dpe_bon,
 			nb_poi_total, nb_transport, nb_education, nb_sante,
-			nb_commerce, nb_restauration, nb_parcs, nb_services, nb_bio_bobo
+			nb_commerce, nb_restauration, nb_parcs, nb_services, nb_bio_bobo,
+			conso_elec_par_logement, conso_gaz_par_logement,
+			ips_moyen, pct_ecoles_favorisees, nb_ecoles,
+			score_qualite_vie, score_investissement, score_stabilite
 		FROM communes_agregat
 		WHERE code_commune = $1
 	`, code).Scan(
@@ -91,6 +100,9 @@ func GetCommuneAgregat(c *gin.Context) {
 		&a.ScoreDPEMoyen, &a.ConsoEnergieMoyenne, &a.EmissionGESMoyenne, &a.NbDPE, &a.PctDPEBon,
 		&a.NbPOITotal, &a.NbTransport, &a.NbEducation, &a.NbSante,
 		&a.NbCommerce, &a.NbRestauration, &a.NbParcs, &a.NbServices, &a.NbBioBobo,
+		&a.ConsoElecParLogement, &a.ConsoGazParLogement,
+		&a.IPSMoyen, &a.PctEcolesFavorisees, &a.NbEcoles,
+		&a.ScoreQualiteVie, &a.ScoreInvestissement, &a.ScoreStabilite,
 	)
 
 	if err != nil {
