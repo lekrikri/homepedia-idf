@@ -112,183 +112,88 @@ function RightPanel({ commune, transactions, agregat }) {
 
   if (!commune) return (
     <aside className="w-80 h-full flex-shrink-0 flex items-center justify-center"
-      style={{ background: "rgba(16,23,34,0.7)", borderLeft: "1px solid rgba(60,131,246,0.1)" }}>
+      style={{ background: "rgba(11,17,27,0.95)", borderLeft: "1px solid rgba(60,131,246,0.12)" }}>
       <div className="text-center p-6">
-        <span className="material-symbols-outlined text-primary/40 mb-3 block" style={{ fontSize: 40 }}>map</span>
-        <p className="text-slate-400 text-sm">Sélectionnez une commune<br/>pour voir ses statistiques</p>
+        <span className="material-symbols-outlined text-primary/30 mb-3 block" style={{ fontSize: 44 }}>map</span>
+        <p className="text-slate-500 text-sm">Sélectionnez une commune<br/>pour voir ses statistiques</p>
       </div>
     </aside>
   );
 
+  // ── IPS helpers ────────────────────────────────────────────────────────────
+  const ipsLabel = agregat?.ips_moyen != null
+    ? agregat.ips_moyen >= 110 ? { text: "Très favorisé", color: "#10b981", bg: "#10b98118" }
+    : agregat.ips_moyen >= 80  ? { text: "Intermédiaire", color: "#f59e0b", bg: "#f59e0b18" }
+    :                            { text: "Défavorisé",    color: "#ef4444", bg: "#ef444418" }
+    : null;
+  const ipsDelta = agregat?.ips_moyen != null ? (agregat.ips_moyen - IPS_NATIONAL_AVG) : null;
+
   return (
     <aside className="w-80 h-full flex-shrink-0 overflow-y-auto"
-      style={{ background: "rgba(16,23,34,0.7)", backdropFilter: "blur(12px)", borderLeft: "1px solid rgba(60,131,246,0.1)" }}>
-      <div className="p-6">
+      style={{ background: "rgba(11,17,27,0.97)", backdropFilter: "blur(16px)", borderLeft: "1px solid rgba(60,131,246,0.12)" }}>
+      <div className="p-5 space-y-3">
 
-        {/* Header */}
-        <header className="mb-6">
-          <h2 className="text-sm font-bold text-primary mb-1">Détail Zone</h2>
-          <h3 className="text-lg font-bold text-slate-100">{commune.nom}</h3>
-          <p className="text-xs text-slate-400">Dept. {commune.departement?.trim()}
-            {agregat?.population_totale ? ` · ${Math.round(agregat.population_totale / 1000)}k hab.` : ""}
-            {agregat?.densite_pop_km2 ? ` · ${Math.round(agregat.densite_pop_km2).toLocaleString()} hab/km²` : ""}
-          </p>
+        {/* ── HEADER ────────────────────────────────────────────────────── */}
+        <header className="pt-1">
+          <div className="flex items-start justify-between mb-1">
+            <div>
+              <h3 className="text-xl font-bold text-slate-100 leading-tight">{commune.nom}</h3>
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                  style={{ background: "rgba(60,131,246,0.15)", color: "#3c83f6", border: "1px solid rgba(60,131,246,0.3)" }}>
+                  {commune.departement?.trim()} — {agregat?.code_departement?.trim() === "75" ? "PARIS" : commune.departement?.trim() === "92" ? "HAUTS-DE-SEINE" : commune.departement?.trim() === "93" ? "SEINE-ST-DENIS" : commune.departement?.trim() === "94" ? "VAL-DE-MARNE" : "IDF"}
+                </span>
+                {agregat?.population_totale && (
+                  <span className="text-[10px] text-slate-500 mono-nums">
+                    {Math.round(agregat.population_totale / 1000)}k hab.
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
         </header>
 
-        {/* Prix médian */}
-        <div className="bg-slate-900/50 p-4 rounded-xl border border-primary/10 mb-4">
-          <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">Prix Médian / m²</p>
-          <div className="text-3xl font-bold mono-nums text-amber-400 mb-1">
-            {prixMedian ? `${prixMedian.toLocaleString()} €` : "— €"}
-          </div>
-          {agregat?.prix_moyen_m2 && (
-            <p className="text-[10px] text-slate-500">
-              Moyen : {Math.round(agregat.prix_moyen_m2).toLocaleString()} €/m²
-              {agregat?.surface_moyenne ? ` · Surface moy. ${Math.round(agregat.surface_moyenne)} m²` : ""}
-            </p>
-          )}
-        </div>
-
-        {/* 2-col grid — Transactions + DPE */}
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <div className="bg-slate-900/50 p-3 rounded-xl border border-primary/10 flex flex-col items-center">
-            <span className="material-symbols-outlined text-primary mb-1" style={{ fontSize: 20 }}>handshake</span>
-            <div className="text-xl font-bold mono-nums text-slate-100">{Number(nbTransactions).toLocaleString()}</div>
-            <p className="text-[10px] text-slate-500 uppercase">Transactions</p>
-          </div>
-          <div className="bg-slate-900/50 p-3 rounded-xl border border-primary/10 flex flex-col items-center">
-            <span className="material-symbols-outlined text-primary mb-1" style={{ fontSize: 20 }}>bolt</span>
-            <div className={`text-xl font-bold mono-nums ${dpeStyle?.text || "text-slate-100"}`}>
-              {dpePrincipal || "—"}
-            </div>
-            <p className="text-[10px] text-slate-500 uppercase">DPE Dominant</p>
-          </div>
-        </div>
-
-        {/* DPE Distribution A→G — graphique barres */}
-        {agregat?.score_dpe_moyen != null && (
-          <div className="bg-slate-900/50 p-3 rounded-xl border border-primary/10 mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-[10px] uppercase tracking-wider text-slate-500">Distribution DPE</p>
-              {dpeMoyenLetter && (
-                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: DPE_COLORS_HEX[dpeMoyenLetter] + "25", color: DPE_COLORS_HEX[dpeMoyenLetter], border: `1px solid ${DPE_COLORS_HEX[dpeMoyenLetter]}50` }}>
-                  Dominant : {dpeMoyenLetter}
-                </span>
-              )}
-            </div>
-            {/* Barres A→G avec hauteur gaussienne centrée sur score_dpe_moyen */}
-            <div className="flex items-end gap-1 h-10 mb-1">
-              {DPE_LETTERS.map((l, i) => {
-                const idx = i + 1; // 1-7
-                const gaussian = Math.exp(-0.5 * Math.pow((idx - agregat.score_dpe_moyen) / 1.3, 2));
-                const isMode = l === dpeMoyenLetter;
-                const barH = Math.max(12, Math.round(40 * gaussian));
-                return (
-                  <div key={l} className="flex-1 flex flex-col items-center gap-0.5">
-                    <div className="w-full rounded-sm" style={{
-                      height: barH,
-                      background: DPE_COLORS_HEX[l],
-                      opacity: isMode ? 1 : 0.35,
-                      boxShadow: isMode ? `0 0 6px ${DPE_COLORS_HEX[l]}80` : "none",
-                      transition: "all .2s",
-                    }} />
-                    <span style={{ fontSize: 8, fontWeight: isMode ? 900 : 400, color: isMode ? DPE_COLORS_HEX[l] : "#475569" }}>{l}</span>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="flex justify-between text-[10px] mt-1 pt-1 border-t border-slate-800">
-              {agregat.pct_dpe_bon != null && (
-                <span className="text-green-400 font-bold">{(agregat.pct_dpe_bon * 100).toFixed(0)} % classés A/B</span>
-              )}
-              <div className="flex gap-3 text-slate-500 ml-auto">
-                {agregat.conso_energie_moyenne && (
-                  <span>{Math.round(agregat.conso_energie_moyenne)} kWh/m²</span>
-                )}
-                {agregat.emission_ges_moyenne && (
-                  <span>{agregat.emission_ges_moyenne.toFixed(1)} kgCO₂</span>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* POI — Équipements */}
-        {agregat?.nb_poi_total > 0 && (
-          <div className="bg-slate-900/50 p-3 rounded-xl border border-primary/10 mb-4">
-            <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Équipements ({Number(agregat.nb_poi_total).toLocaleString()} POI)</p>
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-              {[
-                { icon: "train", label: "Transports", val: agregat.nb_transport },
-                { icon: "school", label: "Éducation",  val: agregat.nb_education },
-                { icon: "local_hospital", label: "Santé",    val: agregat.nb_sante },
-                { icon: "storefront", label: "Commerces", val: agregat.nb_commerce },
-                { icon: "restaurant", label: "Restos",    val: agregat.nb_restauration },
-                { icon: "park", label: "Parcs",     val: agregat.nb_parcs },
-              ].map(({ icon, label, val }) => val > 0 && (
-                <div key={label} className="flex items-center gap-1.5">
-                  <span className="material-symbols-outlined text-primary/70" style={{ fontSize: 13 }}>{icon}</span>
-                  <span className="text-[10px] text-slate-400">{label}</span>
-                  <span className="text-[10px] font-bold text-slate-200 mono-nums ml-auto">{Number(val).toLocaleString()}</span>
-                </div>
-              ))}
-            </div>
-            {agregat.nb_bio_bobo > 0 && (
-              <div className="mt-2 flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-emerald-400/70" style={{ fontSize: 13 }}>eco</span>
-                <span className="text-[10px] text-emerald-400">Gentrification</span>
-                <span className="text-[10px] font-bold text-emerald-300 mono-nums ml-auto">{Number(agregat.nb_bio_bobo)} commerces bio/bobo</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Scores composites HomePedia — avec tooltips interactifs */}
+        {/* ── SCORES COMPOSITES ─────────────────────────────────────────── */}
         {(scoreQV != null || scoreInv != null || scoreStab != null) && (
-          <div className="bg-slate-900/50 p-3 rounded-xl border border-primary/20 mb-4">
-            <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-3">Scores HomePedia</p>
-            <div className="grid grid-cols-3 gap-2">
+          <div className="rounded-xl p-4" style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(60,131,246,0.12)" }}>
+            <p className="text-[9px] uppercase tracking-widest text-slate-500 mb-3 font-semibold">Scores Composites</p>
+            <div className="grid grid-cols-3 gap-1">
               {[
                 { key: "qv",   val: scoreQV,   ...SCORE_DETAILS.qv   },
                 { key: "inv",  val: scoreInv,  ...SCORE_DETAILS.inv  },
                 { key: "stab", val: scoreStab, ...SCORE_DETAILS.stab },
-              ].map(({ key, label, val, color, items }) => val != null && (
-                <div key={key} className="flex flex-col items-center gap-1 relative">
-                  {/* Anneau SVG */}
-                  <div className="relative" style={{ width: 52, height: 52 }}>
-                    <svg className="-rotate-90" width="52" height="52" viewBox="0 0 52 52">
-                      <circle cx="26" cy="26" r="22" fill="transparent" stroke="#1e293b" strokeWidth="4" />
-                      <circle cx="26" cy="26" r="22" fill="transparent" stroke={color} strokeWidth="4"
-                        strokeDasharray="138" strokeDashoffset={Math.round(138 - (val / 100) * 138)}
-                        strokeLinecap="round" />
+              ].map(({ key, label, val, color, items }) => (
+                <div key={key} className="flex flex-col items-center gap-1.5 relative">
+                  <div className="relative" style={{ width: 58, height: 58 }}>
+                    <svg className="-rotate-90" width="58" height="58" viewBox="0 0 58 58">
+                      <circle cx="29" cy="29" r="24" fill="transparent" stroke="rgba(30,41,59,0.8)" strokeWidth="5" />
+                      {val != null && <circle cx="29" cy="29" r="24" fill="transparent" stroke={color} strokeWidth="5"
+                        strokeDasharray="150.8" strokeDashoffset={Math.round(150.8 - (val / 100) * 150.8)}
+                        strokeLinecap="round" />}
                     </svg>
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-sm font-black mono-nums text-slate-100">{val}</span>
+                      <span className="text-base font-black mono-nums" style={{ color: val != null ? "white" : "#475569" }}>
+                        {val ?? "—"}
+                      </span>
                     </div>
-                    {/* Bouton ℹ️ */}
-                    <button
-                      onClick={() => setActiveScoreTip(activeScoreTip === key ? null : key)}
-                      className="absolute -top-1 -right-1 size-4 rounded-full flex items-center justify-center transition-colors"
-                      style={{ background: activeScoreTip === key ? color : "rgba(30,41,59,0.9)", border: `1px solid ${color}60` }}>
+                    <button onClick={() => setActiveScoreTip(activeScoreTip === key ? null : key)}
+                      className="absolute -top-0.5 -right-0.5 size-4 rounded-full flex items-center justify-center"
+                      style={{ background: activeScoreTip === key ? color : "#0f1724", border: `1px solid ${color}60` }}>
                       <span className="material-symbols-outlined" style={{ fontSize: 9, color: activeScoreTip === key ? "white" : color }}>info</span>
                     </button>
                   </div>
-                  <p className="text-[9px] text-center text-slate-400 leading-tight">{label}</p>
-
-                  {/* Tooltip détail composition */}
+                  <p className="text-[9px] text-center leading-tight" style={{ color: "#64748b" }}>{label}</p>
                   {activeScoreTip === key && (
-                    <div className="absolute top-full mt-1 left-1/2 -translate-x-1/2 z-50 w-52 rounded-xl p-3 shadow-2xl"
-                      style={{ background: "#0f1724", border: `1px solid ${color}40` }}>
+                    <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 z-50 w-52 rounded-xl p-3 shadow-2xl"
+                      style={{ background: "#0a1120", border: `1px solid ${color}50` }}>
                       <p className="text-[10px] font-bold mb-2" style={{ color }}>{label}</p>
-                      <div className="space-y-1">
-                        {items.map(({ pct, desc }) => (
-                          <div key={desc} className="flex items-start gap-2">
-                            <span className="text-[9px] font-bold shrink-0 mono-nums" style={{ color }}>{pct}</span>
-                            <span className="text-[9px] text-slate-400 leading-snug">{desc}</span>
-                          </div>
-                        ))}
-                      </div>
-                      <p className="text-[8px] text-slate-600 mt-2 pt-1.5 border-t border-slate-800">Score percentile 0-100 · données IDF</p>
+                      {items.map(({ pct, desc }) => (
+                        <div key={desc} className="flex items-start gap-2 mb-1">
+                          <span className="text-[9px] font-bold shrink-0 mono-nums" style={{ color }}>{pct}</span>
+                          <span className="text-[9px] text-slate-400">{desc}</span>
+                        </div>
+                      ))}
+                      <p className="text-[8px] text-slate-600 mt-2 pt-1.5 border-t border-slate-800/50">Percentile IDF · 0-100</p>
                     </div>
                   )}
                 </div>
@@ -297,87 +202,161 @@ function RightPanel({ commune, transactions, agregat }) {
           </div>
         )}
 
-        {/* IPS Écoles — badge coloré + delta nationale */}
+        {/* ── MARCHÉ IMMOBILIER ─────────────────────────────────────────── */}
+        <div className="rounded-xl p-4" style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(60,131,246,0.12)" }}>
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-[10px]">€</span>
+            <p className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold">Marché Immobilier</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3 mb-2">
+            <div>
+              <p className="text-[9px] text-slate-500 uppercase tracking-wide mb-0.5">Médian / m²</p>
+              <p className="text-2xl font-black mono-nums text-primary">{prixMedian ? `${prixMedian.toLocaleString()} €` : "—"}</p>
+            </div>
+            {agregat?.prix_moyen_m2 && (
+              <div>
+                <p className="text-[9px] text-slate-500 uppercase tracking-wide mb-0.5">Moyen / m²</p>
+                <p className="text-2xl font-black mono-nums text-slate-200">{Math.round(agregat.prix_moyen_m2).toLocaleString()} €</p>
+              </div>
+            )}
+          </div>
+          {nbTransactions && (
+            <div className="flex items-center justify-between pt-2 border-t border-slate-800/60">
+              <span className="text-[10px] text-slate-500">Volume de transactions</span>
+              <span className="text-[11px] font-bold mono-nums text-primary">{Number(nbTransactions).toLocaleString()}</span>
+            </div>
+          )}
+        </div>
+
+        {/* ── ÉDUCATION & IPS ──────────────────────────────────────────── */}
         {agregat?.ips_moyen != null && (
-          <div className="bg-slate-900/50 p-3 rounded-xl border border-primary/10 mb-4">
-            <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Environnement Scolaire</p>
-            {/* Badge + valeur */}
-            <div className="flex items-center justify-between mb-2">
-              {(() => {
-                const ips = agregat.ips_moyen;
-                const [badge, badgeColor, badgeBg] = ips >= 110
-                  ? ["Très favorisé",    "#10b981", "#10b98118"]
-                  : ips >= 80
-                    ? ["Intermédiaire",  "#f59e0b", "#f59e0b18"]
-                    : ["Défavorisé",     "#ef4444", "#ef444418"];
-                const delta = ips - IPS_NATIONAL_AVG;
-                return (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg font-black mono-nums" style={{ color: badgeColor }}>{ips.toFixed(0)}</span>
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: badgeColor, background: badgeBg, border: `1px solid ${badgeColor}40` }}>{badge}</span>
-                    </div>
-                    <span className="text-[10px] font-bold mono-nums" style={{ color: delta >= 0 ? "#10b981" : "#ef4444" }}>
-                      {delta >= 0 ? "+" : ""}{delta.toFixed(0)} vs nationale
-                    </span>
-                  </>
-                );
-              })()}
+          <div className="rounded-xl p-4" style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(60,131,246,0.12)" }}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-emerald-400" style={{ fontSize: 13 }}>school</span>
+                <p className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold">Éducation & IPS</p>
+              </div>
+              {ipsLabel && (
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full"
+                  style={{ color: ipsLabel.color, background: ipsLabel.bg, border: `1px solid ${ipsLabel.color}40` }}>
+                  {ipsLabel.text}
+                </span>
+              )}
             </div>
-            {/* Barre de progression calibrée 60-160 */}
-            <div className="relative w-full h-2 rounded-full bg-slate-800 mb-2">
-              <div className="absolute left-0 top-0 h-full rounded-full" style={{
-                width: `${Math.min(100, Math.max(0, ((agregat.ips_moyen - 60) / 100) * 100))}%`,
-                background: agregat.ips_moyen >= 110 ? "#10b981" : agregat.ips_moyen >= 80 ? "#f59e0b" : "#ef4444",
-              }} />
-              {/* Repère moyenne nationale */}
-              <div className="absolute top-0 h-full w-px bg-slate-400/60" style={{ left: `${((IPS_NATIONAL_AVG - 60) / 100) * 100}%` }} />
+            {/* Valeur + contexte */}
+            <p className="text-[11px] font-semibold text-slate-300 mb-1">
+              IPS {agregat.ips_moyen.toFixed(1)} — {ipsDelta >= 0 ? "Au-dessus" : "En dessous"} de la moyenne nationale (100)
+            </p>
+            {agregat.nb_ecoles > 0 && (
+              <p className="text-[9px] text-slate-500 mb-2">Basé sur {agregat.nb_ecoles} établissements scolaires</p>
+            )}
+            {/* Barre gradient rouge→vert avec curseur */}
+            <div className="relative w-full h-2.5 rounded-full mb-1" style={{ background: "linear-gradient(to right, #ef4444, #f59e0b 40%, #10b981 75%)" }}>
+              <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white shadow-lg border-2 border-slate-900"
+                style={{ left: `${Math.min(98, Math.max(2, ((agregat.ips_moyen - 60) / 100) * 100))}%`, transform: "translate(-50%, -50%)" }} />
             </div>
-            <div className="flex justify-between text-[9px] text-slate-600 mb-2">
-              <span>Défavorisé (&lt;80)</span><span>Moy. nat. (100)</span><span>Favorisé (&gt;110)</span>
+            <div className="flex justify-between text-[8px] text-slate-600 mb-3">
+              <span>60</span><span>Moy. nat. 100</span><span>160</span>
             </div>
-            {/* Stats écoles */}
-            <div className="flex justify-between text-[10px]">
+            {/* Stats */}
+            <div className="grid grid-cols-2 gap-2">
               {agregat.pct_ecoles_favorisees != null && (
-                <span className="text-slate-400">{agregat.pct_ecoles_favorisees.toFixed(0)} % d'écoles favorisées</span>
+                <div>
+                  <p className="text-[9px] text-slate-500 mb-0.5">Écoles favorisées</p>
+                  <p className="text-base font-bold mono-nums text-slate-100">{agregat.pct_ecoles_favorisees.toFixed(1)}%</p>
+                </div>
               )}
               {agregat.nb_ecoles > 0 && (
-                <span className="text-slate-600">{agregat.nb_ecoles} étab.</span>
+                <div>
+                  <p className="text-[9px] text-slate-500 mb-0.5">Établissements</p>
+                  <p className="text-base font-bold mono-nums text-slate-100">{agregat.nb_ecoles} écoles</p>
+                </div>
               )}
             </div>
           </div>
         )}
 
-        {/* Énergie ENEDIS/GRDF — avec benchmark IDF */}
+        {/* ── DIAGNOSTIC DE PERFORMANCE ÉNERGÉTIQUE ────────────────────── */}
+        {agregat?.score_dpe_moyen != null && (
+          <div className="rounded-xl p-4" style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(60,131,246,0.12)" }}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-amber-400" style={{ fontSize: 13 }}>bolt</span>
+                <p className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold">Diagnostic Perf. Énergétique</p>
+              </div>
+              {dpeMoyenLetter && (
+                <span className="text-[9px] font-black px-2 py-0.5 rounded"
+                  style={{ background: DPE_COLORS_HEX[dpeMoyenLetter] + "30", color: DPE_COLORS_HEX[dpeMoyenLetter], border: `1px solid ${DPE_COLORS_HEX[dpeMoyenLetter]}60` }}>
+                  Classe {dpeMoyenLetter}
+                </span>
+              )}
+            </div>
+            {/* Barre continue A→G — style Stitch */}
+            <div className="flex rounded-lg overflow-hidden h-7 mb-1">
+              {DPE_LETTERS.map((l, i) => {
+                const idx = i + 1;
+                const isActive = l === dpeMoyenLetter;
+                return (
+                  <div key={l} className="flex-1 flex items-center justify-center relative"
+                    style={{ background: DPE_COLORS_HEX[l], opacity: isActive ? 1 : 0.25, transition: "opacity .2s" }}>
+                    <span style={{ fontSize: isActive ? 11 : 9, fontWeight: isActive ? 900 : 400, color: "white", textShadow: "0 1px 2px rgba(0,0,0,0.5)" }}>{l}</span>
+                    {isActive && <div className="absolute -bottom-0 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-white" />}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex justify-between text-[8px] text-slate-600 mb-3">
+              <span>Excellent</span><span>Énergivore</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {agregat.conso_energie_moyenne && (
+                <div>
+                  <p className="text-[9px] text-slate-500 mb-0.5">Conso. énergie primaire</p>
+                  <p className="text-[13px] font-bold mono-nums text-slate-200">{Math.round(agregat.conso_energie_moyenne)} <span className="text-[9px] font-normal text-slate-500">kWh/m²/an</span></p>
+                </div>
+              )}
+              {agregat.emission_ges_moyenne && (
+                <div>
+                  <p className="text-[9px] text-slate-500 mb-0.5">Émissions GES</p>
+                  <p className="text-[13px] font-bold mono-nums text-slate-200">{Math.round(agregat.emission_ges_moyenne)} <span className="text-[9px] font-normal text-slate-500">kgCO₂/m²/an</span></p>
+                </div>
+              )}
+              {agregat.pct_dpe_bon != null && (
+                <div>
+                  <p className="text-[9px] text-slate-500 mb-0.5">Logements A/B/C</p>
+                  <p className="text-[13px] font-bold mono-nums text-green-400">{(agregat.pct_dpe_bon * 100).toFixed(1)}% <span className="text-[9px] font-normal text-slate-500">bon DPE</span></p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── CONSOMMATION ÉNERGÉTIQUE ENEDIS/GRDF ─────────────────────── */}
         {(agregat?.conso_elec_par_logement != null || agregat?.conso_gaz_par_logement != null) && (
-          <div className="bg-slate-900/50 p-3 rounded-xl border border-primary/10 mb-4">
-            <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-2">Conso Énergie / Logement</p>
+          <div className="rounded-xl p-4" style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(60,131,246,0.12)" }}>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="material-symbols-outlined text-blue-400" style={{ fontSize: 13 }}>electric_bolt</span>
+              <p className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold">Consommation Énergétique</p>
+            </div>
             {/* Électricité */}
             {agregat.conso_elec_par_logement != null && (() => {
               const val = agregat.conso_elec_par_logement;
               const diff = val - IDF_AVG_ELEC_MWH;
               const pct = Math.round((diff / IDF_AVG_ELEC_MWH) * 100);
-              const isHigh = diff > 0;
               return (
-                <div className="mb-2">
+                <div className="mb-3">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-slate-400 text-[11px] flex items-center gap-1">
-                      <span className="material-symbols-outlined text-yellow-400" style={{ fontSize: 11 }}>bolt</span>Électricité
+                    <span className="text-[10px] text-slate-400">Électricité</span>
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full mono-nums"
+                      style={{ background: diff > 0 ? "#ef444420" : "#10b98120", color: diff > 0 ? "#ef4444" : "#10b981", border: `1px solid ${diff > 0 ? "#ef444440" : "#10b98140"}` }}>
+                      {diff > 0 ? "+" : ""}{pct}% vs IDF
                     </span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-slate-200 mono-nums text-[11px] font-bold">{val.toFixed(1)} MWh</span>
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full mono-nums"
-                        style={{ background: isHigh ? "#ef444420" : "#10b98120", color: isHigh ? "#ef4444" : "#10b981", border: `1px solid ${isHigh ? "#ef444440" : "#10b98140"}` }}>
-                        {isHigh ? "+" : ""}{pct}% vs IDF
-                      </span>
-                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 h-1 rounded-full bg-slate-800">
-                      <div className="h-full rounded-full bg-yellow-400/70" style={{ width: `${Math.min(100, (val / (IDF_AVG_ELEC_MWH * 2)) * 100)}%` }} />
-                    </div>
-                    <span className="text-[9px] text-slate-600 mono-nums">moy. {IDF_AVG_ELEC_MWH}</span>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-xl font-black mono-nums text-slate-100">{val.toFixed(2)}</span>
+                    <span className="text-[10px] text-slate-500">MWh/log</span>
                   </div>
+                  <p className="text-[9px] text-slate-600 mt-0.5">vs moy. IDF : {IDF_AVG_ELEC_MWH} MWh</p>
                 </div>
               );
             })()}
@@ -386,38 +365,67 @@ function RightPanel({ commune, transactions, agregat }) {
               const val = agregat.conso_gaz_par_logement;
               const diff = val - IDF_AVG_GAZ_MWH;
               const pct = Math.round((diff / IDF_AVG_GAZ_MWH) * 100);
-              const isHigh = diff > 0;
               return (
-                <div>
+                <div className="pt-3 border-t border-slate-800/60">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-slate-400 text-[11px] flex items-center gap-1">
-                      <span className="material-symbols-outlined text-orange-400" style={{ fontSize: 11 }}>local_fire_department</span>Gaz
+                    <span className="text-[10px] text-slate-400">Gaz</span>
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full mono-nums"
+                      style={{ background: diff > 0 ? "#ef444420" : "#10b98120", color: diff > 0 ? "#ef4444" : "#10b981", border: `1px solid ${diff > 0 ? "#ef444440" : "#10b98140"}` }}>
+                      {diff > 0 ? "+" : ""}{pct}% vs IDF
                     </span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-slate-200 mono-nums text-[11px] font-bold">{val.toFixed(1)} MWh</span>
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full mono-nums"
-                        style={{ background: isHigh ? "#ef444420" : "#10b98120", color: isHigh ? "#ef4444" : "#10b981", border: `1px solid ${isHigh ? "#ef444440" : "#10b98140"}` }}>
-                        {isHigh ? "+" : ""}{pct}% vs IDF
-                      </span>
-                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 h-1 rounded-full bg-slate-800">
-                      <div className="h-full rounded-full bg-orange-400/70" style={{ width: `${Math.min(100, (val / (IDF_AVG_GAZ_MWH * 2)) * 100)}%` }} />
-                    </div>
-                    <span className="text-[9px] text-slate-600 mono-nums">moy. {IDF_AVG_GAZ_MWH}</span>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-xl font-black mono-nums text-slate-100">{val.toFixed(2)}</span>
+                    <span className="text-[10px] text-slate-500">MWh/log</span>
                   </div>
+                  <p className="text-[9px] text-slate-600 mt-0.5">vs moy. IDF : {IDF_AVG_GAZ_MWH} MWh</p>
                 </div>
               );
             })()}
           </div>
         )}
 
-        {/* Dernières ventes */}
-        <div>
-          <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Dernières ventes</h4>
+        {/* ── ÉQUIPEMENTS & SERVICES (chips) ────────────────────────────── */}
+        {agregat?.nb_poi_total > 0 && (
+          <div className="rounded-xl p-4" style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(60,131,246,0.12)" }}>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="material-symbols-outlined text-primary/70" style={{ fontSize: 13 }}>location_on</span>
+              <p className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold">Équipements & Services</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { icon: "train",          label: "Transport", val: agregat.nb_transport,    color: "#3c83f6" },
+                { icon: "school",         label: "Éducation", val: agregat.nb_education,    color: "#10b981" },
+                { icon: "local_hospital", label: "Santé",     val: agregat.nb_sante,        color: "#ef4444" },
+                { icon: "storefront",     label: "Commerce",  val: agregat.nb_commerce,     color: "#f59e0b" },
+                { icon: "restaurant",     label: "Restos",    val: agregat.nb_restauration, color: "#a78bfa" },
+                { icon: "park",           label: "Parcs",     val: agregat.nb_parcs,        color: "#34d399" },
+              ].filter(x => x.val > 0).map(({ icon, label, val, color }) => (
+                <div key={label} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
+                  style={{ background: color + "18", border: `1px solid ${color}30` }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 12, color }}>{icon}</span>
+                  <span className="text-[10px] font-bold mono-nums" style={{ color }}>{Number(val).toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+            {agregat.nb_bio_bobo > 0 && (
+              <div className="mt-2 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg w-fit"
+                style={{ background: "#10b98118", border: "1px solid #10b98130" }}>
+                <span className="material-symbols-outlined text-emerald-400" style={{ fontSize: 12 }}>eco</span>
+                <span className="text-[10px] text-emerald-400 font-bold">{agregat.nb_bio_bobo} bio/bobo</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── DERNIÈRES VENTES ──────────────────────────────────────────── */}
+        <div className="rounded-xl p-4" style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(60,131,246,0.12)" }}>
+          <div className="flex items-center gap-2 mb-3">
+            <span className="material-symbols-outlined text-primary/70" style={{ fontSize: 13 }}>receipt_long</span>
+            <p className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold">Dernières Ventes</p>
+          </div>
           {lastSales.length === 0
-            ? <p className="text-xs text-slate-600 text-center py-2">Aucune transaction</p>
+            ? <p className="text-[11px] text-slate-600 text-center py-2">Aucune transaction disponible</p>
             : <div className="space-y-2">
               {lastSales.map((t, i) => {
                 const prix = t.valeur_fonciere
@@ -425,16 +433,22 @@ function RightPanel({ commune, transactions, agregat }) {
                     ? `${(t.valeur_fonciere / 1e6).toFixed(2)}M€`
                     : `${(t.valeur_fonciere / 1000).toFixed(0)}k€`
                   : "—";
+                const ppm = t.valeur_fonciere && t.surface_reelle_bati
+                  ? `${Math.round(t.valeur_fonciere / t.surface_reelle_bati).toLocaleString()} €/m²` : null;
+                const dpeColor = t.classe_energie ? DPE_COLORS_HEX[t.classe_energie] : null;
                 return (
-                  <div key={t.id} className="flex items-center gap-3 p-2 rounded-lg"
-                    style={{ border: "1px solid rgba(60,131,246,0.08)" }}>
-                    <div className={`size-1.5 rounded-full shrink-0 ${i === 0 ? "bg-primary" : "bg-slate-600"}`} />
-                    <div className="flex-1 min-w-0 flex items-center justify-between gap-1">
-                      <span className="text-[11px] text-slate-300 truncate">
-                        {t.type_local || "Bien"} · {t.surface_reelle_bati?.toFixed(0) ?? "?"}m²
-                      </span>
-                      <span className="text-[11px] font-bold text-primary mono-nums shrink-0">{prix}</span>
+                  <div key={t.id} className="flex items-center justify-between p-2.5 rounded-lg"
+                    style={{ background: i === 0 ? "rgba(60,131,246,0.07)" : "rgba(15,23,36,0.5)", border: `1px solid ${i === 0 ? "rgba(60,131,246,0.2)" : "rgba(30,41,59,0.5)"}` }}>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="text-[10px] text-slate-400">{t.type_local || "Bien"} · {t.surface_reelle_bati?.toFixed(0) ?? "?"}m²</span>
+                        {dpeColor && (
+                          <span className="text-[8px] font-black px-1 rounded" style={{ background: dpeColor + "25", color: dpeColor }}>{t.classe_energie}</span>
+                        )}
+                      </div>
+                      {ppm && <p className="text-[9px] text-slate-600 mono-nums">{ppm}</p>}
                     </div>
+                    <span className="text-[12px] font-black mono-nums ml-2" style={{ color: i === 0 ? "#3c83f6" : "#94a3b8" }}>{prix}</span>
                   </div>
                 );
               })}
@@ -442,6 +456,16 @@ function RightPanel({ commune, transactions, agregat }) {
           }
         </div>
 
+        {/* ── CTA — Voir transactions ───────────────────────────────────── */}
+        <button
+          onClick={() => {/* navigate to transactions with commune filter */}}
+          className="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all hover:brightness-110"
+          style={{ background: "linear-gradient(135deg, #2563eb, #3c83f6)", color: "white" }}>
+          Voir les transactions
+          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>arrow_forward</span>
+        </button>
+
+        <div className="h-2" />
       </div>
     </aside>
   );
