@@ -213,7 +213,7 @@ export default function Dashboard() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             {[
               { label: "Volume total marché", value: fmt(stats?.total_volume), trend: yoy ? `${parseFloat(yoy)>=0?"+":""}${yoy}%` : null, up: yoy ? parseFloat(yoy)>=0 : true },
-              { label: "Transactions DVF", value: stats?.nb_transactions?.toLocaleString() || "—", sub: "2019 – 2024" },
+              { label: "Transactions DVF", value: stats?.nb_transactions?.toLocaleString() || "—", sub: "2020 – 2025" },
               { label: "Prix moyen / m²", value: stats?.avg_prix_m2 ? `${Math.round(stats.avg_prix_m2).toLocaleString()} €` : "—" },
               { label: "Type dominant", value: stats?.by_type?.[0]?.type_local || "—", amber: true, sub: `${stats?.by_type?.[0]?.count?.toLocaleString() || "—"} ventes` },
             ].map(k => (
@@ -330,7 +330,7 @@ export default function Dashboard() {
 
             {/* Légende */}
             <div className="border-t border-slate-800 px-5 py-3 flex gap-6 text-xs text-slate-500">
-              <span>Prix médian au m² par département (transactions DVF 2019-2024)</span>
+              <span>Prix médian au m² par département (transactions DVF 2020-2025)</span>
               <span className="ml-auto flex items-center gap-1.5">
                 <span className="w-3 h-3 rounded bg-amber-400/50"></span>Paris
                 <span className="w-3 h-3 rounded bg-primary/50 ml-2"></span>Autres dépts
@@ -569,7 +569,7 @@ export default function Dashboard() {
             Pipeline : Azure ADLS → DBT + BigQuery → Supabase → API Go
           </span>
           <span className="ml-auto">
-            Données 2019–2024 · IDF uniquement
+            Données 2020–2025 · IDF uniquement
           </span>
         </div>
 

@@ -7,6 +7,7 @@ const NAV = [
   { to: "/carte",        label: "Carte" },
   { to: "/transactions", label: "Transactions" },
   { to: "/dashboard",    label: "Dashboard" },
+  { to: "/pipeline",     label: "Pipeline" },
 ];
 
 function getInitials(user) {

@@ -385,6 +385,57 @@ function RightPanel({ commune, transactions, agregat }) {
           </div>
         )}
 
+        {/* ── SÉCURITÉ & DÉLINQUANCE ───────────────────────────────────── */}
+        {agregat?.score_securite != null && (() => {
+          const s = Math.round(agregat.score_securite);
+          const badge = s >= 65 ? { text: "Sûr",       color: "#10b981" }
+                      : s >= 40 ? { text: "Modéré",    color: "#f59e0b" }
+                      :           { text: "Vigilance",  color: "#ef4444" };
+          return (
+            <div className="rounded-xl p-4" style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(60,131,246,0.12)" }}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined" style={{ fontSize: 13, color: badge.color }}>shield</span>
+                  <p className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold">Sécurité</p>
+                </div>
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full"
+                  style={{ color: badge.color, background: badge.color + "18", border: `1px solid ${badge.color}40` }}>
+                  {badge.text}
+                </span>
+              </div>
+              {/* Barre de score */}
+              <div className="flex items-center gap-3 mb-3">
+                <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: "rgba(30,41,59,0.8)" }}>
+                  <div className="h-full rounded-full" style={{ width: `${s}%`, background: badge.color, transition: "width .4s ease" }} />
+                </div>
+                <span className="text-xl font-black mono-nums" style={{ color: badge.color, minWidth: 36, textAlign: "right" }}>{s}</span>
+              </div>
+              {/* Taux détaillés */}
+              <div className="grid grid-cols-2 gap-2">
+                {agregat.taux_cambriolages != null && (
+                  <div>
+                    <p className="text-[9px] text-slate-500 mb-0.5">Cambriolages</p>
+                    <p className="text-[13px] font-bold mono-nums text-slate-200">
+                      {agregat.taux_cambriolages.toFixed(1)}
+                      <span className="text-[9px] font-normal text-slate-500"> ‰ log.</span>
+                    </p>
+                  </div>
+                )}
+                {agregat.taux_vols_violence != null && (
+                  <div>
+                    <p className="text-[9px] text-slate-500 mb-0.5">Coups & blessures</p>
+                    <p className="text-[13px] font-bold mono-nums text-slate-200">
+                      {agregat.taux_vols_violence.toFixed(1)}
+                      <span className="text-[9px] font-normal text-slate-500"> ‰ hab.</span>
+                    </p>
+                  </div>
+                )}
+              </div>
+              <p className="text-[8px] text-slate-600 mt-2">Source SSMSI · données département · 100 = très sûr</p>
+            </div>
+          );
+        })()}
+
         {/* ── ÉQUIPEMENTS & SERVICES (chips) ────────────────────────────── */}
         {agregat?.nb_poi_total > 0 && (
           <div className="rounded-xl p-4" style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(60,131,246,0.12)" }}>
@@ -566,9 +617,9 @@ function LeftSidebar({ communes, transactions, selectedCommune, onSelectCommune,
           <div className="space-y-2">
             <div className="flex justify-between text-[10px]">
               <span className="text-slate-400">Année de vente</span>
-              <span className="text-primary mono-nums">2019 – {anneeMax}</span>
+              <span className="text-primary mono-nums">{ANNEE_MIN} – {anneeMax}</span>
             </div>
-            <input type="range" min="2019" max="2024" value={anneeMax}
+            <input type="range" min={ANNEE_MIN} max={ANNEE_MAX} value={anneeMax}
               onChange={e => onAnneeChange(Number(e.target.value))}
               className="w-full h-1 bg-slate-700 rounded-lg accent-primary cursor-pointer" />
           </div>
@@ -631,14 +682,16 @@ function LeftSidebar({ communes, transactions, selectedCommune, onSelectCommune,
 }
 
 // ─── Main ──────────────────────────────────────────────────────────────────────
-const ANNEE_MIN = 2019;
-const ANNEE_MAX = 2024;
+const ANNEE_MIN = 2020;
+const ANNEE_MAX = 2025;
 const TYPES_ALL = ["Appartement", "Maison"];
 
 export default function MapView() {
   const mapContainer = useRef(null);
   const map = useRef(null);
   const markersRef = useRef([]);
+  const popupsRef = useRef([]);
+  const markerClickedRef = useRef(false);
   const highlightMarkerRef = useRef(null);
   const mapClickHandlerRef = useRef(null);
   const allCommunesRef = useRef([]);       // ref stable → accessible dans les handlers map
@@ -689,22 +742,26 @@ export default function MapView() {
       .catch(() => setAgregat(null));
   }, []);
 
-  const loadTransactions = useCallback((commune, types, maxAnnee) => {
+  const loadTransactions = useCallback((commune, types, maxAnnee, fly = true) => {
     if (!commune) return;
     const typeParam = types.size === 1 ? `&type_local=${[...types][0]}` : "";
     const anneeParam = maxAnnee < ANNEE_MAX ? `&annee=${maxAnnee}` : "";
     axios.get(`/api/v1/transactions?commune=${commune.code_insee}&limit=100${typeParam}${anneeParam}`).then(r => {
       const data = r.data.data || [];
       setTransactions(data);
+      popupsRef.current.forEach(p => p.remove());
+      popupsRef.current = [];
       markersRef.current.forEach(m => m.remove());
       markersRef.current = [];
 
-      // FlyTo : centroïde calculé depuis les coordonnées des transactions
-      const withCoords = data.filter(t => t.longitude && t.latitude);
-      if (withCoords.length && map.current) {
-        const avgLon = withCoords.reduce((s, t) => s + t.longitude, 0) / withCoords.length;
-        const avgLat = withCoords.reduce((s, t) => s + t.latitude, 0) / withCoords.length;
-        map.current.flyTo({ center: [avgLon, avgLat], zoom: 13, duration: 900 });
+      // FlyTo seulement lors d'un changement de commune, pas lors d'un filtre
+      if (fly) {
+        const withCoords = data.filter(t => t.longitude && t.latitude);
+        if (withCoords.length && map.current) {
+          const avgLon = withCoords.reduce((s, t) => s + t.longitude, 0) / withCoords.length;
+          const avgLat = withCoords.reduce((s, t) => s + t.latitude, 0) / withCoords.length;
+          map.current.flyTo({ center: [avgLon, avgLat], zoom: 13, duration: 900 });
+        }
       }
 
       data.forEach(t => {
@@ -715,8 +772,8 @@ export default function MapView() {
         el.addEventListener("mouseleave", () => { el.style.transform = "scale(1)"; });
         const dpeColors = { A:"#22c55e",B:"#4ade80",C:"#facc15",D:"#fb923c",E:"#f97316",F:"#ef4444",G:"#dc2626" };
         const prixM2Popup = t.valeur_fonciere && t.surface_reelle_bati ? Math.round(t.valeur_fonciere / t.surface_reelle_bati) : null;
-        const popup = new maplibregl.Popup({ offset: 16, closeButton: false, maxWidth: "220px" })
-          .setHTML(`<div style="font-family:Inter,sans-serif;min-width:180px">
+        const popup = new maplibregl.Popup({ offset: 16, closeButton: true, maxWidth: "240px", closeOnClick: false })
+          .setHTML(`<div style="font-family:Inter,sans-serif;min-width:180px;padding:4px 2px">
             <div style="font-size:10px;color:#64748b;margin-bottom:6px;display:flex;align-items:center;gap:4px">
               <svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#3c83f6" opacity="0.4"/><circle cx="5" cy="5" r="2" fill="#3c83f6"/></svg>
               ${[t.adresse_numero, t.adresse].filter(Boolean).join(" ") || "—"}
@@ -731,7 +788,19 @@ export default function MapView() {
             </div>
             ${prixM2Popup ? `<div style="font-size:10px;color:#475569;margin-top:4px">€${prixM2Popup.toLocaleString()}/m²</div>` : ""}
           </div>`);
-        markersRef.current.push(new maplibregl.Marker(el).setLngLat([t.longitude, t.latitude]).setPopup(popup).addTo(map.current));
+        // Gérer le popup manuellement — verrou pour empêcher le handler de commune de réagir
+        el.addEventListener("click", e => {
+          e.stopPropagation();
+          markerClickedRef.current = true;
+          setTimeout(() => { markerClickedRef.current = false; }, 100);
+          if (popup.isOpen()) {
+            popup.remove();
+          } else {
+            popup.setLngLat([t.longitude, t.latitude]).addTo(map.current);
+          }
+        });
+        popupsRef.current.push(popup);
+        markersRef.current.push(new maplibregl.Marker(el).setLngLat([t.longitude, t.latitude]).addTo(map.current));
       });
     }).catch(() => {});
   }, []);
@@ -752,20 +821,20 @@ export default function MapView() {
       const next = new Set(prev);
       if (next.has(type)) { if (next.size > 1) next.delete(type); }
       else next.add(type);
-      loadTransactions(selectedCommune, next, anneeMax);
+      loadTransactions(selectedCommune, next, anneeMax, false);
       return next;
     });
   };
 
   const handleAnneeChange = (val) => {
     setAnneeMax(val);
-    loadTransactions(selectedCommune, activeTypes, val);
+    loadTransactions(selectedCommune, activeTypes, val, false);
   };
 
   const handleReset = () => {
     setActiveTypes(new Set(TYPES_ALL));
     setAnneeMax(ANNEE_MAX);
-    loadTransactions(selectedCommune, new Set(TYPES_ALL), ANNEE_MAX);
+    loadTransactions(selectedCommune, new Set(TYPES_ALL), ANNEE_MAX, false);
   };
 
   const handleResetToIDF = useCallback(() => {
@@ -935,7 +1004,8 @@ export default function MapView() {
         // Click sur le layer GeoJSON → sélection directe (plus rapide, sans géocodage)
         map.current.on("click", "communes-fill", (e) => {
           if (!e.features?.length) return;
-          e.originalEvent._communeHandled = true; // évite double-traitement dans le handler générique
+          if (markerClickedRef.current) return; // clic sur marqueur, ignorer
+          e.originalEvent._communeHandled = true;
           const { code, nom } = e.features[0].properties;
           const found = allCommunesRef.current.find(c => c.code_insee === code)
             || allCommunesRef.current.find(c => c.nom.toLowerCase() === nom.toLowerCase());
@@ -960,8 +1030,9 @@ export default function MapView() {
     }
 
     mapClickHandlerRef.current = async (e) => {
-      // Ignorer si déjà traité par le layer GeoJSON ou un marqueur
+      // Ignorer si déjà traité par le layer GeoJSON ou un marqueur de transaction
       if (e.originalEvent?._communeHandled) return;
+      if (markerClickedRef.current) return;
       if (e.originalEvent?.target?.closest?.(".maplibregl-marker, .maplibregl-popup")) return;
 
       const { lng, lat } = e.lngLat;
@@ -1044,6 +1115,7 @@ export default function MapView() {
           <CesiumView3D
             selectedCommune={selectedCommune}
             transactions={transactions}
+            agregat={agregat}
             initCenter={cesiumInitCenter}
             flyTarget={cesiumFlyTarget}
           />
@@ -1145,7 +1217,7 @@ export default function MapView() {
         <div className="absolute bottom-0 left-0 right-0 h-8 border-t border-primary/20 flex items-center justify-between px-4 z-10"
           style={{ background: "rgba(16,23,34,0.95)", backdropFilter: "blur(8px)" }}>
           <div className="flex items-center gap-4">
-            <span className="text-[10px] text-slate-500 mono-nums">Données DVF 2019–2024</span>
+            <span className="text-[10px] text-slate-500 mono-nums">Données DVF {ANNEE_MIN}–{ANNEE_MAX}</span>
             <span className="h-3 w-px bg-slate-700" />
             <span className="text-[10px] text-slate-500 mono-nums">{transactions.length} transactions chargées</span>
           </div>

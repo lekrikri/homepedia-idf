@@ -71,6 +71,9 @@ func main() {
 
 		// Stats agrégées
 		v1.GET("/stats", handlers.GetStats)
+
+		// Pipeline monitoring
+		v1.GET("/pipeline/runs", handlers.ListPipelineRuns)
 	}
 
 	port := os.Getenv("PORT")

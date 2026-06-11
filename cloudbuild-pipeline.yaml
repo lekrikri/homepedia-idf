@@ -1,0 +1,11 @@
+steps:
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - build
+      - "-f"
+      - "ingestion/Dockerfile.pipeline"
+      - "-t"
+      - "europe-west1-docker.pkg.dev/homepedia-493013/homepedia/pipeline:latest"
+      - "."
+images:
+  - "europe-west1-docker.pkg.dev/homepedia-493013/homepedia/pipeline:latest"

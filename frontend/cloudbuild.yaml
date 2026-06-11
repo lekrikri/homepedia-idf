@@ -1,0 +1,11 @@
+steps:
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - build
+      - "--build-arg"
+      - "VITE_API_URL=https://homepedia-backend-oejl7swlxa-ew.a.run.app"
+      - "-t"
+      - "europe-west1-docker.pkg.dev/homepedia-493013/homepedia/frontend:latest"
+      - "."
+images:
+  - "europe-west1-docker.pkg.dev/homepedia-493013/homepedia/frontend:latest"

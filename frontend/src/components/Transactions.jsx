@@ -1,168 +1,439 @@
-import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useEffect, useState, useCallback } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
 
-const DPE_COLOR = { A: "bg-green-500/20 text-green-400 border-green-500/30", B: "bg-green-500/20 text-green-400 border-green-500/30", C: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30", D: "bg-orange-500/20 text-orange-400 border-orange-500/30", E: "bg-orange-500/20 text-orange-400 border-orange-500/30", F: "bg-red-500/20 text-red-400 border-red-500/30", G: "bg-red-500/20 text-red-400 border-red-500/30" };
+// ─── Constantes ───────────────────────────────────────────────────────────────
 
-const MOCK = [
-  { date: "2023-11-24", adresse: "12 Rue de Rivoli, 75004 Paris",          type: "Apartment",  surface: 54.2,  prix: 745000,   prix_m2: 13745, dpe: "A" },
-  { date: "2023-11-23", adresse: "45 Av. Victor Hugo, 92100 Boulogne",      type: "House",      surface: 112.5, prix: 1250000,  prix_m2: 11111, dpe: "C" },
-  { date: "2023-11-22", adresse: "8 Bis Rue de la Paix, 75002 Paris",       type: "Studio",     surface: 19.0,  prix: 310000,   prix_m2: 16315, dpe: "F" },
-  { date: "2023-11-21", adresse: "102 Boulevard Raspail, 75006 Paris",      type: "Apartment",  surface: 88.4,  prix: 1410000,  prix_m2: 15950, dpe: "D" },
-  { date: "2023-11-20", adresse: "32 Rue de Vanves, 92100 Boulogne",        type: "Apartment",  surface: 42.0,  prix: 455000,   prix_m2: 10833, dpe: "B" },
-  { date: "2023-11-20", adresse: "7 Quai Branly, 75007 Paris",              type: "Penthouse",  surface: 145.0, prix: 3250000,  prix_m2: 22413, dpe: "A" },
-  { date: "2023-11-19", adresse: "18 Rue Lepic, 75018 Paris",               type: "Apartment",  surface: 33.5,  prix: 385000,   prix_m2: 11492, dpe: "E" },
+const DPE_HEX = { A:"#22c55e", B:"#4ade80", C:"#a3e635", D:"#facc15", E:"#fb923c", F:"#f87171", G:"#dc2626" };
+
+const DEPTS_IDF = [
+  { code: "75", label: "Paris (75)" },
+  { code: "77", label: "Seine-et-Marne (77)" },
+  { code: "78", label: "Yvelines (78)" },
+  { code: "91", label: "Essonne (91)" },
+  { code: "92", label: "Hauts-de-Seine (92)" },
+  { code: "93", label: "Seine-Saint-Denis (93)" },
+  { code: "94", label: "Val-de-Marne (94)" },
+  { code: "95", label: "Val-d'Oise (95)" },
 ];
 
-const STATS = [
-  { label: "Avg Price/m²",      value: "€11,450", trend: "+2.4%", up: true },
-  { label: "Total Volume",      value: "€82.4M",  trend: "Last 30d", up: null },
-  { label: "Market Velocity",   value: "4.2/day", trend: "-0.5%", up: false },
-  { label: "Most Popular Type", value: "2BR Apt", trend: "42% of total", up: null },
+const SORT_COLS = [
+  { key: "date_mutation",      label: "Date" },
+  { key: "valeur_fonciere",    label: "Prix total" },
+  { key: "prix_m2",            label: "Prix/m²" },
+  { key: "surface_reelle_bati",label: "Surface" },
 ];
+
+const PER_PAGE = 50;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function fmtPrix(v) {
+  if (!v) return "—";
+  if (v >= 1e6) return `${(v / 1e6).toFixed(2)}M€`;
+  return `${(v / 1000).toFixed(0)}k€`;
+}
+
+function fmtPrixM2(v, s) {
+  if (!v || !s) return null;
+  return Math.round(v / s).toLocaleString("fr-FR");
+}
+
+// ─── Composant filtre slider ───────────────────────────────────────────────────
+
+function FilterSelect({ label, value, onChange, options, icon }) {
+  return (
+    <div className="flex flex-col gap-1 min-w-0">
+      <label className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold flex items-center gap-1">
+        {icon && <span className="material-symbols-outlined" style={{ fontSize: 11 }}>{icon}</span>}
+        {label}
+      </label>
+      <select value={value} onChange={e => onChange(e.target.value)}
+        className="bg-slate-800/80 text-slate-100 border border-slate-700/60 rounded-lg px-2.5 py-1.5 text-xs font-medium focus:border-primary outline-none cursor-pointer min-w-[130px]">
+        {options.map(o => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function FilterInput({ label, value, onChange, placeholder, icon }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold flex items-center gap-1">
+        {icon && <span className="material-symbols-outlined" style={{ fontSize: 11 }}>{icon}</span>}
+        {label}
+      </label>
+      <input type="number" value={value} onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="bg-slate-800/80 text-slate-100 border border-slate-700/60 rounded-lg px-2.5 py-1.5 text-xs font-medium focus:border-primary outline-none w-28 [appearance:textfield]" />
+    </div>
+  );
+}
+
+// ─── Stat card ────────────────────────────────────────────────────────────────
+
+function StatCard({ icon, label, value, sub, color }) {
+  return (
+    <div className="rounded-xl p-4 flex items-start gap-3"
+      style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(60,131,246,0.12)" }}>
+      <div className="shrink-0 w-9 h-9 rounded-lg flex items-center justify-center"
+        style={{ background: (color || "#3c83f6") + "18" }}>
+        <span className="material-symbols-outlined" style={{ fontSize: 18, color: color || "#3c83f6" }}>{icon}</span>
+      </div>
+      <div className="min-w-0">
+        <p className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold">{label}</p>
+        <p className="text-lg font-black mono-nums text-slate-100 leading-tight">{value}</p>
+        {sub && <p className="text-[10px] text-slate-500 mt-0.5">{sub}</p>}
+      </div>
+    </div>
+  );
+}
+
+// ─── Composant principal ──────────────────────────────────────────────────────
 
 export default function Transactions() {
   const navigate = useNavigate();
-  const [data, setData] = useState([]);
+  const [searchParams] = useSearchParams();
+
+  // Filtres — initialisés depuis URL params si présents (ex: depuis MapView)
+  const [dept,       setDept]       = useState(searchParams.get("departement") || "");
+  const [commune,    setCommune]    = useState(searchParams.get("commune") || "");
+  const [typeFilter, setTypeFilter] = useState(searchParams.get("type_local") || "");
+  const [annee,      setAnnee]      = useState(searchParams.get("annee") || "");
+  const [dpe,        setDpe]        = useState("");
+  const [prixMin,    setPrixMin]    = useState("");
+  const [prixMax,    setPrixMax]    = useState("");
+  const [surfMin,    setSurfMin]    = useState("");
+  const [surfMax,    setSurfMax]    = useState("");
+  const [pieces,     setPieces]     = useState("");
+
+  // Tri
+  const [sortBy,    setSortBy]    = useState("date_mutation");
+  const [sortOrder, setSortOrder] = useState("desc");
+
+  // Pagination serveur
+  const [offset, setOffset] = useState(0);
+
+  // Données
+  const [data,  setData]  = useState([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const [typeFilter, setTypeFilter] = useState("");
-  const [anneeFilter, setAnneeFilter] = useState("");
-  const PER_PAGE = 25;
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
-  useEffect(() => {
+  // Stats agrégées (calculées sur le résultat courant)
+  const withM2    = data.filter(t => t.valeur_fonciere && t.surface_reelle_bati);
+  const avgM2     = withM2.length ? Math.round(withM2.reduce((s,t) => s + t.valeur_fonciere/t.surface_reelle_bati, 0) / withM2.length) : null;
+  const totalVol  = data.reduce((s,t) => s + (t.valeur_fonciere||0), 0);
+  const typeCounts = data.reduce((acc,t) => { const k=t.type_local||"Autre"; acc[k]=(acc[k]||0)+1; return acc; }, {});
+  const topType   = Object.entries(typeCounts).sort((a,b)=>b[1]-a[1])[0];
+  const dpeCount  = data.filter(t => t.classe_energie).length;
+  const dpePct    = data.length ? Math.round(dpeCount/data.length*100) : 0;
+
+  const hasFilters = dept || commune || typeFilter || annee || dpe || prixMin || prixMax || surfMin || surfMax || pieces;
+
+  const fetchData = useCallback(() => {
     setLoading(true);
-    const typeP = typeFilter ? `&type_local=${typeFilter}` : "";
-    const anneeP = anneeFilter ? `&annee=${anneeFilter}` : "";
-    axios.get(`/api/v1/transactions?limit=500${typeP}${anneeP}`)
-      .then(r => { setData(r.data.data || []); setPage(1); })
-      .catch(() => {})
+    const params = new URLSearchParams({ limit: PER_PAGE, offset });
+    if (dept)       params.set("departement", dept);
+    if (commune)    params.set("commune", commune);
+    if (typeFilter) params.set("type_local", typeFilter);
+    if (annee)      params.set("annee", annee);
+    if (dpe)        params.set("dpe", dpe);
+    if (prixMin)    params.set("prix_min", prixMin);
+    if (prixMax)    params.set("prix_max", prixMax);
+    if (surfMin)    params.set("surface_min", surfMin);
+    if (surfMax)    params.set("surface_max", surfMax);
+    if (pieces)     params.set("pieces", pieces);
+    params.set("sort_by", sortBy);
+    params.set("sort_order", sortOrder);
+
+    axios.get(`/api/v1/transactions?${params}`)
+      .then(r => {
+        setData(r.data.data || []);
+        setTotal(r.data.total ?? 0);
+      })
+      .catch(() => { setData([]); setTotal(0); })
       .finally(() => setLoading(false));
-  }, [typeFilter, anneeFilter]);
+  }, [dept, commune, typeFilter, annee, dpe, prixMin, prixMax, surfMin, surfMax, pieces, sortBy, sortOrder, offset]);
 
-  // Computed stats from real data
-  const withM2 = data.filter(t => t.valeur_fonciere && t.surface_reelle_bati);
-  const avgM2 = withM2.length
-    ? Math.round(withM2.reduce((s, t) => s + t.valeur_fonciere / t.surface_reelle_bati, 0) / withM2.length)
-    : 0;
-  const totalVolume = data.reduce((s, t) => s + (t.valeur_fonciere || 0), 0);
-  const typeCounts = data.reduce((acc, t) => { const k = t.type_local || "Autre"; acc[k] = (acc[k]||0)+1; return acc; }, {});
-  const topType = Object.entries(typeCounts).sort((a,b) => b[1]-a[1])[0];
+  useEffect(() => { fetchData(); }, [fetchData]);
 
-  const computedStats = [
-    { label: "Prix moyen/m²",     value: `€${avgM2.toLocaleString()}`,                     trend: "+2.4%", up: true },
-    { label: "Volume total",      value: `€${(totalVolume/1e6).toFixed(1)}M`,               trend: "Total", up: null },
-    { label: "Market Velocity",   value: `${(data.length/30).toFixed(1)}/jour`,             trend: "-0.5%", up: false },
-    { label: "Type le + fréquent",value: topType ? topType[0] : "—", trend: topType ? `${Math.round(topType[1]/data.length*100)}% du total` : "", up: null },
-  ];
+  // Reset offset when filters change
+  useEffect(() => { setOffset(0); }, [dept, commune, typeFilter, annee, dpe, prixMin, prixMax, surfMin, surfMax, pieces, sortBy, sortOrder]);
 
-  const paged = data.slice((page-1)*PER_PAGE, page*PER_PAGE);
-  const totalPages = Math.ceil(data.length / PER_PAGE);
+  const resetFilters = () => {
+    setDept(""); setCommune(""); setTypeFilter(""); setAnnee(""); setDpe("");
+    setPrixMin(""); setPrixMax(""); setSurfMin(""); setSurfMax(""); setPieces("");
+  };
+
+  const handleSort = (col) => {
+    if (sortBy === col) setSortOrder(o => o === "desc" ? "asc" : "desc");
+    else { setSortBy(col); setSortOrder("desc"); }
+  };
+
+  const SortIcon = ({ col }) => {
+    if (sortBy !== col) return <span className="material-symbols-outlined text-slate-700" style={{ fontSize: 12 }}>unfold_more</span>;
+    return <span className="material-symbols-outlined text-primary" style={{ fontSize: 12 }}>
+      {sortOrder === "desc" ? "arrow_downward" : "arrow_upward"}
+    </span>;
+  };
 
   const exportCSV = () => {
-    const headers = ["date_mutation","commune","adresse","type_local","surface_reelle_bati","valeur_fonciere","prix_m2","classe_energie"];
+    const headers = ["date_mutation","commune","departement","type_local","surface_m2","pieces","prix_total","prix_m2","dpe","annee"];
     const rows = data.map(t => [
-      t.date_mutation, t.commune, [t.adresse_numero, t.adresse].filter(Boolean).join(" "),
-      t.type_local, t.surface_reelle_bati, t.valeur_fonciere,
-      t.valeur_fonciere && t.surface_reelle_bati ? Math.round(t.valeur_fonciere / t.surface_reelle_bati) : "",
-      t.classe_energie,
-    ].map(v => `"${v ?? ""}"`).join(","));
+      t.date_mutation,
+      t.commune || "",
+      t.code_commune ? t.code_commune.slice(0,2) : "",
+      t.type_local || "",
+      t.surface_reelle_bati ?? "",
+      t.nombre_pieces ?? "",
+      t.valeur_fonciere ?? "",
+      fmtPrixM2(t.valeur_fonciere, t.surface_reelle_bati) ?? "",
+      t.classe_energie || "",
+      t.source_annee || "",
+    ].map(v => `"${v}"`).join(","));
     const csv = [headers.join(","), ...rows].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = `homepedia_transactions_${Date.now()}.csv`; a.click();
+    const a = document.createElement("a");
+    a.href = url; a.download = `homepedia_transactions_${Date.now()}.csv`; a.click();
     URL.revokeObjectURL(url);
   };
 
+  const currentPage = Math.floor(offset / PER_PAGE) + 1;
+  const totalPages  = Math.ceil(total / PER_PAGE);
+
   return (
-    <div className="h-full overflow-y-auto bg-background-dark px-6 py-8 lg:px-20 flex flex-col gap-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+    <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6 lg:px-10 flex flex-col gap-5"
+      style={{ background: "rgba(8,13,24,1)" }}>
+
+      {/* ── HEADER ─────────────────────────────────────────────────────────── */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-white">Transaction Registry</h1>
-          <p className="text-slate-400 mt-1">
-            {loading ? "Chargement…" : <>Found <span className="text-slate-300 font-semibold">{data.length}</span> transactions en Île-de-France.</>}
+          <h1 className="text-2xl font-bold text-white tracking-tight">Transactions DVF</h1>
+          <p className="text-slate-400 text-sm mt-0.5">
+            {loading
+              ? "Chargement…"
+              : <><span className="text-slate-200 font-semibold">{total.toLocaleString("fr-FR")}</span> transactions en Île-de-France
+                {hasFilters && <span className="text-primary ml-1">· filtres actifs</span>}</>
+            }
           </p>
         </div>
-        <button onClick={exportCSV} className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-primary/90 w-fit">
-          <span className="material-symbols-outlined" style={{ fontSize: 20 }}>file_download</span>
-          Export CSV ({data.length})
-        </button>
-      </div>
-
-      {/* Filters bar */}
-      <div className="glass-panel-light rounded-xl p-3 flex flex-wrap items-center gap-3">
-        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
-          className="bg-slate-800 text-slate-100 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-medium focus:border-primary outline-none cursor-pointer">
-          <option value="">Tous les types</option>
-          <option value="Appartement">Appartement</option>
-          <option value="Maison">Maison</option>
-        </select>
-        <select value={anneeFilter} onChange={e => setAnneeFilter(e.target.value)}
-          className="bg-slate-800 text-slate-100 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-medium focus:border-primary outline-none cursor-pointer">
-          <option value="">Toutes les années</option>
-          {[2024,2023,2022,2021,2020,2019].map(y => <option key={y} value={y}>{y}</option>)}
-        </select>
-        {(typeFilter || anneeFilter) && (
-          <button onClick={() => { setTypeFilter(""); setAnneeFilter(""); }}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs text-red-400 border border-red-500/20 hover:bg-red-500/10 transition-colors">
-            <span className="material-symbols-outlined" style={{ fontSize: 14 }}>close</span>
-            Réinitialiser
+        <div className="flex items-center gap-2">
+          <button onClick={() => setFiltersOpen(f => !f)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all"
+            style={{
+              background: filtersOpen ? "rgba(60,131,246,0.2)" : "rgba(22,32,48,0.8)",
+              border: `1px solid ${filtersOpen ? "rgba(60,131,246,0.5)" : "rgba(60,131,246,0.15)"}`,
+              color: filtersOpen ? "#3c83f6" : "#94a3b8",
+            }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>tune</span>
+            Filtres
+            {hasFilters && <span className="bg-primary text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center">!</span>}
           </button>
-        )}
-        <div className="ml-auto text-xs text-slate-500">
-          {loading ? "Chargement…" : `${data.length} résultats`}
+          <button onClick={exportCSV}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-white"
+            style={{ background: "rgba(60,131,246,0.2)", border: "1px solid rgba(60,131,246,0.3)" }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>download</span>
+            CSV
+          </button>
         </div>
       </div>
 
-      {/* Table */}
-      <div className="glass-panel-light rounded-xl overflow-hidden border border-slate-800">
+      {/* ── FILTRES ────────────────────────────────────────────────────────── */}
+      {filtersOpen && (
+        <div className="rounded-xl p-4" style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(60,131,246,0.15)" }}>
+          <div className="flex flex-wrap gap-4 items-end">
+            <FilterSelect label="Département" icon="location_city" value={dept} onChange={setDept}
+              options={[{ value: "", label: "Tous les départements" }, ...DEPTS_IDF.map(d => ({ value: d.code, label: d.label }))]} />
+            <FilterSelect label="Type de bien" icon="home" value={typeFilter} onChange={setTypeFilter}
+              options={[
+                { value: "", label: "Tous les types" },
+                { value: "Appartement", label: "Appartement" },
+                { value: "Maison", label: "Maison" },
+                { value: "Local industriel. commercial ou assimilé", label: "Local commercial" },
+                { value: "Dépendance", label: "Dépendance" },
+              ]} />
+            <FilterSelect label="Année" icon="calendar_month" value={annee} onChange={setAnnee}
+              options={[{ value: "", label: "Toutes les années" }, ...[2025,2024,2023,2022,2021,2020].map(y => ({ value: y, label: y }))]} />
+            <FilterSelect label="Classe DPE" icon="bolt" value={dpe} onChange={setDpe}
+              options={[{ value: "", label: "Toutes classes" }, ...["A","B","C","D","E","F","G"].map(l => ({ value: l, label: `DPE ${l}` }))]} />
+            <FilterInput label="Prix min (€)" icon="euro" value={prixMin} onChange={setPrixMin} placeholder="ex: 100000" />
+            <FilterInput label="Prix max (€)" icon="euro" value={prixMax} onChange={setPrixMax} placeholder="ex: 1000000" />
+            <FilterInput label="Surface min (m²)" icon="square_foot" value={surfMin} onChange={setSurfMin} placeholder="ex: 30" />
+            <FilterInput label="Surface max (m²)" icon="square_foot" value={surfMax} onChange={setSurfMax} placeholder="ex: 150" />
+            <FilterInput label="Nb pièces" icon="meeting_room" value={pieces} onChange={setPieces} placeholder="ex: 3" />
+            {hasFilters && (
+              <button onClick={resetFilters}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs text-red-400 border border-red-500/20 hover:bg-red-500/10 transition-colors self-end mb-0.5">
+                <span className="material-symbols-outlined" style={{ fontSize: 14 }}>close</span>
+                Réinitialiser
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── STATS ──────────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard icon="euro" label="Prix moyen/m²"
+          value={avgM2 ? `${avgM2.toLocaleString("fr-FR")} €` : "—"}
+          sub="sur les transactions avec surface"
+          color="#3c83f6" />
+        <StatCard icon="account_balance_wallet" label="Volume affiché"
+          value={totalVol > 0 ? (totalVol >= 1e9 ? `${(totalVol/1e9).toFixed(2)}Md€` : `${(totalVol/1e6).toFixed(1)}M€`) : "—"}
+          sub={`sur ${data.length} transactions affichées`}
+          color="#10b981" />
+        <StatCard icon="bar_chart" label="Type dominant"
+          value={topType ? topType[0] : "—"}
+          sub={topType ? `${Math.round(topType[1]/data.length*100)}% des ventes affichées` : ""}
+          color="#f59e0b" />
+        <StatCard icon="bolt" label="Couverture DPE"
+          value={data.length ? `${dpePct}%` : "—"}
+          sub={`${dpeCount} transactions avec classe énergie`}
+          color="#a78bfa" />
+      </div>
+
+      {/* ── TABLEAU ────────────────────────────────────────────────────────── */}
+      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(60,131,246,0.12)" }}>
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[900px]">
             <thead>
-              <tr className="border-b border-slate-700/50" style={{ background: "rgba(30,41,59,0.5)" }}>
-                {["Date","Address","Type","Surface (m²)","Total Price","Price/m²","DPE",""].map(h => (
-                  <th key={h} className={`px-6 py-4 text-xs font-semibold uppercase tracking-wider text-slate-400 ${["Surface (m²)","Total Price","Price/m²"].includes(h) ? "text-right" : h === "DPE" ? "text-center" : ""}`}>{h}</th>
+              <tr style={{ background: "rgba(22,32,48,0.9)", borderBottom: "1px solid rgba(60,131,246,0.12)" }}>
+                {[
+                  { key: "date_mutation",       label: "Date",     align: "left"  },
+                  { key: null,                   label: "Commune",  align: "left"  },
+                  { key: null,                   label: "Type",     align: "left"  },
+                  { key: "surface_reelle_bati",  label: "Surface",  align: "right" },
+                  { key: "valeur_fonciere",      label: "Prix",     align: "right" },
+                  { key: "prix_m2",              label: "€/m²",     align: "right" },
+                  { key: null,                   label: "DPE",      align: "center"},
+                  { key: null,                   label: "",         align: "right" },
+                ].map(({ key, label, align }) => (
+                  <th key={label}
+                    onClick={key ? () => handleSort(key) : undefined}
+                    className={`px-5 py-3.5 text-[10px] font-bold uppercase tracking-widest text-slate-400
+                      ${align === "right" ? "text-right" : align === "center" ? "text-center" : ""}
+                      ${key ? "cursor-pointer hover:text-slate-200 select-none" : ""}`}>
+                    <span className="flex items-center gap-1 ${align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : ''}">
+                      {label}
+                      {key && <SortIcon col={key} />}
+                    </span>
+                  </th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800">
-              {paged.map((t, i) => {
-                const prixM2 = t.valeur_fonciere && t.surface_reelle_bati
-                  ? Math.round(t.valeur_fonciere / t.surface_reelle_bati) : null;
-                const adresse = [t.adresse_numero, t.adresse, t.code_postal, t.commune].filter(Boolean).join(" ") || t.adresse || "—";
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={8} className="text-center py-16 text-slate-500">
+                  <span className="material-symbols-outlined animate-spin block mb-2" style={{ fontSize: 28 }}>progress_activity</span>
+                  Chargement…
+                </td></tr>
+              ) : data.length === 0 ? (
+                <tr><td colSpan={8} className="text-center py-16 text-slate-500">
+                  <span className="material-symbols-outlined block mb-2 text-slate-700" style={{ fontSize: 36 }}>search_off</span>
+                  Aucune transaction pour ces critères
+                </td></tr>
+              ) : data.map((t, i) => {
+                const prixM2 = fmtPrixM2(t.valeur_fonciere, t.surface_reelle_bati);
+                const commune = t.commune || `${t.code_commune || "—"}`;
+                const dpeColor = t.classe_energie ? DPE_HEX[t.classe_energie] : null;
+                const isEven = i % 2 === 0;
                 return (
-                  <tr key={t.id || i} className="group hover:bg-primary/10 transition-colors border-l-4 border-l-transparent hover:border-l-primary">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm mono-nums text-slate-300">{t.date_mutation}</td>
-                    <td className="px-6 py-4 text-sm font-medium">{adresse}</td>
-                    <td className="px-6 py-4 text-xs font-medium">
-                      <span className="px-2 py-0.5 rounded bg-slate-700 text-slate-300">{t.type_local || "—"}</span>
+                  <tr key={t.id || i}
+                    className="group transition-colors"
+                    style={{
+                      background: isEven ? "rgba(15,22,36,0.5)" : "rgba(22,32,48,0.3)",
+                      borderBottom: "1px solid rgba(30,41,59,0.4)",
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = "rgba(60,131,246,0.06)"}
+                    onMouseLeave={e => e.currentTarget.style.background = isEven ? "rgba(15,22,36,0.5)" : "rgba(22,32,48,0.3)"}>
+
+                    {/* Date */}
+                    <td className="px-5 py-3 whitespace-nowrap">
+                      <span className="text-[11px] mono-nums text-slate-400">{t.date_mutation}</span>
+                      {t.source_annee && <span className="text-[9px] text-slate-600 block">{t.source_annee}</span>}
                     </td>
-                    <td className="px-6 py-4 text-sm text-right mono-nums">{t.surface_reelle_bati?.toFixed(1) ?? "—"}</td>
-                    <td className="px-6 py-4 text-sm text-right mono-nums font-semibold text-primary">
-                      {t.valeur_fonciere ? `€${(t.valeur_fonciere / 1000).toFixed(0)}k` : "—"}
+
+                    {/* Commune */}
+                    <td className="px-5 py-3 max-w-[200px]">
+                      <span className="text-sm font-medium text-slate-200 truncate block">{commune}</span>
+                      {t.code_commune && (
+                        <span className="text-[9px] mono-nums text-slate-600">{t.code_commune} · {t.code_commune.slice(0,2)}</span>
+                      )}
                     </td>
-                    <td className="px-6 py-4 text-sm text-right mono-nums text-slate-400">
-                      {prixM2 ? `€${prixM2.toLocaleString()}` : "—"}
+
+                    {/* Type + pièces */}
+                    <td className="px-5 py-3">
+                      <span className="text-[11px] px-2 py-0.5 rounded font-medium"
+                        style={{ background: "rgba(60,131,246,0.1)", color: "#94a3b8", border: "1px solid rgba(60,131,246,0.15)" }}>
+                        {t.type_local || "—"}
+                      </span>
+                      {t.nombre_pieces && (
+                        <span className="text-[9px] text-slate-600 block mt-0.5">T{t.nombre_pieces}</span>
+                      )}
                     </td>
-                    <td className="px-6 py-4 text-center">
-                      {t.classe_energie
-                        ? <span className={`px-2 py-0.5 rounded-sm text-[10px] font-bold border ${DPE_COLOR[t.classe_energie] || "bg-slate-700 text-slate-400 border-slate-600"}`}>{t.classe_energie}</span>
-                        : <span className="text-slate-600">—</span>
+
+                    {/* Surface */}
+                    <td className="px-5 py-3 text-right">
+                      <span className="text-sm mono-nums text-slate-300">
+                        {t.surface_reelle_bati ? `${t.surface_reelle_bati.toFixed(0)} m²` : "—"}
+                      </span>
+                    </td>
+
+                    {/* Prix total */}
+                    <td className="px-5 py-3 text-right">
+                      <span className="text-sm font-bold mono-nums text-primary">
+                        {fmtPrix(t.valeur_fonciere)}
+                      </span>
+                    </td>
+
+                    {/* Prix/m² */}
+                    <td className="px-5 py-3 text-right">
+                      {prixM2
+                        ? <span className="text-sm mono-nums text-slate-400">{prixM2} €</span>
+                        : <span className="text-slate-700">—</span>
                       }
                     </td>
-                    <td className="px-6 py-4 text-right">
-                      <button
-                        onClick={() => {
-                          if (t.longitude && t.latitude)
-                            navigate(`/carte?lat=${t.latitude}&lng=${t.longitude}&zoom=17&q=${encodeURIComponent([t.adresse_numero, t.adresse].filter(Boolean).join(" ") || t.commune || "")}`);
-                          else if (t.commune)
-                            navigate(`/carte?q=${encodeURIComponent(t.commune)}`);
-                        }}
-                        title="Voir sur la carte"
-                        className="p-1 text-slate-500 hover:text-primary transition-colors">
-                        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>open_in_new</span>
-                      </button>
+
+                    {/* DPE */}
+                    <td className="px-5 py-3 text-center">
+                      {dpeColor
+                        ? <span className="text-[10px] font-black px-2 py-0.5 rounded"
+                            style={{ background: dpeColor + "20", color: dpeColor, border: `1px solid ${dpeColor}50` }}>
+                            {t.classe_energie}
+                          </span>
+                        : <span className="text-slate-700 text-xs">—</span>
+                      }
+                    </td>
+
+                    {/* Actions */}
+                    <td className="px-5 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {/* Lien commune → scores */}
+                        {t.code_commune && (
+                          <button
+                            onClick={() => navigate(`/carte?commune=${t.code_commune}`)}
+                            title="Voir les scores de la commune"
+                            className="p-1 rounded-lg hover:bg-slate-700/50 text-slate-500 hover:text-emerald-400 transition-colors">
+                            <span className="material-symbols-outlined" style={{ fontSize: 15 }}>analytics</span>
+                          </button>
+                        )}
+                        {/* Lien carte */}
+                        <button
+                          onClick={() => {
+                            if (t.longitude && t.latitude)
+                              navigate(`/carte?lat=${t.latitude}&lng=${t.longitude}&zoom=17`);
+                            else if (t.code_commune)
+                              navigate(`/carte?commune=${t.code_commune}`);
+                          }}
+                          title="Voir sur la carte"
+                          className="p-1 rounded-lg hover:bg-slate-700/50 text-slate-500 hover:text-primary transition-colors">
+                          <span className="material-symbols-outlined" style={{ fontSize: 15 }}>map</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -171,50 +442,55 @@ export default function Transactions() {
           </table>
         </div>
 
-        {/* Pagination */}
-        <div className="p-4 border-t border-slate-800 flex items-center justify-between"
-          style={{ background: "rgba(15,23,42,0.3)" }}>
-          <div className="text-xs text-slate-500">
-            Showing <span className="text-slate-300 font-semibold">{(page-1)*PER_PAGE+1}–{Math.min(page*PER_PAGE, data.length)}</span> of {data.length} transactions
-          </div>
-          <div className="flex gap-2 items-center">
-            <button onClick={() => setPage(p => Math.max(1, p-1))} disabled={page === 1}
-              className="p-1.5 rounded bg-slate-800 border border-slate-700 disabled:opacity-40">
-              <span className="material-symbols-outlined" style={{ fontSize: 20 }}>chevron_left</span>
+        {/* ── PAGINATION ─────────────────────────────────────────────────── */}
+        <div className="px-5 py-3 flex items-center justify-between"
+          style={{ background: "rgba(15,22,36,0.6)", borderTop: "1px solid rgba(30,41,59,0.6)" }}>
+          <span className="text-xs text-slate-500 mono-nums">
+            {total > 0
+              ? <>Affichage <span className="text-slate-300 font-semibold">{offset+1}–{Math.min(offset+PER_PAGE, total)}</span> sur <span className="text-slate-300 font-semibold">{total.toLocaleString("fr-FR")}</span></>
+              : "Aucun résultat"}
+          </span>
+          <div className="flex items-center gap-1.5">
+            <button onClick={() => setOffset(0)} disabled={offset === 0}
+              className="p-1.5 rounded-lg border border-slate-700/50 bg-slate-800/50 disabled:opacity-30 hover:border-primary/40 transition-colors">
+              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>first_page</span>
             </button>
-            {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => i + 1).map(n => (
-              <button key={n} onClick={() => setPage(n)}
-                className={`px-3 py-1 rounded text-xs font-bold ${page === n ? "bg-primary text-white" : "text-slate-400 hover:bg-slate-800"}`}>
-                {n}
-              </button>
-            ))}
-            {totalPages > 5 && <span className="text-slate-600 px-1">…{totalPages}</span>}
-            <button onClick={() => setPage(p => Math.min(totalPages, p+1))} disabled={page === totalPages}
-              className="p-1.5 rounded bg-slate-800 border border-slate-700 disabled:opacity-40">
-              <span className="material-symbols-outlined" style={{ fontSize: 20 }}>chevron_right</span>
+            <button onClick={() => setOffset(o => Math.max(0, o - PER_PAGE))} disabled={offset === 0}
+              className="p-1.5 rounded-lg border border-slate-700/50 bg-slate-800/50 disabled:opacity-30 hover:border-primary/40 transition-colors">
+              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>chevron_left</span>
+            </button>
+            {/* Pages visibles */}
+            {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+              let p;
+              if (totalPages <= 7) p = i + 1;
+              else if (currentPage <= 4) p = i + 1;
+              else if (currentPage >= totalPages - 3) p = totalPages - 6 + i;
+              else p = currentPage - 3 + i;
+              return (
+                <button key={p} onClick={() => setOffset((p-1)*PER_PAGE)}
+                  className="w-8 h-8 rounded-lg text-xs font-bold transition-all"
+                  style={{
+                    background: p === currentPage ? "#3c83f6" : "rgba(30,41,59,0.5)",
+                    color: p === currentPage ? "white" : "#64748b",
+                    border: p === currentPage ? "1px solid #3c83f6" : "1px solid rgba(30,41,59,0.5)",
+                  }}>
+                  {p}
+                </button>
+              );
+            })}
+            <button onClick={() => setOffset(o => Math.min((totalPages-1)*PER_PAGE, o + PER_PAGE))} disabled={currentPage === totalPages || totalPages === 0}
+              className="p-1.5 rounded-lg border border-slate-700/50 bg-slate-800/50 disabled:opacity-30 hover:border-primary/40 transition-colors">
+              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>chevron_right</span>
+            </button>
+            <button onClick={() => setOffset((totalPages-1)*PER_PAGE)} disabled={currentPage === totalPages || totalPages === 0}
+              className="p-1.5 rounded-lg border border-slate-700/50 bg-slate-800/50 disabled:opacity-30 hover:border-primary/40 transition-colors">
+              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>last_page</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* Mini stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {computedStats.map(s => (
-          <div key={s.label} className="glass-panel-light p-4 rounded-xl">
-            <p className="text-xs font-medium text-slate-500 uppercase">{s.label}</p>
-            <div className="flex items-end justify-between mt-1">
-              <h3 className="text-xl font-bold mono-nums">{s.value}</h3>
-              {s.up !== null && (
-                <span className={`text-xs font-medium flex items-center ${s.up ? "text-green-400" : "text-red-400"}`}>
-                  <span className="material-symbols-outlined" style={{ fontSize: 14 }}>{s.up ? "trending_up" : "trending_down"}</span>
-                  {s.trend}
-                </span>
-              )}
-              {s.up === null && <span className="text-xs text-slate-400">{s.trend}</span>}
-            </div>
-          </div>
-        ))}
-      </div>
+      <div className="h-2" />
     </div>
   );
 }
