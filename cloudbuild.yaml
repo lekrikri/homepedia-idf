@@ -113,12 +113,12 @@ steps:
     args:
       - -c
       - |
-        URL=$(gcloud run services describe ${_BACKEND_SERVICE} \
+        URL=$$(gcloud run services describe ${_BACKEND_SERVICE} \
           --region ${_REGION} \
           --format 'value(status.url)')
-        echo "BACKEND_URL=$URL"
-        echo "$URL" > /workspace/backend_url.txt
-        echo "✅ Backend déployé : $URL"
+        echo "BACKEND_URL=$$URL"
+        echo "$$URL" > /workspace/backend_url.txt
+        echo "Backend deploye : $$URL"
     waitFor: [deploy-backend]
 
   # ─────────────────────────────────────────────────────────────────────────────
@@ -130,10 +130,10 @@ steps:
     args:
       - -c
       - |
-        BACKEND_URL=$(cat /workspace/backend_url.txt)
-        echo "→ Build frontend avec VITE_API_URL=$BACKEND_URL"
+        BACKEND_URL=$$(cat /workspace/backend_url.txt)
+        echo "Build frontend avec VITE_API_URL=$$BACKEND_URL"
         docker build \
-          --build-arg VITE_API_URL="$BACKEND_URL" \
+          --build-arg VITE_API_URL="$$BACKEND_URL" \
           --cache-from ${_REGISTRY}/frontend:latest \
           -t ${_REGISTRY}/frontend:${COMMIT_SHA} \
           -t ${_REGISTRY}/frontend:latest \
@@ -182,17 +182,17 @@ steps:
     args:
       - -c
       - |
-        BACKEND=$(gcloud run services describe ${_BACKEND_SERVICE} \
+        BACKEND=$$(gcloud run services describe ${_BACKEND_SERVICE} \
           --region ${_REGION} --format 'value(status.url)' 2>/dev/null || echo "N/A")
-        FRONTEND=$(gcloud run services describe ${_FRONTEND_SERVICE} \
+        FRONTEND=$$(gcloud run services describe ${_FRONTEND_SERVICE} \
           --region ${_REGION} --format 'value(status.url)' 2>/dev/null || echo "N/A")
-        echo "═══════════════════════════════════════"
-        echo "  ✅ DÉPLOIEMENT TERMINÉ"
-        echo "═══════════════════════════════════════"
+        echo "==================================="
+        echo "  DEPLOIEMENT TERMINE"
+        echo "==================================="
         echo "  Commit  : ${COMMIT_SHA}"
-        echo "  Backend : $BACKEND"
-        echo "  Frontend: $FRONTEND"
-        echo "═══════════════════════════════════════"
+        echo "  Backend : $$BACKEND"
+        echo "  Frontend: $$FRONTEND"
+        echo "==================================="
     waitFor: [deploy-backend, deploy-frontend]
 
 # Images à conserver dans Artifact Registry après le build
