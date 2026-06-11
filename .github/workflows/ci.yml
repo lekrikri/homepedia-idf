@@ -141,7 +141,7 @@ jobs:
 
       - name: Install DBT + BigQuery adapter
         if: steps.check-dbt.outputs.exists == 'true'
-        run: pip install dbt-bigquery==1.8.0
+        run: pip install "dbt-bigquery>=1.9.0" "dbt-core>=1.9.0,<3.0"
 
       - name: Authenticate GCP
         if: steps.check-dbt.outputs.exists == 'true'

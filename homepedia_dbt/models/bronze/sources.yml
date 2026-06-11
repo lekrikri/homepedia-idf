@@ -39,4 +39,5 @@ sources:
             description: "Classe énergie A à G"
             tests:
               - accepted_values:
-                  values: ['A', 'B', 'C', 'D', 'E', 'F', 'G']
+                  arguments:
+                    values: ['A', 'B', 'C', 'D', 'E', 'F', 'G']

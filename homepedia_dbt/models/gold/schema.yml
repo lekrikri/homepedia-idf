@@ -9,6 +9,7 @@ models:
         • IPS écoles (data.gouv.fr) → ips_moyen, pct_ecoles_favorisees, nb_ecoles
         • Énergie ENEDIS/GRDF → conso_elec_par_logement, conso_gaz_par_logement
         • Scores composites homepedia → score_qualite_vie, score_investissement, score_stabilite
+        • Sécurité SSMSI → taux_cambriolages, taux_vols_violence, score_securite
       Consommée directement par l'API Go via Supabase/PostgreSQL.
 
     columns:
@@ -25,63 +26,75 @@ models:
         tests:
           - not_null
           - dbt_utils.expression_is_true:
-              expression: ">= 5"
+              arguments:
+                expression: ">= 5"
 
       - name: prix_median_m2
         description: "Prix médian au m² en euros (APPROX_QUANTILES p50)"
         tests:
           - not_null
           - dbt_utils.expression_is_true:
-              expression: "BETWEEN 500 AND 50000"
+              arguments:
+                expression: "BETWEEN 500 AND 50000"
 
       - name: prix_moyen_m2
         description: "Prix moyen au m² en euros"
         tests:
           - dbt_utils.expression_is_true:
-              expression: "IS NULL OR prix_moyen_m2 BETWEEN 500 AND 50000"
+              arguments:
+                expression: "IS NULL OR prix_moyen_m2 BETWEEN 500 AND 50000"
 
       - name: surface_moyenne
-        description: "Surface bâtie moyenne des biens vendus (m²)"
+        description: "Surface bâtie moyenne des biens vendus (m²) — peut inclure des bâtiments industriels"
         tests:
           - dbt_utils.expression_is_true:
-              expression: "IS NULL OR surface_moyenne BETWEEN 5 AND 2000"
+              arguments:
+                expression: "IS NULL OR surface_moyenne BETWEEN 5 AND 10000"
+              config:
+                severity: warn
 
       - name: prix_median_transaction
         description: "Prix médian de la transaction complète (pas /m²) en euros"
         tests:
           - dbt_utils.expression_is_true:
-              expression: "IS NULL OR prix_median_transaction BETWEEN 1000 AND 50000000"
+              arguments:
+                expression: "IS NULL OR prix_median_transaction BETWEEN 1000 AND 50000000"
 
       # ── DPE ADEME ──────────────────────────────────────────────────────────────
       - name: score_dpe_moyen
         description: "Score DPE moyen (1=A excellent, 7=G très énergivore)"
         tests:
           - dbt_utils.expression_is_true:
-              expression: "IS NULL OR score_dpe_moyen BETWEEN 1 AND 7"
+              arguments:
+                expression: "IS NULL OR score_dpe_moyen BETWEEN 1 AND 7"
 
       - name: conso_energie_moyenne
         description: "Consommation énergie primaire moyenne (kWh/m²/an) — source ADEME"
         tests:
           - dbt_utils.expression_is_true:
-              expression: "IS NULL OR conso_energie_moyenne BETWEEN 0 AND 2000"
+              arguments:
+                expression: "IS NULL OR conso_energie_moyenne BETWEEN 0 AND 2000"
 
       - name: emission_ges_moyenne
         description: "Émissions GES moyennes (kgCO₂/m²/an) — source ADEME"
         tests:
           - dbt_utils.expression_is_true:
-              expression: "IS NULL OR emission_ges_moyenne BETWEEN 0 AND 200"
+              arguments:
+                expression: "IS NULL OR emission_ges_moyenne BETWEEN 0 AND 200"
 
       - name: nb_dpe
         description: "Nombre de DPE disponibles pour la commune"
         tests:
           - dbt_utils.expression_is_true:
-              expression: "IS NULL OR nb_dpe >= 0"
+              arguments:
+                expression: "IS NULL OR nb_dpe >= 0"
 
       - name: pct_dpe_bon
         description: "Part de logements classés A ou B (DPE favorable), en décimal 0-1"
         tests:
           - dbt_utils.expression_is_true:
-              expression: "IS NULL OR pct_dpe_bon BETWEEN 0 AND 1"
+              arguments:
+                expression: "IS NULL OR pct_dpe_bon BETWEEN 0 AND 1"
 
       # ── IPS Écoles (enrichissement Python — non produit par DBT) ─────────────
       - name: ips_moyen
@@ -92,9 +105,10 @@ models:
           ATTENTION : colonne enrichie post-DBT par ingestion/ips/download_gcs.py
         tests:
           - dbt_utils.expression_is_true:
-              expression: "IS NULL OR ips_moyen BETWEEN 50 AND 200"
+              arguments:
+                expression: "IS NULL OR ips_moyen BETWEEN 50 AND 200"
               config:
-                severity: warn   # warn car enrichissement externe non garanti
+                severity: warn
 
       - name: pct_ecoles_favorisees
         description: >
@@ -102,7 +116,8 @@ models:
           Calculé sur les écoles primaires/collèges/lycées de la commune.
         tests:
           - dbt_utils.expression_is_true:
-              expression: "IS NULL OR pct_ecoles_favorisees BETWEEN 0 AND 100"
+              arguments:
+                expression: "IS NULL OR pct_ecoles_favorisees BETWEEN 0 AND 100"
               config:
                 severity: warn
 
@@ -110,7 +125,8 @@ models:
         description: "Nombre d'établissements scolaires avec données IPS disponibles"
         tests:
           - dbt_utils.expression_is_true:
-              expression: "IS NULL OR nb_ecoles >= 0"
+              arguments:
+                expression: "IS NULL OR nb_ecoles >= 0"
               config:
                 severity: warn
 
@@ -122,7 +138,8 @@ models:
           ATTENTION : colonne enrichie post-DBT.
         tests:
           - dbt_utils.expression_is_true:
-              expression: "IS NULL OR conso_elec_par_logement BETWEEN 0 AND 50"
+              arguments:
+                expression: "IS NULL OR conso_elec_par_logement BETWEEN 0 AND 50"
               config:
                 severity: warn
 
@@ -133,7 +150,8 @@ models:
           ATTENTION : colonne enrichie post-DBT.
         tests:
           - dbt_utils.expression_is_true:
-              expression: "IS NULL OR conso_gaz_par_logement BETWEEN 0 AND 100"
+              arguments:
+                expression: "IS NULL OR conso_gaz_par_logement BETWEEN 0 AND 100"
               config:
                 severity: warn
 
@@ -145,7 +163,8 @@ models:
           ATTENTION : colonne enrichie post-DBT par ingestion/scores/compute_scores.py.
         tests:
           - dbt_utils.expression_is_true:
-              expression: "IS NULL OR score_qualite_vie BETWEEN 0 AND 100"
+              arguments:
+                expression: "IS NULL OR score_qualite_vie BETWEEN 0 AND 100"
               config:
                 severity: warn
 
@@ -155,7 +174,8 @@ models:
           Composition : nb_transactions 25% + IPS 25% + DPE A/B 20% + prix inv. 15% + bio/bobo 15%.
         tests:
           - dbt_utils.expression_is_true:
-              expression: "IS NULL OR score_investissement BETWEEN 0 AND 100"
+              arguments:
+                expression: "IS NULL OR score_investissement BETWEEN 0 AND 100"
               config:
                 severity: warn
 
@@ -165,7 +185,46 @@ models:
           Composition : score DPE inv. 30% + conso énergie inv. 25% + GES inv. 25% + pct_dpe_bon 20%.
         tests:
           - dbt_utils.expression_is_true:
-              expression: "IS NULL OR score_stabilite BETWEEN 0 AND 100"
+              arguments:
+                expression: "IS NULL OR score_stabilite BETWEEN 0 AND 100"
+              config:
+                severity: warn
+
+      # ── Sécurité / Délinquance (enrichissement Python SSMSI) ─────────────────
+      - name: taux_cambriolages
+        description: >
+          Taux de cambriolages pour 1 000 logements — niveau département IDF.
+          Source : SSMSI / Ministère de l'Intérieur (data.gouv.fr).
+          Toutes les communes d'un même département partagent ce taux.
+          ATTENTION : colonne enrichie post-DBT par ingestion/delinquance/download_gcs.py.
+        tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "IS NULL OR taux_cambriolages BETWEEN 0 AND 50"
+              config:
+                severity: warn
+
+      - name: taux_vols_violence
+        description: >
+          Taux de coups et blessures volontaires pour 1 000 habitants — niveau département IDF.
+          Source : SSMSI / Ministère de l'Intérieur (data.gouv.fr).
+          ATTENTION : colonne enrichie post-DBT par ingestion/delinquance/download_gcs.py.
+        tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "IS NULL OR taux_vols_violence BETWEEN 0 AND 30"
+              config:
+                severity: warn
+
+      - name: score_securite
+        description: >
+          Score sécurité (0-100, 100 = très sûr). Normalisé par bornes absolues nationales.
+          Composition : taux_cambriolages inversé 60% + taux_vols_violence inversé 40%.
+          ATTENTION : colonne enrichie post-DBT par ingestion/delinquance/download_gcs.py.
+        tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "IS NULL OR score_securite BETWEEN 0 AND 100"
               config:
                 severity: warn
 

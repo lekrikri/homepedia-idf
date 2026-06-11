@@ -27,13 +27,15 @@ models:
         tests:
           - not_null
           - dbt_utils.expression_is_true:
-              expression: "> 0"
+              arguments:
+                expression: "> 0"
 
       - name: prix_m2
         description: "Prix au m² calculé"
         tests:
           - dbt_utils.expression_is_true:
-              expression: "IS NULL OR (prix_m2 BETWEEN 500 AND 50000)"
+              arguments:
+                expression: "IS NULL OR (prix_m2 BETWEEN 500 AND 50000)"
 
       - name: date_mutation
         description: "Date de la transaction"
@@ -44,35 +46,39 @@ models:
         description: "Catégorie simplifiée du bien"
         tests:
           - accepted_values:
-              values: ['appartement', 'maison', 'commercial', 'autre']
+              arguments:
+                values: ['appartement', 'maison', 'commercial', 'autre']
 
   - name: silver_dpe
     description: >
       DPE nettoyés avec score numérique (A=1, G=7).
       Utilisé pour calculer la performance énergétique par commune.
     columns:
-      - name: numero_dpe
-        description: "Numéro unique du DPE"
+      - name: id_dpe
+        description: "Identifiant unique du DPE (source ADEME)"
         tests:
           - unique
           - not_null
 
-      - name: classe_energie
+      - name: etiquette_dpe
         description: "Classe énergie A à G"
         tests:
           - not_null
           - accepted_values:
-              values: ['A', 'B', 'C', 'D', 'E', 'F', 'G']
+              arguments:
+                values: ['A', 'B', 'C', 'D', 'E', 'F', 'G']
 
       - name: score_dpe
         description: "Score numérique 1 (A) à 7 (G)"
         tests:
           - not_null
           - dbt_utils.expression_is_true:
-              expression: "BETWEEN 1 AND 7"
+              arguments:
+                expression: "BETWEEN 1 AND 7"
 
       - name: conso_energie
         description: "Consommation énergétique kWh/m²/an"
         tests:
           - dbt_utils.expression_is_true:
-              expression: "> 0"
+              arguments:
+                expression: "> 0"

@@ -20,6 +20,16 @@ homepedia_dbt:
       threads: 4
       timeout_seconds: 300
 
+    # ── Cloud Run Job (ADC automatique via service account) ──────────────────
+    cloud:
+      type: bigquery
+      method: oauth
+      project: homepedia-493013
+      dataset: homepedia_dev_silver
+      location: EU
+      threads: 4
+      timeout_seconds: 600
+
     # ── Production (utilisé par GitHub Actions CD) ───────────────────────────
     prod:
       type: bigquery

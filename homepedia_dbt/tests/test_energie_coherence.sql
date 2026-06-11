@@ -1,4 +1,8 @@
 -- Test qualité : cohérence des données énergie ENEDIS/GRDF
+-- NOTE : dans BigQuery, ces colonnes sont NULL (enrichies côté PostgreSQL) → WARN attendu
+
+{{ config(severity='warn') }}
+
 -- Vérifie :
 --   1. Les valeurs sont dans des fourchettes réalistes pour l'IDF
 --   2. Pas de corrélation aberrante (élec >> gaz impossible dans un parc résidentiel IDF normal)

@@ -1,5 +1,6 @@
 -- ══════════════════════════════════════════════════════════════════════════════
 -- GOLD : communes_agregat — table finale consommée par l'API Go et le frontend
+-- depends_on: {{ ref('silver_dpe') }}
 --
 -- Agrège par commune :
 --   - Métriques DVF : prix médian/m², nb transactions, surface moyenne
@@ -52,7 +53,7 @@ dpe_agg AS (
         ROUND(AVG(score_dpe), 2)                   AS score_dpe_moyen,
         ROUND(AVG(conso_energie), 2)               AS conso_energie_moyenne,
         ROUND(AVG(emission_ges), 2)                AS emission_ges_moyenne,
-        ROUND(100.0 * SUM(est_bon_dpe) / COUNT(*), 1) AS pct_dpe_bon
+        ROUND(SUM(est_bon_dpe) / COUNT(*), 4)          AS pct_dpe_bon
     FROM {{ ref('silver_dpe') }}
     WHERE annee_dpe >= 2018
     GROUP BY code_commune
@@ -80,6 +81,24 @@ final AS (
         CAST(NULL AS FLOAT64)   AS emission_ges_moyenne,
         CAST(NULL AS FLOAT64)   AS pct_dpe_bon,
         {% endif %}
+        -- ── Colonnes enrichies post-DBT (NULL dans BigQuery, remplies par scripts Python) ──
+        -- IPS (ingestion/ips/download_gcs.py)
+        CAST(NULL AS FLOAT64)   AS ips_moyen,
+        CAST(NULL AS FLOAT64)   AS ips_median,
+        CAST(NULL AS INT64)     AS nb_ecoles,
+        CAST(NULL AS FLOAT64)   AS pct_ecoles_favorisees,
+        -- Énergie (ingestion/energie/download_gcs.py)
+        CAST(NULL AS FLOAT64)   AS conso_elec_par_logement,
+        CAST(NULL AS FLOAT64)   AS conso_gaz_par_logement,
+        -- Scores composites (ingestion/scores/compute_scores.py)
+        CAST(NULL AS FLOAT64)   AS score_qualite_vie,
+        CAST(NULL AS FLOAT64)   AS score_investissement,
+        CAST(NULL AS FLOAT64)   AS score_stabilite,
+        -- Sécurité / délinquance (ingestion/delinquance/download_gcs.py)
+        CAST(NULL AS FLOAT64)   AS taux_cambriolages,
+        CAST(NULL AS FLOAT64)   AS taux_vols_violence,
+        CAST(NULL AS FLOAT64)   AS score_securite,
+
         CURRENT_TIMESTAMP()                             AS updated_at
 
     FROM dvf_agg t

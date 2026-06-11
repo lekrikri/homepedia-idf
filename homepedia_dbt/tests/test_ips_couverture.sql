@@ -1,6 +1,9 @@
 -- Test qualité : couverture IPS — au moins 60% des communes IDF doivent avoir des données IPS
 -- L'IPS couvre ~1 010 communes IDF. Si < 60% ont ips_moyen renseigné → problème d'ingestion
 -- Severity WARN (pas ERROR) car enrichissement externe, pas produit par DBT
+-- NOTE : dans BigQuery, cette colonne est NULL (enrichie côté PostgreSQL) → WARN attendu
+
+{{ config(severity='warn') }}
 
 SELECT
     COUNT(*)                                                    AS total_communes,
