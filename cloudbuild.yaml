@@ -23,6 +23,7 @@ substitutions:
   _REGISTRY: europe-west1-docker.pkg.dev/homepedia-493013/homepedia
   _BACKEND_SERVICE: homepedia-backend
   _FRONTEND_SERVICE: homepedia-frontend
+  _BACKEND_URL: https://homepedia-backend-714876351060.europe-west1.run.app
 
 options:
   logging: CLOUD_LOGGING_ONLY
@@ -130,7 +131,8 @@ steps:
     args:
       - -c
       - |
-        BACKEND_URL=$$(cat /workspace/backend_url.txt)
+        FILE_URL=$$(cat /workspace/backend_url.txt 2>/dev/null || true)
+        BACKEND_URL=$${FILE_URL:-${_BACKEND_URL}}
         echo "Build frontend avec VITE_API_URL=$$BACKEND_URL"
         docker build \
           --build-arg VITE_API_URL="$$BACKEND_URL" \
