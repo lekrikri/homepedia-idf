@@ -393,6 +393,56 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock }) {
           )}
         </div>
 
+        {/* ── RENDEMENT LOCATIF ────────────────────────────────────────── */}
+        {agregat?.loyer_median_m2 != null && (
+          <div className="rounded-xl p-4" style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(16,185,129,0.18)" }}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-emerald-400" style={{ fontSize: 13 }}>account_balance</span>
+                <p className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold">Rendement locatif</p>
+              </div>
+              {agregat.zone_tendue && (
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full"
+                  style={{ color: "#f59e0b", background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.3)" }}>
+                  Zone tendue
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-3 mb-2">
+              <div>
+                <p className="text-[9px] text-slate-500 uppercase tracking-wide mb-0.5">Loyer médian / m²</p>
+                <p className="text-xl font-black mono-nums text-emerald-400">
+                  {agregat.loyer_median_m2.toFixed(1)} €
+                  <span className="text-[10px] font-normal text-slate-500 ml-1">/mois</span>
+                </p>
+              </div>
+              {agregat.rendement_locatif_brut != null && (
+                <div>
+                  <p className="text-[9px] text-slate-500 uppercase tracking-wide mb-0.5">Rendement brut</p>
+                  <p className="text-xl font-black mono-nums"
+                    style={{ color: agregat.rendement_locatif_brut >= 5 ? "#10b981" : agregat.rendement_locatif_brut >= 3.5 ? "#f59e0b" : "#ef4444" }}>
+                    {agregat.rendement_locatif_brut.toFixed(2)}%
+                  </p>
+                </div>
+              )}
+            </div>
+            {agregat.rendement_locatif_brut != null && (
+              <div className="pt-2 border-t border-slate-800/60">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[9px] text-slate-500">Faible</span>
+                  <span className="text-[9px] text-slate-500">Moyen</span>
+                  <span className="text-[9px] text-slate-500">Élevé</span>
+                </div>
+                <div className="relative w-full h-2 rounded-full" style={{ background: "linear-gradient(to right, #ef4444, #f59e0b 45%, #10b981 75%)" }}>
+                  <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white shadow border-2 border-slate-900"
+                    style={{ left: `${Math.min(96, Math.max(4, (agregat.rendement_locatif_brut - 2) / 6 * 100))}%`, transform: "translate(-50%,-50%)" }} />
+                </div>
+                <p className="text-[9px] text-slate-600 mt-1.5">Source : CLAMEUR 2022 + gradient géographique IDF</p>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── ÉDUCATION & IPS ──────────────────────────────────────────── */}
         {agregat?.ips_moyen != null && (
           <div className="rounded-xl p-4" style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(60,131,246,0.12)" }}>

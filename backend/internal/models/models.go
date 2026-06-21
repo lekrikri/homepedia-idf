@@ -105,6 +105,10 @@ type CommuneAgregat struct {
 	TauxCambriolages      *float64 `json:"taux_cambriolages,omitempty"`   // pour 1 000 logements
 	TauxVolsViolence      *float64 `json:"taux_vols_violence,omitempty"`  // pour 1 000 habitants
 	ScoreSecurite         *float64 `json:"score_securite,omitempty"`      // 0-100 (100 = très sûr)
+	// Loyers et rendement locatif (source CLAMEUR 2022 + gradient géographique)
+	LoyerMedianM2         *float64 `json:"loyer_median_m2,omitempty"`         // €/m²/mois
+	ZoneTendue            *bool    `json:"zone_tendue,omitempty"`             // encadrement des loyers
+	RendementLocatifBrut  *float64 `json:"rendement_locatif_brut,omitempty"`  // % annuel brut
 }
 
 // ScoreIris représente les agrégats calculés pour une zone IRIS.

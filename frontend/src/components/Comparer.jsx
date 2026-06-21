@@ -275,6 +275,15 @@ const TOP_CRITERIA = [
     badge: c => c.score_securite != null ? `Score ${c.score_securite.toFixed(1)}/10` : null,
     sub: c => c.taux_cambriolages != null ? `${c.taux_cambriolages.toFixed(1)} ‰ camb.` : null,
   },
+  {
+    key: "rendement",
+    label: "Meilleur rendement",
+    icon: "account_balance",
+    color: "#10b981",
+    sort: c => -(c.rendement_locatif_brut ?? -999),
+    badge: c => c.rendement_locatif_brut != null ? `${c.rendement_locatif_brut.toFixed(2)}% brut` : null,
+    sub: c => c.loyer_median_m2 != null ? `${c.loyer_median_m2.toFixed(1)} €/m²/mois` : null,
+  },
 ];
 
 function TopCommunesPanel({ communes, onSelectA, onSelectB, communeA, communeB }) {
@@ -549,6 +558,14 @@ export default function Comparer() {
             <MetricRow label="Taux cambriolages (/1000)" valA={A?.taux_cambriolages} valB={B?.taux_cambriolages} higherIsBetter={false} format={(v) => fmt(v, 2)} />
             <MetricRow label="Taux vols & violence (/1000)" valA={A?.taux_vols_violence} valB={B?.taux_vols_violence} higherIsBetter={false} format={(v) => fmt(v, 2)} />
           </Section>
+
+          {/* Rendement locatif */}
+          {(A?.loyer_median_m2 != null || B?.loyer_median_m2 != null) && (
+            <Section title="Rendement locatif" icon="account_balance">
+              <MetricRow label="Loyer médian/m²/mois" valA={A?.loyer_median_m2} valB={B?.loyer_median_m2} higherIsBetter={true} format={(v) => fmt(v, 1)} suffix=" €" />
+              <MetricRow label="Rendement brut annuel" valA={A?.rendement_locatif_brut} valB={B?.rendement_locatif_brut} higherIsBetter={true} format={(v) => fmt(v, 2)} suffix=" %" />
+            </Section>
+          )}
 
           {/* Éducation */}
           <Section title="Éducation & IPS" icon="school">

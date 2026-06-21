@@ -33,7 +33,8 @@ func GetCommunesAgregat(c *gin.Context) {
 			conso_elec_par_logement, conso_gaz_par_logement,
 			ips_moyen, pct_ecoles_favorisees, nb_ecoles,
 			score_qualite_vie, score_investissement, score_stabilite,
-			taux_cambriolages, taux_vols_violence, score_securite
+			taux_cambriolages, taux_vols_violence, score_securite,
+			loyer_median_m2, zone_tendue, rendement_locatif_brut
 		FROM communes_agregat
 		WHERE ($1 = '' OR TRIM(code_departement) = $1)
 		ORDER BY nb_transactions DESC NULLS LAST
@@ -61,6 +62,7 @@ func GetCommunesAgregat(c *gin.Context) {
 			&a.IPSMoyen, &a.PctEcolesFavorisees, &a.NbEcoles,
 			&a.ScoreQualiteVie, &a.ScoreInvestissement, &a.ScoreStabilite,
 			&a.TauxCambriolages, &a.TauxVolsViolence, &a.ScoreSecurite,
+			&a.LoyerMedianM2, &a.ZoneTendue, &a.RendementLocatifBrut,
 		); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "scan error: " + err.Error()})
 			return
@@ -92,7 +94,8 @@ func GetCommuneAgregat(c *gin.Context) {
 			conso_elec_par_logement, conso_gaz_par_logement,
 			ips_moyen, pct_ecoles_favorisees, nb_ecoles,
 			score_qualite_vie, score_investissement, score_stabilite,
-			taux_cambriolages, taux_vols_violence, score_securite
+			taux_cambriolages, taux_vols_violence, score_securite,
+			loyer_median_m2, zone_tendue, rendement_locatif_brut
 		FROM communes_agregat
 		WHERE code_commune = $1
 	`, code).Scan(
@@ -107,6 +110,7 @@ func GetCommuneAgregat(c *gin.Context) {
 		&a.IPSMoyen, &a.PctEcolesFavorisees, &a.NbEcoles,
 		&a.ScoreQualiteVie, &a.ScoreInvestissement, &a.ScoreStabilite,
 		&a.TauxCambriolages, &a.TauxVolsViolence, &a.ScoreSecurite,
+		&a.LoyerMedianM2, &a.ZoneTendue, &a.RendementLocatifBrut,
 	)
 
 	if err != nil {
