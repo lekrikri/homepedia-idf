@@ -166,7 +166,7 @@ function TransportsSection({ lat, lon }) {
   );
 }
 
-function RightPanel({ commune, transactions, agregat }) {
+function RightPanel({ commune, transactions, agregat, isLocked, onUnlock }) {
   const [activeScoreTip, setActiveScoreTip] = useState(null);
   const codeCommune = agregat?.code_commune || commune?.code_insee;
   const [fav, setFav] = useState(() => codeCommune ? isFavorite(codeCommune) : false);
@@ -262,19 +262,30 @@ function RightPanel({ commune, transactions, agregat }) {
                 )}
               </div>
             </div>
-            <button
-              onClick={toggleFav}
-              title={fav ? "Retirer des favoris" : "Ajouter aux favoris"}
-              className={`ml-2 shrink-0 size-9 rounded-xl flex items-center justify-center transition-all ${
-                fav
-                  ? "bg-red-500/20 border border-red-500/40 text-red-400"
-                  : "bg-slate-800/60 border border-slate-700 text-slate-500 hover:text-red-400 hover:border-red-500/40 hover:bg-red-500/10"
-              }`}
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: 18, fontVariationSettings: fav ? "'FILL' 1" : "'FILL' 0" }}>
-                favorite
-              </span>
-            </button>
+            <div className="flex items-center gap-1.5 ml-2 shrink-0">
+              {isLocked && (
+                <button
+                  onClick={onUnlock}
+                  title="Déverrouiller la commune — permet de sélectionner une autre commune"
+                  className="size-9 rounded-xl flex items-center justify-center transition-all bg-amber-500/15 border border-amber-500/30 text-amber-400 hover:bg-amber-500/25"
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: 16 }}>lock_open</span>
+                </button>
+              )}
+              <button
+                onClick={toggleFav}
+                title={fav ? "Retirer des favoris" : "Ajouter aux favoris"}
+                className={`size-9 rounded-xl flex items-center justify-center transition-all ${
+                  fav
+                    ? "bg-red-500/20 border border-red-500/40 text-red-400"
+                    : "bg-slate-800/60 border border-slate-700 text-slate-500 hover:text-red-400 hover:border-red-500/40 hover:bg-red-500/10"
+                }`}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: 18, fontVariationSettings: fav ? "'FILL' 1" : "'FILL' 0" }}>
+                  favorite
+                </span>
+              </button>
+            </div>
           </div>
         </header>
 
@@ -654,7 +665,8 @@ function RightPanel({ commune, transactions, agregat }) {
 
 // ─── Left Sidebar ──────────────────────────────────────────────────────────────
 function LeftSidebar({ communes, transactions, selectedCommune, onSelectCommune, onSelectTransaction, search, onSearch,
-  activeTypes, onToggleType, anneeMax, onAnneeChange, onReset, sortDesc, onToggleSort }) {
+  activeTypes, onToggleType, anneeMax, onAnneeChange, onReset, sortDesc, onToggleSort,
+  hoveredTxId, onHoverTx, isLocked, onUnlock }) {
   const [showSuggestions, setShowSuggestions] = useState(false);
 
   const suggestions = search.length >= 1
@@ -772,7 +784,77 @@ function LeftSidebar({ communes, transactions, selectedCommune, onSelectCommune,
               <span className="material-symbols-outlined text-slate-700 block mb-1" style={{ fontSize: 28 }}>search_off</span>
               <p className="text-[11px] text-slate-600">{selectedCommune ? "Aucune transaction" : "Choisissez une commune"}</p>
             </div>
+          ) : isLocked ? (
+            <>
+              {/* Bandeau lock */}
+              <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg mb-1"
+                style={{ background: "rgba(60,131,246,0.08)", border: "1px solid rgba(60,131,246,0.2)" }}>
+                <span className="material-symbols-outlined text-primary" style={{ fontSize: 13 }}>lock</span>
+                <span className="text-[10px] text-primary font-semibold flex-1">Vue détaillée — {transactions.length} ventes</span>
+                <button onClick={onUnlock} className="text-[9px] text-slate-400 hover:text-primary transition-colors underline">Déverr.</button>
+              </div>
+              {/* Cartes détaillées */}
+              {transactions.map(t => {
+                const addr = [t.adresse_numero, t.adresse].filter(Boolean).join(" ") || "Adresse non renseignée";
+                const ppm = t.valeur_fonciere && t.surface_reelle_bati ? Math.round(t.valeur_fonciere / t.surface_reelle_bati) : null;
+                const prix = t.valeur_fonciere
+                  ? t.valeur_fonciere >= 1e6 ? `${(t.valeur_fonciere / 1e6).toFixed(2)}M €` : `${Math.round(t.valeur_fonciere / 1000)}k €`
+                  : "—";
+                const dpeS = t.classe_energie ? DPE_COLORS[t.classe_energie] : null;
+                const date = t.date_mutation
+                  ? new Date(t.date_mutation).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })
+                  : null;
+                const isHov = hoveredTxId === t.id;
+                return (
+                  <div key={t.id}
+                    onClick={() => onSelectTransaction(t)}
+                    onMouseEnter={() => onHoverTx(t.id)}
+                    onMouseLeave={() => onHoverTx(null)}
+                    className="rounded-lg cursor-pointer transition-all"
+                    style={{
+                      padding: "10px 12px",
+                      background: isHov ? "rgba(60,131,246,0.12)" : "rgba(15,23,42,0.5)",
+                      border: isHov ? "1px solid rgba(60,131,246,0.5)" : "1px solid rgba(51,65,85,0.5)",
+                      transform: isHov ? "translateX(2px)" : "none",
+                    }}>
+                    {/* Adresse + DPE */}
+                    <div className="flex items-start justify-between gap-1 mb-1.5">
+                      <span className="text-[10px] text-slate-300 leading-snug flex-1">{addr}</span>
+                      {dpeS && (
+                        <span className={`shrink-0 text-[8px] font-black px-1.5 py-0.5 rounded ${dpeS.text}`}
+                          style={{ background: "rgba(255,255,255,0.06)", border: "1px solid currentColor", opacity: 0.9 }}>
+                          DPE {t.classe_energie}
+                        </span>
+                      )}
+                    </div>
+                    {/* Prix */}
+                    <div className="flex items-end justify-between mb-2">
+                      <span className="text-[15px] font-bold text-white mono-nums">{prix}</span>
+                      {ppm && <span className="text-[11px] font-semibold text-primary mono-nums">{ppm.toLocaleString("fr-FR")} €/m²</span>}
+                    </div>
+                    {/* Détails */}
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                      {t.surface_reelle_bati && (
+                        <span className="text-[10px] text-slate-400 flex items-center gap-0.5">
+                          <span className="material-symbols-outlined" style={{ fontSize: 11 }}>straighten</span>
+                          {t.surface_reelle_bati} m²
+                        </span>
+                      )}
+                      {t.nombre_pieces && (
+                        <span className="text-[10px] text-slate-400 flex items-center gap-0.5">
+                          <span className="material-symbols-outlined" style={{ fontSize: 11 }}>meeting_room</span>
+                          T{t.nombre_pieces}
+                        </span>
+                      )}
+                      {t.type_local && <span className="text-[10px] text-slate-500">{t.type_local}</span>}
+                      {date && <span className="text-[9px] text-slate-600 ml-auto">{date}</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </>
           ) : (
+            // Mode compact
             transactions.slice(0, 8).map((t, i) => {
               const addr = [t.adresse_numero, t.adresse].filter(Boolean).join(" ").toUpperCase();
               const ppm = t.valeur_fonciere && t.surface_reelle_bati
@@ -782,13 +864,18 @@ function LeftSidebar({ communes, transactions, selectedCommune, onSelectCommune,
                 : "—";
               const info = `${t.surface_reelle_bati?.toFixed(0) ?? "?"}m² · T${t.nombre_pieces ?? "?"}`;
               const dpeS = t.classe_energie ? DPE_COLORS[t.classe_energie] : null;
+              const isHov = hoveredTxId === t.id;
               return (
                 <div key={t.id}
                   onClick={() => onSelectTransaction(t)}
-                  className={`p-3 rounded-lg cursor-pointer transition-all group ${
-                    i === 0 ? "border border-primary/25" : "bg-slate-900/40 border border-slate-800 hover:border-primary/20"
-                  }`}
-                  style={i === 0 ? { background: "rgba(60,131,246,0.06)" } : {}}>
+                  onMouseEnter={() => onHoverTx(t.id)}
+                  onMouseLeave={() => onHoverTx(null)}
+                  className="p-3 rounded-lg cursor-pointer transition-all group"
+                  style={{
+                    background: isHov ? "rgba(60,131,246,0.10)" : i === 0 ? "rgba(60,131,246,0.06)" : "rgba(15,23,42,0.4)",
+                    border: isHov ? "1px solid rgba(60,131,246,0.5)" : i === 0 ? "1px solid rgba(60,131,246,0.25)" : "1px solid rgba(51,65,85,0.5)",
+                    transform: isHov ? "translateX(2px)" : "none",
+                  }}>
                   <div className="flex justify-between items-start mb-1.5">
                     <span className="text-[10px] mono-nums text-slate-400 truncate mr-2 flex-1">{addr || "—"}</span>
                     <div className="flex items-center gap-1 shrink-0">
@@ -799,7 +886,7 @@ function LeftSidebar({ communes, transactions, selectedCommune, onSelectCommune,
                   <div className="text-sm font-bold text-slate-100 mono-nums">{prix}</div>
                   <div className="flex justify-between items-center mt-1">
                     <span className="text-[10px] text-slate-500">{info}</span>
-                    <span className={`text-[10px] mono-nums ${i === 0 ? "text-primary" : "text-slate-500 group-hover:text-primary"} transition-colors`}>€{ppm}/m²</span>
+                    <span className={`text-[10px] mono-nums ${isHov || i === 0 ? "text-primary" : "text-slate-500 group-hover:text-primary"} transition-colors`}>€{ppm}/m²</span>
                   </div>
                 </div>
               );
@@ -845,7 +932,14 @@ export default function MapView() {
   // ── Filtres actifs ────────────────────────────────────────────────────────
   const [activeTypes, setActiveTypes] = useState(new Set(TYPES_ALL));
   const [anneeMax, setAnneeMax] = useState(ANNEE_MAX);
-  const [mapClickLoading, setMapClickLoading] = useState(false); // spinner pendant géocodage
+  const [mapClickLoading, setMapClickLoading] = useState(false);
+  const [hoveredTxId, setHoveredTxId] = useState(null);
+  const [lockedCommune, setLockedCommune] = useState(null);
+  const lockedRef = useRef(false);
+  const txMarkerElsRef = useRef(new Map());
+  const setHoveredTxIdRef = useRef(null);
+
+  useEffect(() => { setHoveredTxIdRef.current = setHoveredTxId; }, []);
 
   useEffect(() => {
     axios.get("/api/v1/communes/gold?limit=1300").then(r => {
@@ -883,6 +977,7 @@ export default function MapView() {
       popupsRef.current = [];
       markersRef.current.forEach(m => m.remove());
       markersRef.current = [];
+      txMarkerElsRef.current.clear();
 
       // FlyTo seulement lors d'un changement de commune, pas lors d'un filtre
       if (fly) {
@@ -913,6 +1008,7 @@ export default function MapView() {
         const date = t.date_mutation ? new Date(t.date_mutation).toLocaleDateString("fr-FR", { month:"short", year:"numeric" }) : "";
 
         el.addEventListener("mouseenter", () => {
+          setHoveredTxIdRef.current?.(t.id);
           el.style.transform = "scale(1.6)";
           el.style.boxShadow = "0 0 14px rgba(60,131,246,0.9)";
           hoverTip.setLngLat([t.longitude, t.latitude]).setHTML(`
@@ -935,6 +1031,7 @@ export default function MapView() {
           `).addTo(map.current);
         });
         el.addEventListener("mouseleave", () => {
+          setHoveredTxIdRef.current?.(null);
           el.style.transform = "scale(1)";
           el.style.boxShadow = "0 0 8px rgba(60,131,246,0.7)";
           hoverTip.remove();
@@ -967,6 +1064,7 @@ export default function MapView() {
             popup.setLngLat([t.longitude, t.latitude]).addTo(map.current);
           }
         });
+        txMarkerElsRef.current.set(t.id, el);
         popupsRef.current.push(popup);
         markersRef.current.push(new maplibregl.Marker(el).setLngLat([t.longitude, t.latitude]).addTo(map.current));
       });
@@ -975,10 +1073,30 @@ export default function MapView() {
 
   const handleSelectCommune = useCallback((commune) => {
     setSelectedCommune(commune);
+    setLockedCommune(commune);
+    lockedRef.current = true;
     loadTransactions(commune, activeTypes, anneeMax);
     loadAgregat(commune);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadTransactions, loadAgregat, activeTypes, anneeMax]);
+
+  const handleHoverTx = useCallback((txId) => {
+    setHoveredTxId(txId);
+    txMarkerElsRef.current.forEach((el, id) => {
+      if (id === txId) {
+        el.style.transform = "scale(1.6)";
+        el.style.boxShadow = "0 0 14px rgba(60,131,246,0.9)";
+      } else {
+        el.style.transform = "scale(1)";
+        el.style.boxShadow = "0 0 8px rgba(60,131,246,0.7)";
+      }
+    });
+  }, []);
+
+  const handleUnlock = useCallback(() => {
+    setLockedCommune(null);
+    lockedRef.current = false;
+  }, []);
 
   // Garder les refs à jour pour les handlers enregistrés sur la carte
   useEffect(() => { allCommunesRef.current = allCommunes; }, [allCommunes]);
@@ -1098,7 +1216,7 @@ export default function MapView() {
       center: [2.3488, 48.8534],
       zoom: 12,
     });
-    map.current.addControl(new maplibregl.NavigationControl(), "bottom-right");
+    // Contrôles zoom/navigation gérés par les boutons custom (éviter superposition)
 
     // ── Chargement polygones IDF + hover ────────────────────────────────────
     map.current.on("load", async () => {
@@ -1171,6 +1289,7 @@ export default function MapView() {
 
         // Click sur le layer GeoJSON → sélection directe (plus rapide, sans géocodage)
         map.current.on("click", "communes-fill", (e) => {
+          if (lockedRef.current) return;
           if (!e.features?.length) return;
           if (markerClickedRef.current) return; // clic sur marqueur, ignorer
           e.originalEvent._communeHandled = true;
@@ -1198,6 +1317,7 @@ export default function MapView() {
     }
 
     mapClickHandlerRef.current = async (e) => {
+      if (lockedRef.current) return;
       // Ignorer si déjà traité par le layer GeoJSON ou un marqueur de transaction
       if (e.originalEvent?._communeHandled) return;
       if (markerClickedRef.current) return;
@@ -1272,6 +1392,10 @@ export default function MapView() {
         onReset={handleReset}
         sortDesc={sortDesc}
         onToggleSort={() => setSortDesc(v => !v)}
+        hoveredTxId={hoveredTxId}
+        onHoverTx={handleHoverTx}
+        isLocked={!!lockedCommune}
+        onUnlock={handleUnlock}
       />
 
       <div className="relative flex-1">
@@ -1401,7 +1525,7 @@ export default function MapView() {
         </div>
       </div>
 
-      <RightPanel commune={selectedCommune} transactions={transactions} agregat={agregat} />
+      <RightPanel commune={selectedCommune} transactions={transactions} agregat={agregat} isLocked={!!lockedCommune} onUnlock={handleUnlock} />
     </div>
   );
 }
