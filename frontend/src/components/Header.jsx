@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import LoginModal from "./LoginModal";
+import FavoritesModal from "./FavoritesModal";
+import SettingsModal from "./SettingsModal";
 
 const NAV_PUBLIC = [
   { to: "/",             label: "Accueil",      end: true },
@@ -30,6 +32,9 @@ export default function Header() {
   const [showDrop,     setShowDrop]     = useState(false);
   const [loading,      setLoading]      = useState(false);
   const [showLogin,    setShowLogin]    = useState(false);
+  const [showFav,      setShowFav]      = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showProfile,  setShowProfile]  = useState(false);
   const [user,         setUser]         = useState(null);
   const [showMenu,     setShowMenu]     = useState(false);
   const menuRef   = useRef(null);
@@ -209,24 +214,30 @@ export default function Header() {
                     )}
                   </div>
                   <div className="py-1">
-                    {[
-                      { icon: "map",      label: "Explorer la carte",  to: "/carte" },
-                      { icon: "compare",  label: "Comparer communes",  to: "/comparer" },
-                      { icon: "bar_chart",label: "Dashboard",          to: "/dashboard" },
-                      ...(user?.role === "admin"
-                        ? [{ icon: "schema", label: "Administration", to: "/pipeline", admin: true }]
-                        : []),
-                    ].map(item => (
-                      <button key={item.label}
-                        onClick={() => { navigate(item.to); setShowMenu(false); }}
-                        className={`w-full text-left flex items-center gap-3 px-4 py-2 text-sm transition-colors ${item.admin ? "text-amber-400 hover:bg-amber-500/10" : "text-slate-300 hover:bg-primary/10 hover:text-primary"}`}>
-                        <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{item.icon}</span>
-                        {item.label}
+                    <button onClick={() => { setShowProfile(true); setShowMenu(false); }}
+                      className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-slate-300 hover:bg-primary/10 hover:text-primary transition-colors">
+                      <span className="material-symbols-outlined" style={{ fontSize: 16 }}>person</span>
+                      Mon profil
+                    </button>
+                    <button onClick={() => { setShowFav(true); setShowMenu(false); }}
+                      className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-slate-300 hover:bg-primary/10 hover:text-primary transition-colors">
+                      <span className="material-symbols-outlined" style={{ fontSize: 16 }}>favorite</span>
+                      Favoris
+                    </button>
+                    <button onClick={() => { setShowSettings(true); setShowMenu(false); }}
+                      className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-slate-300 hover:bg-primary/10 hover:text-primary transition-colors">
+                      <span className="material-symbols-outlined" style={{ fontSize: 16 }}>settings</span>
+                      Paramètres
+                    </button>
+                    {user?.role === "admin" && (
+                      <button onClick={() => { navigate("/pipeline"); setShowMenu(false); }}
+                        className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-amber-400 hover:bg-amber-500/10 transition-colors">
+                        <span className="material-symbols-outlined" style={{ fontSize: 16 }}>schema</span>
+                        Administration
                       </button>
-                    ))}
+                    )}
                     <div className="border-t border-slate-800 mt-1 pt-1">
-                      <button
-                        onClick={handleLogout}
+                      <button onClick={handleLogout}
                         className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors">
                         <span className="material-symbols-outlined" style={{ fontSize: 16 }}>logout</span>
                         Se déconnecter
@@ -253,7 +264,55 @@ export default function Header() {
         </div>
       </header>
 
-      {showLogin && <LoginModal onClose={() => setShowLogin(false)} onLogin={handleLogin} />}
+      {showLogin    && <LoginModal    onClose={() => setShowLogin(false)}    onLogin={handleLogin} />}
+      {showFav      && <FavoritesModal onClose={() => setShowFav(false)} />}
+      {showSettings && <SettingsModal  onClose={() => setShowSettings(false)} />}
+
+      {/* Modal profil simple */}
+      {showProfile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(16,23,34,0.7)", backdropFilter: "blur(6px)" }}
+          onClick={e => e.target === e.currentTarget && setShowProfile(false)}>
+          <div className="w-full max-w-sm rounded-xl overflow-hidden shadow-2xl"
+            style={{ background: "#0f1724", border: "1px solid rgba(60,131,246,0.2)" }}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <span className="material-symbols-outlined text-primary" style={{ fontSize: 22 }}>person</span>
+                <h2 className="text-base font-bold text-white">Mon profil</h2>
+              </div>
+              <button onClick={() => setShowProfile(false)} className="text-slate-500 hover:text-slate-200">
+                <span className="material-symbols-outlined" style={{ fontSize: 20 }}>close</span>
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="flex items-center gap-4">
+                <div className="size-14 rounded-full bg-primary flex items-center justify-center text-white text-xl font-bold">
+                  {getInitials(user)}
+                </div>
+                <div>
+                  <p className="font-bold text-white">{user?.full_name || "Utilisateur"}</p>
+                  <p className="text-sm text-slate-400">{user?.email}</p>
+                  {user?.role === "admin" && (
+                    <span className="inline-block mt-1 text-[9px] font-bold px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 uppercase tracking-wider">Admin</span>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-2 pt-2 border-t border-slate-800">
+                {[
+                  { label: "Email", value: user?.email },
+                  { label: "Rôle", value: user?.role === "admin" ? "Administrateur" : "Utilisateur" },
+                  { label: "Plateforme", value: "HomePedia IDF" },
+                ].map(row => (
+                  <div key={row.label} className="flex justify-between text-sm">
+                    <span className="text-slate-500">{row.label}</span>
+                    <span className="text-slate-200 font-medium">{row.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
