@@ -1044,6 +1044,14 @@ export default function MapView() {
   const transportMarkersRef = useRef([]);
   const [showSecurity, setShowSecurity] = useState(false);
   const securityMarkersRef = useRef([]);
+  const [showRestaurants, setShowRestaurants] = useState(false);
+  const restaurantMarkersRef = useRef([]);
+  const [showSchools, setShowSchools] = useState(false);
+  const schoolMarkersRef = useRef([]);
+  const [showParks, setShowParks] = useState(false);
+  const parkMarkersRef = useRef([]);
+  const [showShops, setShowShops] = useState(false);
+  const shopMarkersRef = useRef([]);
   const communeCenterRef = useRef(null);
 
   useEffect(() => { setHoveredTxIdRef.current = setHoveredTxId; }, []);
@@ -1308,6 +1316,172 @@ export default function MapView() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showSecurity, selectedCommune]);
+
+  const createPOIMkr = (letter, bg, name) => {
+    const dom = document.createElement("div");
+    dom.title = name;
+    dom.style.cssText = `width:16px;height:16px;background:${bg};border-radius:50%;border:2px solid rgba(255,255,255,0.9);display:flex;align-items:center;justify-content:center;font-size:${letter.length > 1 ? "5px" : "7px"};font-weight:900;color:#fff;box-shadow:0 2px 6px rgba(0,0,0,0.6),0 0 0 1px ${bg}44;pointer-events:none;`;
+    dom.textContent = letter;
+    return dom;
+  };
+
+  const loadRestaurantMarkers = useCallback(async () => {
+    restaurantMarkersRef.current.forEach(m => m.remove());
+    restaurantMarkersRef.current = [];
+    const center = communeCenterRef.current;
+    if (!center || !map.current) return;
+    const [lon, lat] = center;
+    const q = `[out:json][timeout:15];node["amenity"~"restaurant|cafe|bar|fast_food|brasserie"](around:2000,${lat},${lon});out body;`;
+    try {
+      const res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`);
+      const d = await res.json();
+      const seen = new Set();
+      (d.elements || [])
+        .filter(el => {
+          if (!el.lat || !el.lon) return false;
+          const key = `${el.tags?.name || ""}:${Math.round(el.lat * 1000)}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .slice(0, 40)
+        .forEach(el => {
+          restaurantMarkersRef.current.push(
+            new maplibregl.Marker({ element: createPOIMkr("R", "#f97316", el.tags?.name || "Restaurant"), anchor: "center" })
+              .setLngLat([el.lon, el.lat]).addTo(map.current)
+          );
+        });
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (showRestaurants && selectedCommune) loadRestaurantMarkers();
+    else { restaurantMarkersRef.current.forEach(m => m.remove()); restaurantMarkersRef.current = []; }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showRestaurants, selectedCommune]);
+
+  const loadSchoolMarkers = useCallback(async () => {
+    schoolMarkersRef.current.forEach(m => m.remove());
+    schoolMarkersRef.current = [];
+    const center = communeCenterRef.current;
+    if (!center || !map.current) return;
+    const [lon, lat] = center;
+    const q = `[out:json][timeout:15];(node["amenity"~"school|university|college|kindergarten"](around:3000,${lat},${lon});way["amenity"~"school|university|college"](around:3000,${lat},${lon}););out center body;`;
+    try {
+      const res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`);
+      const d = await res.json();
+      const seen = new Set();
+      (d.elements || [])
+        .map(el => ({ ...el, lat: el.lat ?? el.center?.lat, lon: el.lon ?? el.center?.lon }))
+        .filter(el => {
+          if (!el.lat || !el.lon) return false;
+          const key = `${el.tags?.name || ""}:${Math.round(el.lat * 1000)}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .slice(0, 30)
+        .forEach(el => {
+          const type = el.tags?.amenity;
+          const cfg = type === "kindergarten" ? { letter: "M", bg: "#fbbf24" }
+                    : type === "university" || type === "college" ? { letter: "U", bg: "#3b82f6" }
+                    : { letter: "É", bg: "#0ea5e9" };
+          schoolMarkersRef.current.push(
+            new maplibregl.Marker({ element: createPOIMkr(cfg.letter, cfg.bg, el.tags?.name || "École"), anchor: "center" })
+              .setLngLat([el.lon, el.lat]).addTo(map.current)
+          );
+        });
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (showSchools && selectedCommune) loadSchoolMarkers();
+    else { schoolMarkersRef.current.forEach(m => m.remove()); schoolMarkersRef.current = []; }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showSchools, selectedCommune]);
+
+  const loadParkMarkers = useCallback(async () => {
+    parkMarkersRef.current.forEach(m => m.remove());
+    parkMarkersRef.current = [];
+    const center = communeCenterRef.current;
+    if (!center || !map.current) return;
+    const [lon, lat] = center;
+    const q = `[out:json][timeout:15];(node["leisure"~"park|garden|nature_reserve|playground"](around:3000,${lat},${lon});way["leisure"~"park|garden|nature_reserve"](around:3000,${lat},${lon}););out center body;`;
+    try {
+      const res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`);
+      const d = await res.json();
+      const seen = new Set();
+      (d.elements || [])
+        .map(el => ({ ...el, lat: el.lat ?? el.center?.lat, lon: el.lon ?? el.center?.lon }))
+        .filter(el => {
+          if (!el.lat || !el.lon) return false;
+          const key = `${el.tags?.name || ""}:${Math.round(el.lat * 1000)}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .slice(0, 25)
+        .forEach(el => {
+          const type = el.tags?.leisure;
+          const cfg = type === "playground" ? { letter: "J", bg: "#22c55e" }
+                    : type === "nature_reserve" ? { letter: "N", bg: "#15803d" }
+                    : { letter: "P", bg: "#84cc16" };
+          parkMarkersRef.current.push(
+            new maplibregl.Marker({ element: createPOIMkr(cfg.letter, cfg.bg, el.tags?.name || "Parc"), anchor: "center" })
+              .setLngLat([el.lon, el.lat]).addTo(map.current)
+          );
+        });
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (showParks && selectedCommune) loadParkMarkers();
+    else { parkMarkersRef.current.forEach(m => m.remove()); parkMarkersRef.current = []; }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showParks, selectedCommune]);
+
+  const loadShopMarkers = useCallback(async () => {
+    shopMarkersRef.current.forEach(m => m.remove());
+    shopMarkersRef.current = [];
+    const center = communeCenterRef.current;
+    if (!center || !map.current) return;
+    const [lon, lat] = center;
+    const q = `[out:json][timeout:15];node["shop"~"supermarket|convenience|bakery|butcher|mall|marketplace|florist"](around:2000,${lat},${lon});out body;`;
+    try {
+      const res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`);
+      const d = await res.json();
+      const seen = new Set();
+      (d.elements || [])
+        .filter(el => {
+          if (!el.lat || !el.lon) return false;
+          const key = `${el.tags?.name || ""}:${Math.round(el.lat * 1000)}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .slice(0, 30)
+        .forEach(el => {
+          const type = el.tags?.shop;
+          const cfg = type === "supermarket" || type === "mall" ? { letter: "S", bg: "#7c3aed" }
+                    : type === "bakery" ? { letter: "B", bg: "#d97706" }
+                    : { letter: "C", bg: "#a855f7" };
+          shopMarkersRef.current.push(
+            new maplibregl.Marker({ element: createPOIMkr(cfg.letter, cfg.bg, el.tags?.name || "Commerce"), anchor: "center" })
+              .setLngLat([el.lon, el.lat]).addTo(map.current)
+          );
+        });
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (showShops && selectedCommune) loadShopMarkers();
+    else { shopMarkersRef.current.forEach(m => m.remove()); shopMarkersRef.current = []; }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showShops, selectedCommune]);
 
   // Garder les refs à jour pour les handlers enregistrés sur la carte
   useEffect(() => { allCommunesRef.current = allCommunes; }, [allCommunes]);
@@ -1716,6 +1890,50 @@ export default function MapView() {
             <span className="material-symbols-outlined" style={{ fontSize: 20 }}>directions_transit</span>
           </button>
 
+          {/* Toggle restaurants */}
+          <button
+            onClick={() => setShowRestaurants(v => !v)}
+            title={showRestaurants ? "Masquer les restaurants" : "Afficher restaurants & cafés"}
+            className={`size-11 rounded-xl flex items-center justify-center transition-all ${
+              showRestaurants ? "text-white shadow-lg" : "glass-panel hover:bg-primary/20 text-slate-300"
+            }`}
+            style={showRestaurants ? { background: "#f97316", boxShadow: "0 4px 20px rgba(249,115,22,0.4)" } : {}}>
+            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>restaurant</span>
+          </button>
+
+          {/* Toggle écoles */}
+          <button
+            onClick={() => setShowSchools(v => !v)}
+            title={showSchools ? "Masquer les écoles" : "Afficher écoles & universités"}
+            className={`size-11 rounded-xl flex items-center justify-center transition-all ${
+              showSchools ? "text-white shadow-lg" : "glass-panel hover:bg-primary/20 text-slate-300"
+            }`}
+            style={showSchools ? { background: "#0ea5e9", boxShadow: "0 4px 20px rgba(14,165,233,0.4)" } : {}}>
+            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>school</span>
+          </button>
+
+          {/* Toggle parcs */}
+          <button
+            onClick={() => setShowParks(v => !v)}
+            title={showParks ? "Masquer les parcs" : "Afficher parcs & jardins"}
+            className={`size-11 rounded-xl flex items-center justify-center transition-all ${
+              showParks ? "text-white shadow-lg" : "glass-panel hover:bg-primary/20 text-slate-300"
+            }`}
+            style={showParks ? { background: "#84cc16", boxShadow: "0 4px 20px rgba(132,204,22,0.4)" } : {}}>
+            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>park</span>
+          </button>
+
+          {/* Toggle commerces */}
+          <button
+            onClick={() => setShowShops(v => !v)}
+            title={showShops ? "Masquer les commerces" : "Afficher supermarchés & commerces"}
+            className={`size-11 rounded-xl flex items-center justify-center transition-all ${
+              showShops ? "text-white shadow-lg" : "glass-panel hover:bg-primary/20 text-slate-300"
+            }`}
+            style={showShops ? { background: "#a855f7", boxShadow: "0 4px 20px rgba(168,85,247,0.4)" } : {}}>
+            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>storefront</span>
+          </button>
+
           <button
             onClick={() => map.current && map.current.setStyle(
               map.current.getStyle().name?.includes("dark")
@@ -1771,8 +1989,8 @@ export default function MapView() {
           </button>
         )}
 
-        {/* Légendes empilées — sécurité en bas, transport au dessus */}
-        {(showTransports || showSecurity) && (
+        {/* Légendes empilées — sécurité en bas, transport au dessus, puis POI */}
+        {(showTransports || showSecurity || showRestaurants || showSchools || showParks || showShops) && (
           <div className="absolute bottom-10 left-[72px] z-10 flex flex-col gap-1.5">
             {showSecurity && (
               <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl"
@@ -1805,6 +2023,77 @@ export default function MapView() {
                   <div key={letter} className="flex items-center gap-1">
                     <span className="flex items-center justify-center text-[8px] font-black text-white"
                       style={{ width: 14, height: 14, background: bg, borderRadius: square ? 3 : "50%", border: "1.5px solid rgba(255,255,255,0.7)" }}>
+                      {letter}
+                    </span>
+                    <span className="text-[9px] text-slate-400">{label}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {showRestaurants && (
+              <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl"
+                style={{ background: "rgba(10,16,28,0.92)", border: "1px solid rgba(249,115,22,0.3)", backdropFilter: "blur(8px)" }}>
+                {[
+                  { letter: "R", bg: "#f97316", label: "Restaurant" },
+                  { letter: "R", bg: "#f97316", label: "Café/Bar" },
+                ].map(({ letter, bg, label }, i) => (
+                  <div key={i} className="flex items-center gap-1">
+                    <span className="flex items-center justify-center font-black text-white"
+                      style={{ width: 14, height: 14, fontSize: 7, background: bg, borderRadius: "50%", border: "1.5px solid rgba(255,255,255,0.7)" }}>
+                      {letter}
+                    </span>
+                    <span className="text-[9px] text-slate-400">{label}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {showSchools && (
+              <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl"
+                style={{ background: "rgba(10,16,28,0.92)", border: "1px solid rgba(14,165,233,0.3)", backdropFilter: "blur(8px)" }}>
+                {[
+                  { letter: "É", bg: "#0ea5e9", label: "École" },
+                  { letter: "U", bg: "#3b82f6", label: "Université" },
+                  { letter: "M", bg: "#fbbf24", label: "Maternelle" },
+                ].map(({ letter, bg, label }) => (
+                  <div key={label} className="flex items-center gap-1">
+                    <span className="flex items-center justify-center font-black text-white"
+                      style={{ width: 14, height: 14, fontSize: 6, background: bg, borderRadius: "50%", border: "1.5px solid rgba(255,255,255,0.7)" }}>
+                      {letter}
+                    </span>
+                    <span className="text-[9px] text-slate-400">{label}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {showParks && (
+              <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl"
+                style={{ background: "rgba(10,16,28,0.92)", border: "1px solid rgba(132,204,22,0.3)", backdropFilter: "blur(8px)" }}>
+                {[
+                  { letter: "P", bg: "#84cc16", label: "Parc/Jardin" },
+                  { letter: "J", bg: "#22c55e", label: "Jeux" },
+                  { letter: "N", bg: "#15803d", label: "Nature" },
+                ].map(({ letter, bg, label }) => (
+                  <div key={label} className="flex items-center gap-1">
+                    <span className="flex items-center justify-center font-black text-white"
+                      style={{ width: 14, height: 14, fontSize: 7, background: bg, borderRadius: "50%", border: "1.5px solid rgba(255,255,255,0.7)" }}>
+                      {letter}
+                    </span>
+                    <span className="text-[9px] text-slate-400">{label}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {showShops && (
+              <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl"
+                style={{ background: "rgba(10,16,28,0.92)", border: "1px solid rgba(168,85,247,0.3)", backdropFilter: "blur(8px)" }}>
+                {[
+                  { letter: "S", bg: "#7c3aed", label: "Supermarché" },
+                  { letter: "B", bg: "#d97706", label: "Boulangerie" },
+                  { letter: "C", bg: "#a855f7", label: "Commerce" },
+                ].map(({ letter, bg, label }) => (
+                  <div key={label} className="flex items-center gap-1">
+                    <span className="flex items-center justify-center font-black text-white"
+                      style={{ width: 14, height: 14, fontSize: 6, background: bg, borderRadius: "50%", border: "1.5px solid rgba(255,255,255,0.7)" }}>
                       {letter}
                     </span>
                     <span className="text-[9px] text-slate-400">{label}</span>

@@ -55,4 +55,14 @@ echo "╚═══════════════════════�
 $PYTHON ingestion/export_gold_to_postgres.py
 echo ""
 
+# ── Étape 4 : Enrichissements post-export ─────────────────────────────────────
+echo "╔══════════════════════════════════════╗"
+echo "║  Étape 4 : Enrichissements Python    ║"
+echo "╚══════════════════════════════════════╝"
+$PYTHON ingestion/ips/download_gcs.py
+$PYTHON ingestion/energie/download_gcs.py
+$PYTHON ingestion/delinquance/download_gcs.py
+$PYTHON ingestion/scores/compute_scores.py
+echo ""
+
 echo "🎉 Pipeline terminé !"
