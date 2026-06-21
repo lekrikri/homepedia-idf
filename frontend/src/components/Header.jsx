@@ -210,12 +210,16 @@ export default function Header() {
                   </div>
                   <div className="py-1">
                     {[
-                      { icon: "person", label: "Mon profil" },
-                      { icon: "favorite", label: "Favoris" },
-                      { icon: "settings", label: "Paramètres" },
+                      { icon: "map",      label: "Explorer la carte",  to: "/carte" },
+                      { icon: "compare",  label: "Comparer communes",  to: "/comparer" },
+                      { icon: "bar_chart",label: "Dashboard",          to: "/dashboard" },
+                      ...(user?.role === "admin"
+                        ? [{ icon: "schema", label: "Administration", to: "/pipeline", admin: true }]
+                        : []),
                     ].map(item => (
                       <button key={item.label}
-                        className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-slate-300 hover:bg-primary/10 hover:text-primary transition-colors">
+                        onClick={() => { navigate(item.to); setShowMenu(false); }}
+                        className={`w-full text-left flex items-center gap-3 px-4 py-2 text-sm transition-colors ${item.admin ? "text-amber-400 hover:bg-amber-500/10" : "text-slate-300 hover:bg-primary/10 hover:text-primary"}`}>
                         <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{item.icon}</span>
                         {item.label}
                       </button>
