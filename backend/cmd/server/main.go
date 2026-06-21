@@ -29,13 +29,15 @@ func main() {
 		gin.SetMode(os.Getenv("GIN_MODE"))
 	}
 
-	// Connect to PostgreSQL
+	// Connect to PostgreSQL (non-fatal : le serveur démarre même si la DB est lente)
 	ctx := context.Background()
 	if err := db.Connect(ctx); err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		log.Printf("WARNING: database connection failed at startup: %v", err)
+		log.Println("Server will start anyway — DB requests will fail until connection is restored")
+	} else {
+		log.Println("Connected to PostgreSQL")
 	}
 	defer db.Close()
-	log.Println("Connected to PostgreSQL")
 
 	// gin.Default() already includes Logger + Recovery middleware
 	r := gin.Default()
