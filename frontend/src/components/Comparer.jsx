@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import axios from "axios";
+import { isFavorite, addFavorite, removeFavorite } from "../utils/favorites.js";
 
 // ── Utilitaires ───────────────────────────────────────────────────────────────
 
@@ -180,6 +181,14 @@ function CommuneSearch({ label, color, value, onSelect }) {
 // ── Bloc d'en-tête commune ────────────────────────────────────────────────────
 
 function CommuneHeader({ data, color, side }) {
+  const [fav, setFav] = useState(() => data ? isFavorite(data.code_commune) : false);
+
+  const toggleFav = () => {
+    if (!data) return;
+    if (fav) { removeFavorite(data.code_commune); setFav(false); }
+    else      { addFavorite(data); setFav(true); }
+  };
+
   if (!data) {
     return (
       <div className={`flex-1 rounded-2xl border border-dashed border-slate-700 p-6 flex flex-col items-center justify-center gap-3 min-h-[140px] ${side === "left" ? "mr-2" : "ml-2"}`}>
@@ -191,7 +200,16 @@ function CommuneHeader({ data, color, side }) {
   return (
     <div className={`flex-1 rounded-2xl p-5 ${side === "left" ? "mr-2" : "ml-2"}`}
       style={{ background: "rgba(30,41,59,0.7)", border: `1px solid ${color === "text-blue-400" ? "rgba(59,130,246,0.4)" : "rgba(139,92,246,0.4)"}` }}>
-      <p className={`text-xs font-bold uppercase tracking-wider mb-1 ${color}`}>{side === "left" ? "Commune A" : "Commune B"}</p>
+      <div className="flex items-start justify-between mb-1">
+        <p className={`text-xs font-bold uppercase tracking-wider ${color}`}>{side === "left" ? "Commune A" : "Commune B"}</p>
+        <button onClick={toggleFav}
+          title={fav ? "Retirer des favoris" : "Ajouter aux favoris"}
+          className={`size-7 rounded-lg flex items-center justify-center transition-all -mt-0.5 -mr-0.5 ${
+            fav ? "text-red-400 bg-red-500/15" : "text-slate-600 hover:text-red-400 hover:bg-red-500/10"
+          }`}>
+          <span className="material-symbols-outlined" style={{ fontSize: 16, fontVariationSettings: fav ? "'FILL' 1" : "'FILL' 0" }}>favorite</span>
+        </button>
+      </div>
       <h2 className="text-xl font-bold text-slate-100">{data.city}</h2>
       <p className="text-xs text-slate-400 mt-0.5">Code INSEE {data.code_commune} · Dép. {data.code_departement}</p>
       <div className="flex gap-4 mt-3 flex-wrap">

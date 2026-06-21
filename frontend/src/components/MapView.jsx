@@ -4,6 +4,7 @@ import maplibregl from "maplibre-gl";
 import axios from "axios";
 import "maplibre-gl/dist/maplibre-gl.css";
 import CesiumView3D from "./CesiumView3D";
+import { isFavorite, addFavorite, removeFavorite } from "../utils/favorites.js";
 
 // Coordonnées par code INSEE pour le flyTo
 const COMMUNE_COORDS = {
@@ -167,6 +168,26 @@ function TransportsSection({ lat, lon }) {
 
 function RightPanel({ commune, transactions, agregat }) {
   const [activeScoreTip, setActiveScoreTip] = useState(null);
+  const codeCommune = agregat?.code_commune || commune?.code_insee;
+  const [fav, setFav] = useState(() => codeCommune ? isFavorite(codeCommune) : false);
+
+  const toggleFav = () => {
+    if (!codeCommune) return;
+    if (fav) {
+      removeFavorite(codeCommune);
+      setFav(false);
+    } else {
+      addFavorite({
+        code_commune:       codeCommune,
+        city:               agregat?.city || commune?.nom,
+        code_departement:   agregat?.code_departement || commune?.departement,
+        prix_median_m2:     agregat?.prix_median_m2 ?? commune?.prix_m2_median,
+        score_investissement: agregat?.score_investissement,
+        score_qualite_vie:  agregat?.score_qualite_vie,
+      });
+      setFav(true);
+    }
+  };
 
   // Prix médian — Gold agregat en priorité, fallback gold calculé, fallback client-side
   const prixMedian = agregat?.prix_median_m2
@@ -227,7 +248,7 @@ function RightPanel({ commune, transactions, agregat }) {
         {/* ── HEADER ────────────────────────────────────────────────────── */}
         <header className="pt-1">
           <div className="flex items-start justify-between mb-1">
-            <div>
+            <div className="flex-1 min-w-0">
               <h3 className="text-xl font-bold text-slate-100 leading-tight">{commune.nom}</h3>
               <div className="flex items-center gap-2 mt-1 flex-wrap">
                 <span className="text-[10px] px-2 py-0.5 rounded-full font-medium"
@@ -241,6 +262,19 @@ function RightPanel({ commune, transactions, agregat }) {
                 )}
               </div>
             </div>
+            <button
+              onClick={toggleFav}
+              title={fav ? "Retirer des favoris" : "Ajouter aux favoris"}
+              className={`ml-2 shrink-0 size-9 rounded-xl flex items-center justify-center transition-all ${
+                fav
+                  ? "bg-red-500/20 border border-red-500/40 text-red-400"
+                  : "bg-slate-800/60 border border-slate-700 text-slate-500 hover:text-red-400 hover:border-red-500/40 hover:bg-red-500/10"
+              }`}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: 18, fontVariationSettings: fav ? "'FILL' 1" : "'FILL' 0" }}>
+                favorite
+              </span>
+            </button>
           </div>
         </header>
 
