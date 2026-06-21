@@ -93,6 +93,23 @@ function detectType(tags = {}) {
   return "other";
 }
 
+const TRANSPORT_MARKER_CFG = {
+  subway: { bg: "#3c83f6", letter: "M", shape: "circle" },
+  tram:   { bg: "#a78bfa", letter: "T", shape: "circle" },
+  train:  { bg: "#10b981", letter: "R", shape: "circle" },
+  bus:    { bg: "#f59e0b", letter: "B", shape: "square" },
+  other:  { bg: "#64748b", letter: "⬡", shape: "circle" },
+};
+
+function createTransportMarkerEl(type, name) {
+  const cfg = TRANSPORT_MARKER_CFG[type] || TRANSPORT_MARKER_CFG.other;
+  const el = document.createElement("div");
+  el.title = name || "";
+  el.style.cssText = `width:18px;height:18px;background:${cfg.bg};border-radius:${cfg.shape === "square" ? "4px" : "50%"};border:2px solid rgba(255,255,255,0.85);display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:900;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,0.5),0 0 0 1px ${cfg.bg}44;pointer-events:none;`;
+  el.textContent = cfg.letter;
+  return el;
+}
+
 function TransportsSection({ lat, lon }) {
   const [stops, setStops] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -940,6 +957,9 @@ export default function MapView() {
   const txTooltipDataRef = useRef(new Map());
   const hoverTipRef = useRef(null);
   const setHoveredTxIdRef = useRef(null);
+  const [showTransports, setShowTransports] = useState(false);
+  const transportMarkersRef = useRef([]);
+  const communeCenterRef = useRef(null);
 
   useEffect(() => { setHoveredTxIdRef.current = setHoveredTxId; }, []);
 
@@ -988,6 +1008,7 @@ export default function MapView() {
         if (withCoords.length && map.current) {
           const avgLon = withCoords.reduce((s, t) => s + t.longitude, 0) / withCoords.length;
           const avgLat = withCoords.reduce((s, t) => s + t.latitude, 0) / withCoords.length;
+          communeCenterRef.current = [avgLon, avgLat];
           map.current.flyTo({ center: [avgLon, avgLat], zoom: 13, duration: 900 });
         }
       }
@@ -1111,9 +1132,58 @@ export default function MapView() {
     lockedRef.current = false;
   }, []);
 
+  const handleLock = useCallback((commune) => {
+    if (!commune) return;
+    setLockedCommune(commune);
+    lockedRef.current = true;
+  }, []);
+
+  const loadTransportMarkers = useCallback(async () => {
+    transportMarkersRef.current.forEach(m => m.remove());
+    transportMarkersRef.current = [];
+    const center = communeCenterRef.current;
+    if (!center || !map.current) return;
+    const [lon, lat] = center;
+    const query = `[out:json][timeout:12];(node["public_transport"="station"](around:3000,${lat},${lon});node["railway"~"station|tram_stop"](around:2500,${lat},${lon}););out body;`;
+    try {
+      const res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
+      const d = await res.json();
+      const seen = new Set();
+      (d.elements || [])
+        .filter(el => {
+          const name = el.tags?.name;
+          if (!name || !el.lat || !el.lon) return false;
+          const key = `${detectType(el.tags)}:${name}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .slice(0, 30)
+        .forEach(stop => {
+          const type = detectType(stop.tags);
+          const el = createTransportMarkerEl(type, stop.tags?.name || "");
+          transportMarkersRef.current.push(
+            new maplibregl.Marker({ element: el, anchor: "center" })
+              .setLngLat([stop.lon, stop.lat])
+              .addTo(map.current)
+          );
+        });
+    } catch {}
+  }, []);
+
   // Garder les refs à jour pour les handlers enregistrés sur la carte
   useEffect(() => { allCommunesRef.current = allCommunes; }, [allCommunes]);
   useEffect(() => { handleSelectRef.current = handleSelectCommune; }, [handleSelectCommune]);
+
+  useEffect(() => {
+    if (showTransports && selectedCommune) {
+      loadTransportMarkers();
+    } else {
+      transportMarkersRef.current.forEach(m => m.remove());
+      transportMarkersRef.current = [];
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showTransports, selectedCommune]);
 
   const handleToggleType = (type) => {
     setActiveTypes(prev => {
@@ -1486,6 +1556,17 @@ export default function MapView() {
             </span>
           </button>
 
+          {/* Toggle transports */}
+          <button
+            onClick={() => setShowTransports(v => !v)}
+            title={showTransports ? "Masquer les transports" : "Afficher les stations de transport"}
+            className={`size-11 rounded-xl flex items-center justify-center transition-all ${
+              showTransports ? "text-white shadow-lg" : "glass-panel hover:bg-primary/20 text-slate-300"
+            }`}
+            style={showTransports ? { background: "#10b981", boxShadow: "0 4px 20px rgba(16,185,129,0.4)" } : {}}>
+            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>directions_transit</span>
+          </button>
+
           <button
             onClick={() => map.current && map.current.setStyle(
               map.current.getStyle().name?.includes("dark")
@@ -1517,6 +1598,50 @@ export default function MapView() {
           <span className="material-symbols-outlined text-white" style={{ fontSize: 26 }}>analytics</span>
           <span className="absolute -top-1 -right-1 size-4 bg-green-500 border-2 border-background-dark rounded-full animate-pulse" />
         </button>
+
+        {/* FAB Lock/Unlock — bas gauche, rouge quand verrouillé */}
+        {selectedCommune && (
+          <button
+            onClick={lockedCommune ? handleUnlock : () => handleLock(selectedCommune)}
+            title={lockedCommune ? `Déverrouiller — ${lockedCommune.nom}` : "Verrouiller cette commune"}
+            className="absolute bottom-10 left-4 z-20 rounded-full flex items-center justify-center hover:scale-105 transition-all"
+            style={{
+              width: 52, height: 52,
+              background: lockedCommune ? "#ef4444" : "rgba(22,32,48,0.9)",
+              border: lockedCommune ? "none" : "1px solid rgba(239,68,68,0.5)",
+              boxShadow: lockedCommune
+                ? "0 0 0 0 rgba(239,68,68,0.4), 0 4px 24px rgba(239,68,68,0.5)"
+                : "0 4px 16px rgba(0,0,0,0.4)",
+            }}>
+            <span className="material-symbols-outlined text-white" style={{ fontSize: 24, fontVariationSettings: "'FILL' 1" }}>
+              {lockedCommune ? "lock" : "lock_open"}
+            </span>
+            {lockedCommune && (
+              <span className="absolute -top-1 -right-1 size-4 bg-amber-400 border-2 border-background-dark rounded-full animate-pulse" />
+            )}
+          </button>
+        )}
+
+        {/* Légende transports — visible seulement quand couche active */}
+        {showTransports && (
+          <div className="absolute bottom-10 left-[72px] z-10 flex items-center gap-1.5 px-3 py-2 rounded-xl"
+            style={{ background: "rgba(10,16,28,0.92)", border: "1px solid rgba(255,255,255,0.08)", backdropFilter: "blur(8px)" }}>
+            {[
+              { letter: "M", bg: "#3c83f6", label: "Métro" },
+              { letter: "R", bg: "#10b981", label: "RER" },
+              { letter: "T", bg: "#a78bfa", label: "Tram" },
+              { letter: "B", bg: "#f59e0b", label: "Bus", square: true },
+            ].map(({ letter, bg, label, square }) => (
+              <div key={letter} className="flex items-center gap-1">
+                <span className="flex items-center justify-center text-[8px] font-black text-white"
+                  style={{ width: 14, height: 14, background: bg, borderRadius: square ? 3 : "50%", border: "1.5px solid rgba(255,255,255,0.7)" }}>
+                  {letter}
+                </span>
+                <span className="text-[9px] text-slate-400">{label}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Status bar */}
         <div className="absolute bottom-0 left-0 right-0 h-8 border-t border-primary/20 flex items-center justify-between px-4 z-10"
