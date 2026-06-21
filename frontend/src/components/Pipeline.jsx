@@ -204,16 +204,47 @@ export default function Pipeline() {
   const [runs, setRuns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const user = (() => { try { return JSON.parse(localStorage.getItem("hp_user")); } catch { return null; } })();
+
   const load = () => {
     setLoading(true);
     setError(null);
-    axios.get("/api/v1/pipeline/runs")
+    const token = localStorage.getItem("hp_token");
+    axios.get("/api/v1/pipeline/runs", token ? { headers: { Authorization: `Bearer ${token}` } } : {})
       .then(r => setRuns(r.data.data || []))
       .catch(() => setError("Impossible de charger l'historique du pipeline."))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { if (user?.role === "admin") load(); else setLoading(false); }, []);
+
+  if (!user) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center max-w-sm">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full mb-6" style={{ background: "rgba(60,131,246,0.1)", border: "1px solid rgba(60,131,246,0.2)" }}>
+            <span className="material-symbols-outlined text-primary" style={{ fontSize: 32 }}>login</span>
+          </div>
+          <h2 className="text-xl font-bold text-white mb-2">Connexion requise</h2>
+          <p className="text-slate-400 text-sm">Cette page est réservée aux administrateurs. Connectez-vous avec un compte admin.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (user.role !== "admin") {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center max-w-sm">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full mb-6" style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)" }}>
+            <span className="material-symbols-outlined text-red-400" style={{ fontSize: 32 }}>block</span>
+          </div>
+          <h2 className="text-xl font-bold text-white mb-2">Accès refusé</h2>
+          <p className="text-slate-400 text-sm">Le Pipeline est réservé aux administrateurs HomePedia.</p>
+        </div>
+      </div>
+    );
+  }
 
   const successRuns   = runs.filter(r => r.status === "success");
   const totalTx       = successRuns.reduce((acc, r) => acc + (r.nb_transactions_exported || 0), 0);

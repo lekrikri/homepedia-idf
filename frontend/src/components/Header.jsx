@@ -2,13 +2,16 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import LoginModal from "./LoginModal";
 
-const NAV = [
+const NAV_PUBLIC = [
   { to: "/",             label: "Accueil",      end: true },
   { to: "/carte",        label: "Carte" },
   { to: "/transactions", label: "Transactions" },
   { to: "/dashboard",    label: "Dashboard" },
   { to: "/comparer",     label: "Comparer" },
-  { to: "/pipeline",     label: "Pipeline" },
+];
+const NAV_ADMIN = [
+  ...NAV_PUBLIC,
+  { to: "/pipeline", label: "Pipeline" },
 ];
 
 function getInitials(user) {
@@ -110,7 +113,7 @@ export default function Header() {
           </div>
 
           <nav className="hidden md:flex items-center gap-6">
-            {NAV.map(({ to, label, end }) => (
+            {(user?.role === "admin" ? NAV_ADMIN : NAV_PUBLIC).map(({ to, label, end }) => (
               <NavLink
                 key={to}
                 to={to}
