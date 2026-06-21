@@ -39,7 +39,8 @@ func ListPipelineRuns(c *gin.Context) {
 		LIMIT 50
 	`)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		// Table absente ou DB inaccessible → réponse vide sans casser l'UI
+		c.JSON(http.StatusOK, gin.H{"count": 0, "data": []PipelineRun{}})
 		return
 	}
 	defer rows.Close()
