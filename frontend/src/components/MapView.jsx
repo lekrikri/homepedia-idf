@@ -894,30 +894,67 @@ export default function MapView() {
         }
       }
 
+      const hoverTip = new maplibregl.Popup({
+        closeButton: false, closeOnClick: false, offset: 14, maxWidth: "240px",
+        className: "hp-hover-tip",
+      });
+
       data.forEach(t => {
         if (!t.longitude || !t.latitude) return;
         const el = document.createElement("div");
         el.style.cssText = "width:10px;height:10px;background:#3c83f6;border-radius:50%;border:2px solid rgba(255,255,255,0.6);cursor:pointer;box-shadow:0 0 8px rgba(60,131,246,0.7);transition:transform .15s";
-        el.addEventListener("mouseenter", () => { el.style.transform = "scale(1.5)"; });
-        el.addEventListener("mouseleave", () => { el.style.transform = "scale(1)"; });
         const dpeColors = { A:"#22c55e",B:"#4ade80",C:"#facc15",D:"#fb923c",E:"#f97316",F:"#ef4444",G:"#dc2626" };
-        const prixM2Popup = t.valeur_fonciere && t.surface_reelle_bati ? Math.round(t.valeur_fonciere / t.surface_reelle_bati) : null;
-        const popup = new maplibregl.Popup({ offset: 16, closeButton: true, maxWidth: "260px", closeOnClick: false })
-          .setHTML(`<div style="font-family:Inter,sans-serif;min-width:200px;padding:4px 2px">
+        const prixM2 = t.valeur_fonciere && t.surface_reelle_bati ? Math.round(t.valeur_fonciere / t.surface_reelle_bati) : null;
+        const prixFmt = t.valeur_fonciere
+          ? (t.valeur_fonciere >= 1e6 ? (t.valeur_fonciere/1e6).toFixed(2)+"M €" : Math.round(t.valeur_fonciere/1000)+"k €")
+          : "—";
+        const dpeC = t.classe_energie ? (dpeColors[t.classe_energie] || "#64748b") : null;
+        const adresse = [t.adresse_numero, t.adresse].filter(Boolean).join(" ") || "Adresse non renseignée";
+        const date = t.date_mutation ? new Date(t.date_mutation).toLocaleDateString("fr-FR", { month:"short", year:"numeric" }) : "";
+
+        el.addEventListener("mouseenter", () => {
+          el.style.transform = "scale(1.6)";
+          el.style.boxShadow = "0 0 14px rgba(60,131,246,0.9)";
+          hoverTip.setLngLat([t.longitude, t.latitude]).setHTML(`
+            <div style="font-family:Inter,sans-serif;padding:2px 0;min-width:180px">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+                <div style="width:6px;height:6px;background:#3c83f6;border-radius:50%;flex-shrink:0"></div>
+                <span style="font-size:10px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px">${adresse}</span>
+              </div>
+              <div style="font-size:20px;font-weight:900;color:#fff;letter-spacing:-0.5px;line-height:1.1">${prixFmt}</div>
+              ${prixM2 ? `<div style="font-size:11px;color:#3c83f6;font-weight:700;margin-top:2px">${prixM2.toLocaleString("fr-FR")} €/m²</div>` : ""}
+              <div style="height:1px;background:rgba(255,255,255,0.07);margin:7px 0"></div>
+              <div style="display:flex;align-items:center;gap:8px;font-size:10px">
+                ${t.surface_reelle_bati ? `<span style="color:#cbd5e1">${t.surface_reelle_bati} m²</span>` : ""}
+                ${t.nombre_pieces ? `<span style="color:#cbd5e1">T${t.nombre_pieces}</span>` : ""}
+                ${t.type_local ? `<span style="color:#64748b">${t.type_local}</span>` : ""}
+                ${dpeC ? `<span style="font-weight:800;font-size:10px;padding:0 5px;border-radius:3px;background:${dpeC}22;color:${dpeC};border:1px solid ${dpeC}44;margin-left:auto">DPE ${t.classe_energie}</span>` : ""}
+              </div>
+              ${date ? `<div style="font-size:9px;color:#475569;margin-top:5px;text-align:right">${date}</div>` : ""}
+            </div>
+          `).addTo(map.current);
+        });
+        el.addEventListener("mouseleave", () => {
+          el.style.transform = "scale(1)";
+          el.style.boxShadow = "0 0 8px rgba(60,131,246,0.7)";
+          hoverTip.remove();
+        });
+        const popup = new maplibregl.Popup({ offset: 16, closeButton: true, maxWidth: "280px", closeOnClick: false })
+          .setHTML(`<div style="font-family:Inter,sans-serif;min-width:220px;padding:4px 2px">
             <div style="font-size:10px;color:#94a3b8;margin-bottom:6px;display:flex;align-items:center;gap:4px">
               <svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#3c83f6" opacity="0.4"/><circle cx="5" cy="5" r="2" fill="#3c83f6"/></svg>
-              ${[t.adresse_numero, t.adresse].filter(Boolean).join(" ") || "—"}
+              ${adresse}
             </div>
-            <div style="font-size:22px;font-weight:900;color:#3c83f6;letter-spacing:-0.5px;line-height:1">
-              ${t.valeur_fonciere ? (t.valeur_fonciere >= 1e6 ? (t.valeur_fonciere/1e6).toFixed(2)+"M €" : (t.valeur_fonciere/1000).toFixed(0)+"k €") : "—"}
-            </div>
+            <div style="font-size:24px;font-weight:900;color:#3c83f6;letter-spacing:-0.5px;line-height:1">${prixFmt}</div>
+            ${prixM2 ? `<div style="font-size:12px;color:#94a3b8;margin-top:3px;font-weight:600">${prixM2.toLocaleString("fr-FR")} €/m²</div>` : ""}
             <div style="height:1px;background:rgba(60,131,246,0.15);margin:8px 0"></div>
-            <div style="display:flex;align-items:center;justify-content:space-between;font-size:10px">
-              <span style="color:#cbd5e1">${t.surface_reelle_bati || "?"}m² · ${t.type_local || "—"}</span>
-              ${t.classe_energie ? `<span style="font-weight:900;font-size:11px;padding:1px 6px;border-radius:4px;background:${dpeColors[t.classe_energie]||"#64748b"}20;color:${dpeColors[t.classe_energie]||"#64748b"};border:1px solid ${dpeColors[t.classe_energie]||"#64748b"}50">DPE ${t.classe_energie}</span>` : ""}
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:10px">
+              ${t.surface_reelle_bati ? `<div><div style="color:#64748b">Surface</div><div style="color:#cbd5e1;font-weight:700">${t.surface_reelle_bati} m²</div></div>` : ""}
+              ${t.nombre_pieces ? `<div><div style="color:#64748b">Pièces</div><div style="color:#cbd5e1;font-weight:700">T${t.nombre_pieces}</div></div>` : ""}
+              ${t.type_local ? `<div><div style="color:#64748b">Type</div><div style="color:#cbd5e1;font-weight:700">${t.type_local}</div></div>` : ""}
+              ${t.date_mutation ? `<div><div style="color:#64748b">Vente</div><div style="color:#cbd5e1;font-weight:700">${new Date(t.date_mutation).toLocaleDateString("fr-FR",{month:"short",year:"numeric"})}</div></div>` : ""}
             </div>
-            ${prixM2Popup ? `<div style="font-size:11px;color:#94a3b8;margin-top:6px;font-weight:600">€${prixM2Popup.toLocaleString()}/m²</div>` : ""}
-            <div style="font-size:10px;color:#64748b;margin-top:4px">${t.date_mutation ? new Date(t.date_mutation).toLocaleDateString("fr-FR") : ""}</div>
+            ${dpeC ? `<div style="margin-top:8px;display:flex;align-items:center;gap:6px"><span style="font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:.05em">Performance énergétique</span><span style="font-weight:900;font-size:11px;padding:1px 7px;border-radius:4px;background:${dpeC}20;color:${dpeC};border:1px solid ${dpeC}44">DPE ${t.classe_energie}</span></div>` : ""}
           </div>`);
         // Gérer le popup manuellement — verrou pour empêcher le handler de commune de réagir
         el.addEventListener("click", e => {
