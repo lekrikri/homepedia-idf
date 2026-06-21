@@ -209,6 +209,148 @@ function CommuneHeader({ data, color, side }) {
   );
 }
 
+// ── Top communes suggérées ─────────────────────────────────────────────────────
+
+const TOP_CRITERIA = [
+  {
+    key: "investissement",
+    label: "Meilleur investissement",
+    icon: "trending_up",
+    color: "#3c83f6",
+    sort: c => -(c.score_investissement ?? -999),
+    badge: c => c.score_investissement != null ? `Score ${c.score_investissement.toFixed(1)}/10` : null,
+    sub: c => c.prix_median_m2 != null ? `${fmt(c.prix_median_m2)} €/m²` : null,
+  },
+  {
+    key: "qualite_vie",
+    label: "Qualité de vie",
+    icon: "favorite",
+    color: "#10b981",
+    sort: c => -(c.score_qualite_vie ?? -999),
+    badge: c => c.score_qualite_vie != null ? `Score ${c.score_qualite_vie.toFixed(1)}/10` : null,
+    sub: c => c.ips_moyen != null ? `IPS ${c.ips_moyen.toFixed(0)}` : null,
+  },
+  {
+    key: "prix_accessible",
+    label: "Prix accessibles",
+    icon: "savings",
+    color: "#f59e0b",
+    sort: c => (c.prix_median_m2 ?? 999999),
+    badge: c => c.prix_median_m2 != null ? `${fmt(c.prix_median_m2)} €/m²` : null,
+    sub: c => c.nb_transactions != null ? `${fmt(c.nb_transactions)} transactions` : null,
+  },
+  {
+    key: "liquidite",
+    label: "Marché liquide",
+    icon: "swap_horiz",
+    color: "#a78bfa",
+    sort: c => -(c.nb_transactions ?? -999),
+    badge: c => c.nb_transactions != null ? `${fmt(c.nb_transactions)} ventes` : null,
+    sub: c => c.prix_median_m2 != null ? `${fmt(c.prix_median_m2)} €/m²` : null,
+  },
+  {
+    key: "securite",
+    label: "Plus sûres",
+    icon: "shield",
+    color: "#34d399",
+    sort: c => -(c.score_securite ?? -999),
+    badge: c => c.score_securite != null ? `Score ${c.score_securite.toFixed(1)}/10` : null,
+    sub: c => c.taux_cambriolages != null ? `${c.taux_cambriolages.toFixed(1)} ‰ camb.` : null,
+  },
+];
+
+function TopCommunesPanel({ communes, onSelectA, onSelectB, communeA, communeB }) {
+  const [activeTab, setActiveTab] = useState("investissement");
+
+  if (!communes || communes.length === 0) return null;
+
+  const criterion = TOP_CRITERIA.find(c => c.key === activeTab);
+  const top5 = [...communes]
+    .filter(c => criterion.sort(c) !== 999999 && criterion.sort(c) !== 999)
+    .sort((a, b) => criterion.sort(a) - criterion.sort(b))
+    .slice(0, 5);
+
+  return (
+    <div className="rounded-2xl overflow-hidden" style={{ background: "rgba(15,23,36,0.9)", border: "1px solid rgba(60,131,246,0.15)" }}>
+      {/* Titre */}
+      <div className="px-5 py-4 border-b border-slate-800/60">
+        <div className="flex items-center gap-2">
+          <span className="material-symbols-outlined text-blue-400" style={{ fontSize: 18 }}>workspace_premium</span>
+          <h2 className="text-sm font-bold text-slate-200 uppercase tracking-wider">Top communes IDF</h2>
+          <span className="ml-2 text-[10px] text-slate-500">Cliquez pour sélectionner directement</span>
+        </div>
+      </div>
+
+      {/* Onglets */}
+      <div className="flex gap-1 p-3 border-b border-slate-800/60 overflow-x-auto">
+        {TOP_CRITERIA.map(tab => (
+          <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${activeTab === tab.key ? "text-white" : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"}`}
+            style={activeTab === tab.key ? { background: tab.color + "25", border: `1px solid ${tab.color}50`, color: tab.color } : { border: "1px solid transparent" }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 13 }}>{tab.icon}</span>
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Résultats */}
+      <div className="p-3 grid grid-cols-5 gap-2">
+        {top5.map((c, i) => {
+          const badge = criterion.badge(c);
+          const sub = criterion.sub(c);
+          const isA = communeA?.code_commune === c.code_commune;
+          const isB = communeB?.code_commune === c.code_commune;
+          return (
+            <div key={c.code_commune} className="rounded-xl p-3 flex flex-col gap-2"
+              style={{ background: isA ? "rgba(59,130,246,0.1)" : isB ? "rgba(139,92,246,0.1)" : "rgba(22,32,48,0.6)", border: `1px solid ${isA ? "rgba(59,130,246,0.3)" : isB ? "rgba(139,92,246,0.3)" : "rgba(60,131,246,0.08)"}` }}>
+              {/* Rang */}
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black rounded-full w-5 h-5 flex items-center justify-center shrink-0"
+                  style={{ background: criterion.color + "25", color: criterion.color }}>
+                  {i + 1}
+                </span>
+                {(isA || isB) && (
+                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full"
+                    style={{ background: isA ? "rgba(59,130,246,0.2)" : "rgba(139,92,246,0.2)", color: isA ? "#3c83f6" : "#a78bfa" }}>
+                    {isA ? "A" : "B"}
+                  </span>
+                )}
+              </div>
+              {/* Nom */}
+              <div className="flex-1">
+                <p className="text-xs font-bold text-slate-100 leading-tight">{c.city}</p>
+                <p className="text-[9px] text-slate-500 mt-0.5">Dép. {c.code_departement}</p>
+              </div>
+              {/* Badge métrique */}
+              {badge && (
+                <p className="text-[10px] font-bold" style={{ color: criterion.color }}>{badge}</p>
+              )}
+              {sub && <p className="text-[9px] text-slate-500">{sub}</p>}
+              {/* Boutons */}
+              <div className="flex gap-1 mt-1">
+                <button
+                  onClick={() => onSelectA(c)}
+                  disabled={isA}
+                  className="flex-1 text-[9px] font-bold py-1 rounded-lg transition-colors disabled:opacity-40"
+                  style={{ background: "rgba(59,130,246,0.15)", color: "#3c83f6", border: "1px solid rgba(59,130,246,0.25)" }}>
+                  A
+                </button>
+                <button
+                  onClick={() => onSelectB(c)}
+                  disabled={isB}
+                  className="flex-1 text-[9px] font-bold py-1 rounded-lg transition-colors disabled:opacity-40"
+                  style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.25)" }}>
+                  B
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Section groupée ───────────────────────────────────────────────────────────
 
 function Section({ title, icon, children }) {
@@ -285,8 +427,8 @@ export default function Comparer() {
   return (
     <div className="flex flex-col h-full overflow-auto bg-background-dark p-6 gap-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-100">Comparer deux communes</h1>
-        <p className="text-sm text-slate-400 mt-1">Analyse côte à côte des métriques immobilières, qualité de vie et énergie.</p>
+        <h1 className="text-2xl font-bold text-slate-100">Analyse comparative — Communes IDF</h1>
+        <p className="text-sm text-slate-400 mt-1">Outil professionnel de comparaison : immobilier, qualité de vie, énergie, sécurité et scores d'investissement.</p>
       </div>
 
       {/* Sélecteurs */}
@@ -306,6 +448,15 @@ export default function Comparer() {
           onSelect={handleSelectB}
         />
       </div>
+
+      {/* Top communes suggérées */}
+      <TopCommunesPanel
+        communes={allCommunes}
+        onSelectA={handleSelectA}
+        onSelectB={handleSelectB}
+        communeA={communeA}
+        communeB={communeB}
+      />
 
       {/* En-têtes communes */}
       <div className="flex gap-0">
