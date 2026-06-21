@@ -284,7 +284,10 @@ function TopCommunesPanel({ communes, onSelectA, onSelectB, communeA, communeB }
 
   const criterion = TOP_CRITERIA.find(c => c.key === activeTab);
   const top5 = [...communes]
-    .filter(c => criterion.sort(c) !== 999999 && criterion.sort(c) !== 999)
+    .filter(c => {
+      const v = criterion.sort(c);
+      return v !== 999999 && v !== 999 && c.city;
+    })
     .sort((a, b) => criterion.sort(a) - criterion.sort(b))
     .slice(0, 5);
 
@@ -313,51 +316,50 @@ function TopCommunesPanel({ communes, onSelectA, onSelectB, communeA, communeB }
 
       {/* Résultats */}
       <div className="p-3 grid grid-cols-5 gap-2">
-        {top5.map((c, i) => {
+        {top5.length === 0 ? (
+          <div className="col-span-5 text-center py-4 text-slate-500 text-xs">Aucune donnée pour ce critère</div>
+        ) : top5.map((c, i) => {
           const badge = criterion.badge(c);
           const sub = criterion.sub(c);
           const isA = communeA?.code_commune === c.code_commune;
           const isB = communeB?.code_commune === c.code_commune;
           return (
-            <div key={c.code_commune} className="rounded-xl p-3 flex flex-col gap-2"
-              style={{ background: isA ? "rgba(59,130,246,0.1)" : isB ? "rgba(139,92,246,0.1)" : "rgba(22,32,48,0.6)", border: `1px solid ${isA ? "rgba(59,130,246,0.3)" : isB ? "rgba(139,92,246,0.3)" : "rgba(60,131,246,0.08)"}` }}>
-              {/* Rang */}
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-black rounded-full w-5 h-5 flex items-center justify-center shrink-0"
-                  style={{ background: criterion.color + "25", color: criterion.color }}>
+            <div key={c.code_commune} className="rounded-xl flex flex-col"
+              style={{
+                padding: "10px 10px 8px",
+                background: isA ? "rgba(59,130,246,0.12)" : isB ? "rgba(139,92,246,0.12)" : "rgba(22,32,48,0.7)",
+                border: `1px solid ${isA ? "rgba(59,130,246,0.4)" : isB ? "rgba(139,92,246,0.4)" : "rgba(60,131,246,0.1)"}`,
+              }}>
+              {/* Rang + badge sélection */}
+              <div className="flex items-center gap-1.5 mb-2">
+                <span className="text-[11px] font-black rounded-full w-5 h-5 flex items-center justify-center shrink-0"
+                  style={{ background: criterion.color + "22", color: criterion.color }}>
                   {i + 1}
                 </span>
-                {(isA || isB) && (
-                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full"
-                    style={{ background: isA ? "rgba(59,130,246,0.2)" : "rgba(139,92,246,0.2)", color: isA ? "#3c83f6" : "#a78bfa" }}>
-                    {isA ? "A" : "B"}
-                  </span>
-                )}
+                {isA && <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ background: "rgba(59,130,246,0.2)", color: "#3c83f6" }}>A</span>}
+                {isB && <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ background: "rgba(139,92,246,0.2)", color: "#a78bfa" }}>B</span>}
               </div>
-              {/* Nom */}
-              <div className="flex-1">
-                <p className="text-xs font-bold text-slate-100 leading-tight">{c.city}</p>
-                <p className="text-[9px] text-slate-500 mt-0.5">Dép. {c.code_departement}</p>
-              </div>
-              {/* Badge métrique */}
+
+              {/* Nom commune — priorité maximale */}
+              <p className="text-[13px] font-bold text-white leading-tight mb-0.5">{c.city}</p>
+              <p className="text-[10px] text-slate-500 mb-2">Dép. {c.code_departement}</p>
+
+              {/* Métrique principale */}
               {badge && (
-                <p className="text-[10px] font-bold" style={{ color: criterion.color }}>{badge}</p>
+                <p className="text-[11px] font-bold mb-0.5" style={{ color: criterion.color }}>{badge}</p>
               )}
-              {sub && <p className="text-[9px] text-slate-500">{sub}</p>}
+              {sub && <p className="text-[10px] text-slate-500 mb-2">{sub}</p>}
+
               {/* Boutons */}
-              <div className="flex gap-1 mt-1">
-                <button
-                  onClick={() => onSelectA(c)}
-                  disabled={isA}
-                  className="flex-1 text-[9px] font-bold py-1 rounded-lg transition-colors disabled:opacity-40"
-                  style={{ background: "rgba(59,130,246,0.15)", color: "#3c83f6", border: "1px solid rgba(59,130,246,0.25)" }}>
+              <div className="flex gap-1 mt-auto pt-1">
+                <button onClick={() => onSelectA(c)} disabled={isA}
+                  className="flex-1 text-[10px] font-bold py-1 rounded-lg transition-all disabled:opacity-30 hover:opacity-80"
+                  style={{ background: "rgba(59,130,246,0.18)", color: "#3c83f6", border: "1px solid rgba(59,130,246,0.3)" }}>
                   A
                 </button>
-                <button
-                  onClick={() => onSelectB(c)}
-                  disabled={isB}
-                  className="flex-1 text-[9px] font-bold py-1 rounded-lg transition-colors disabled:opacity-40"
-                  style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.25)" }}>
+                <button onClick={() => onSelectB(c)} disabled={isB}
+                  className="flex-1 text-[10px] font-bold py-1 rounded-lg transition-all disabled:opacity-30 hover:opacity-80"
+                  style={{ background: "rgba(139,92,246,0.18)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)" }}>
                   B
                 </button>
               </div>
