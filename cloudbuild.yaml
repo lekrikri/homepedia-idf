@@ -203,9 +203,8 @@ images:
   - ${_REGISTRY}/frontend:latest
 
 # Secrets injectés depuis Secret Manager GCP
+# JWT_SECRET est passé directement via --update-secrets dans deploy-backend (pas besoin ici)
 availableSecrets:
   secretManager:
     - versionName: projects/homepedia-493013/secrets/homepedia-supabase-password/versions/latest
       env: POSTGRES_PASSWORD
-    - versionName: projects/homepedia-493013/secrets/homepedia-jwt-secret/versions/latest
-      env: JWT_SECRET
