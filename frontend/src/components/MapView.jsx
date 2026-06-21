@@ -937,6 +937,8 @@ export default function MapView() {
   const [lockedCommune, setLockedCommune] = useState(null);
   const lockedRef = useRef(false);
   const txMarkerElsRef = useRef(new Map());
+  const txTooltipDataRef = useRef(new Map());
+  const hoverTipRef = useRef(null);
   const setHoveredTxIdRef = useRef(null);
 
   useEffect(() => { setHoveredTxIdRef.current = setHoveredTxId; }, []);
@@ -978,6 +980,7 @@ export default function MapView() {
       markersRef.current.forEach(m => m.remove());
       markersRef.current = [];
       txMarkerElsRef.current.clear();
+      txTooltipDataRef.current.clear();
 
       // FlyTo seulement lors d'un changement de commune, pas lors d'un filtre
       if (fly) {
@@ -993,6 +996,7 @@ export default function MapView() {
         closeButton: false, closeOnClick: false, offset: 14, maxWidth: "240px",
         className: "hp-hover-tip",
       });
+      hoverTipRef.current = hoverTip;
 
       data.forEach(t => {
         if (!t.longitude || !t.latitude) return;
@@ -1007,28 +1011,31 @@ export default function MapView() {
         const adresse = [t.adresse_numero, t.adresse].filter(Boolean).join(" ") || "Adresse non renseignée";
         const date = t.date_mutation ? new Date(t.date_mutation).toLocaleDateString("fr-FR", { month:"short", year:"numeric" }) : "";
 
+        const tipHtml = `
+          <div style="font-family:Inter,sans-serif;padding:2px 0;min-width:180px">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+              <div style="width:6px;height:6px;background:#3c83f6;border-radius:50%;flex-shrink:0"></div>
+              <span style="font-size:10px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px">${adresse}</span>
+            </div>
+            <div style="font-size:20px;font-weight:900;color:#fff;letter-spacing:-0.5px;line-height:1.1">${prixFmt}</div>
+            ${prixM2 ? `<div style="font-size:11px;color:#3c83f6;font-weight:700;margin-top:2px">${prixM2.toLocaleString("fr-FR")} €/m²</div>` : ""}
+            <div style="height:1px;background:rgba(255,255,255,0.07);margin:7px 0"></div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:10px">
+              ${t.surface_reelle_bati ? `<span style="color:#cbd5e1">${t.surface_reelle_bati} m²</span>` : ""}
+              ${t.nombre_pieces ? `<span style="color:#cbd5e1">T${t.nombre_pieces}</span>` : ""}
+              ${t.type_local ? `<span style="color:#64748b">${t.type_local}</span>` : ""}
+              ${dpeC ? `<span style="font-weight:800;font-size:10px;padding:0 5px;border-radius:3px;background:${dpeC}22;color:${dpeC};border:1px solid ${dpeC}44;margin-left:auto">DPE ${t.classe_energie}</span>` : ""}
+            </div>
+            ${date ? `<div style="font-size:9px;color:#475569;margin-top:5px;text-align:right">${date}</div>` : ""}
+          </div>`;
+
+        txTooltipDataRef.current.set(t.id, { lngLat: [t.longitude, t.latitude], html: tipHtml });
+
         el.addEventListener("mouseenter", () => {
           setHoveredTxIdRef.current?.(t.id);
           el.style.transform = "scale(1.6)";
           el.style.boxShadow = "0 0 14px rgba(60,131,246,0.9)";
-          hoverTip.setLngLat([t.longitude, t.latitude]).setHTML(`
-            <div style="font-family:Inter,sans-serif;padding:2px 0;min-width:180px">
-              <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
-                <div style="width:6px;height:6px;background:#3c83f6;border-radius:50%;flex-shrink:0"></div>
-                <span style="font-size:10px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px">${adresse}</span>
-              </div>
-              <div style="font-size:20px;font-weight:900;color:#fff;letter-spacing:-0.5px;line-height:1.1">${prixFmt}</div>
-              ${prixM2 ? `<div style="font-size:11px;color:#3c83f6;font-weight:700;margin-top:2px">${prixM2.toLocaleString("fr-FR")} €/m²</div>` : ""}
-              <div style="height:1px;background:rgba(255,255,255,0.07);margin:7px 0"></div>
-              <div style="display:flex;align-items:center;gap:8px;font-size:10px">
-                ${t.surface_reelle_bati ? `<span style="color:#cbd5e1">${t.surface_reelle_bati} m²</span>` : ""}
-                ${t.nombre_pieces ? `<span style="color:#cbd5e1">T${t.nombre_pieces}</span>` : ""}
-                ${t.type_local ? `<span style="color:#64748b">${t.type_local}</span>` : ""}
-                ${dpeC ? `<span style="font-weight:800;font-size:10px;padding:0 5px;border-radius:3px;background:${dpeC}22;color:${dpeC};border:1px solid ${dpeC}44;margin-left:auto">DPE ${t.classe_energie}</span>` : ""}
-              </div>
-              ${date ? `<div style="font-size:9px;color:#475569;margin-top:5px;text-align:right">${date}</div>` : ""}
-            </div>
-          `).addTo(map.current);
+          hoverTip.setLngLat([t.longitude, t.latitude]).setHTML(tipHtml).addTo(map.current);
         });
         el.addEventListener("mouseleave", () => {
           setHoveredTxIdRef.current?.(null);
@@ -1091,6 +1098,12 @@ export default function MapView() {
         el.style.boxShadow = "0 0 8px rgba(60,131,246,0.7)";
       }
     });
+    if (txId && hoverTipRef.current && map.current) {
+      const data = txTooltipDataRef.current.get(txId);
+      if (data) hoverTipRef.current.setLngLat(data.lngLat).setHTML(data.html).addTo(map.current);
+    } else {
+      hoverTipRef.current?.remove();
+    }
   }, []);
 
   const handleUnlock = useCallback(() => {
