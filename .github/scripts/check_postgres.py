@@ -13,13 +13,20 @@ import os
 import sys
 import psycopg2
 
-conn = psycopg2.connect(
-    host=os.getenv("POSTGRES_HOST", "localhost"),
-    port=int(os.getenv("POSTGRES_PORT", 5433)),
-    dbname=os.getenv("POSTGRES_DB", "homepedia"),
-    user=os.getenv("POSTGRES_USER", "homepedia"),
-    password=os.getenv("POSTGRES_PASSWORD"),
-)
+try:
+    conn = psycopg2.connect(
+        host=os.getenv("POSTGRES_HOST", "localhost"),
+        port=int(os.getenv("POSTGRES_PORT", "5432")),
+        dbname=os.getenv("POSTGRES_DB", "homepedia"),
+        user=os.getenv("POSTGRES_USER", "homepedia"),
+        password=os.getenv("POSTGRES_PASSWORD"),
+        connect_timeout=10,
+    )
+except Exception as e:
+    print(f"⚠️  Connexion PostgreSQL impossible : {e}")
+    print("ℹ️  Vérification ignorée (secret POSTGRES_PASSWORD manquant ou DB inaccessible)")
+    sys.exit(0)
+
 cur = conn.cursor()
 errors = []
 

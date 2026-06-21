@@ -74,6 +74,97 @@ const SCORE_DETAILS = {
 };
 
 // ─── Right Panel ───────────────────────────────────────────────────────────────
+// ── Transports en commun (Overpass OSM) ──────────────────────────────────────
+
+const TRANSPORT_ICONS = {
+  subway:    { icon: "directions_subway", label: "Métro",      color: "#3c83f6" },
+  tram:      { icon: "tram",             label: "Tramway",    color: "#a78bfa" },
+  train:     { icon: "train",            label: "RER / Trans.", color: "#10b981" },
+  bus:       { icon: "directions_bus",   label: "Bus",        color: "#f59e0b" },
+  other:     { icon: "commute",          label: "Transports", color: "#64748b" },
+};
+
+function detectType(tags = {}) {
+  if (tags.subway === "yes" || tags.station === "subway") return "subway";
+  if (tags.tram === "yes" || tags.railway === "tram_stop") return "tram";
+  if (tags.train === "yes" || tags.station === "train" || (tags.railway === "station" && (tags.operator || "").match(/SNCF|Transilien/i))) return "train";
+  if (tags.bus === "yes") return "bus";
+  return "other";
+}
+
+function TransportsSection({ lat, lon }) {
+  const [stops, setStops] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const cacheKey = `${lat.toFixed(3)},${lon.toFixed(3)}`;
+
+  useEffect(() => {
+    const cached = sessionStorage.getItem(`transport_${cacheKey}`);
+    if (cached) { setStops(JSON.parse(cached)); setLoading(false); return; }
+
+    const query = `[out:json][timeout:15];(node["public_transport"="station"](around:3000,${lat},${lon});node["railway"~"station|tram_stop"](around:2500,${lat},${lon}););out body;`;
+    fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`)
+      .then(r => r.json())
+      .then(d => {
+        // Dédoublonner par nom + type, garder les 8 premiers
+        const seen = new Set();
+        const results = (d.elements || [])
+          .filter(el => {
+            const name = el.tags?.name || el.tags?.["name:fr"];
+            if (!name) return false;
+            const key = `${detectType(el.tags)}:${name}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          })
+          .slice(0, 8)
+          .map(el => ({
+            name: el.tags?.name || el.tags?.["name:fr"] || "Station",
+            type: detectType(el.tags),
+            lines: [el.tags?.ref, el.tags?.["ref:SNCF"], el.tags?.["network"]].filter(Boolean).join(" · "),
+          }));
+        sessionStorage.setItem(`transport_${cacheKey}`, JSON.stringify(results));
+        setStops(results);
+      })
+      .catch(() => setStops([]))
+      .finally(() => setLoading(false));
+  }, [cacheKey]);
+
+  if (loading) return (
+    <div className="rounded-xl p-4 animate-pulse" style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(60,131,246,0.12)" }}>
+      <div className="h-3 w-32 bg-slate-700 rounded mb-3" />
+      <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-8 bg-slate-700/50 rounded-lg" />)}</div>
+    </div>
+  );
+
+  if (!stops || stops.length === 0) return null;
+
+  return (
+    <div className="rounded-xl p-4" style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(60,131,246,0.12)" }}>
+      <div className="flex items-center gap-2 mb-3">
+        <span className="material-symbols-outlined text-blue-400" style={{ fontSize: 13 }}>directions_transit</span>
+        <p className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold">Transports en commun</p>
+        <span className="ml-auto text-[8px] text-slate-600">OSM · rayon 3 km</span>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        {stops.map((s, i) => {
+          const t = TRANSPORT_ICONS[s.type] || TRANSPORT_ICONS.other;
+          return (
+            <div key={i} className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg"
+              style={{ background: t.color + "12", border: `1px solid ${t.color}25` }}>
+              <span className="material-symbols-outlined shrink-0" style={{ fontSize: 14, color: t.color }}>{t.icon}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] font-semibold text-slate-200 truncate">{s.name}</p>
+                {s.lines && <p className="text-[9px] text-slate-500 truncate">{s.lines}</p>}
+              </div>
+              <span className="text-[8px] font-bold shrink-0" style={{ color: t.color }}>{t.label}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function RightPanel({ commune, transactions, agregat }) {
   const [activeScoreTip, setActiveScoreTip] = useState(null);
 
@@ -469,6 +560,11 @@ function RightPanel({ commune, transactions, agregat }) {
           </div>
         )}
 
+        {/* ── TRANSPORTS EN COMMUN ─────────────────────────────────────── */}
+        {agregat?.centroid_lat && agregat?.centroid_lon && (
+          <TransportsSection lat={agregat.centroid_lat} lon={agregat.centroid_lon} />
+        )}
+
         {/* ── DERNIÈRES VENTES ──────────────────────────────────────────── */}
         <div className="rounded-xl p-4" style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(60,131,246,0.12)" }}>
           <div className="flex items-center gap-2 mb-3">
@@ -772,9 +868,9 @@ export default function MapView() {
         el.addEventListener("mouseleave", () => { el.style.transform = "scale(1)"; });
         const dpeColors = { A:"#22c55e",B:"#4ade80",C:"#facc15",D:"#fb923c",E:"#f97316",F:"#ef4444",G:"#dc2626" };
         const prixM2Popup = t.valeur_fonciere && t.surface_reelle_bati ? Math.round(t.valeur_fonciere / t.surface_reelle_bati) : null;
-        const popup = new maplibregl.Popup({ offset: 16, closeButton: true, maxWidth: "240px", closeOnClick: false })
-          .setHTML(`<div style="font-family:Inter,sans-serif;min-width:180px;padding:4px 2px">
-            <div style="font-size:10px;color:#64748b;margin-bottom:6px;display:flex;align-items:center;gap:4px">
+        const popup = new maplibregl.Popup({ offset: 16, closeButton: true, maxWidth: "260px", closeOnClick: false })
+          .setHTML(`<div style="font-family:Inter,sans-serif;min-width:200px;padding:4px 2px">
+            <div style="font-size:10px;color:#94a3b8;margin-bottom:6px;display:flex;align-items:center;gap:4px">
               <svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#3c83f6" opacity="0.4"/><circle cx="5" cy="5" r="2" fill="#3c83f6"/></svg>
               ${[t.adresse_numero, t.adresse].filter(Boolean).join(" ") || "—"}
             </div>
@@ -783,10 +879,11 @@ export default function MapView() {
             </div>
             <div style="height:1px;background:rgba(60,131,246,0.15);margin:8px 0"></div>
             <div style="display:flex;align-items:center;justify-content:space-between;font-size:10px">
-              <span style="color:#94a3b8">${t.surface_reelle_bati || "?"}m² · ${t.type_local || "—"}</span>
+              <span style="color:#cbd5e1">${t.surface_reelle_bati || "?"}m² · ${t.type_local || "—"}</span>
               ${t.classe_energie ? `<span style="font-weight:900;font-size:11px;padding:1px 6px;border-radius:4px;background:${dpeColors[t.classe_energie]||"#64748b"}20;color:${dpeColors[t.classe_energie]||"#64748b"};border:1px solid ${dpeColors[t.classe_energie]||"#64748b"}50">DPE ${t.classe_energie}</span>` : ""}
             </div>
-            ${prixM2Popup ? `<div style="font-size:10px;color:#475569;margin-top:4px">€${prixM2Popup.toLocaleString()}/m²</div>` : ""}
+            ${prixM2Popup ? `<div style="font-size:11px;color:#94a3b8;margin-top:6px;font-weight:600">€${prixM2Popup.toLocaleString()}/m²</div>` : ""}
+            <div style="font-size:10px;color:#64748b;margin-top:4px">${t.date_mutation ? new Date(t.date_mutation).toLocaleDateString("fr-FR") : ""}</div>
           </div>`);
         // Gérer le popup manuellement — verrou pour empêcher le handler de commune de réagir
         el.addEventListener("click", e => {
@@ -1088,7 +1185,7 @@ export default function MapView() {
     : ["Île-de-France"];
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex h-full">
       <LeftSidebar
         communes={communes}
         transactions={sortDesc ? [...transactions].sort((a,b) => (b.valeur_fonciere||0)-(a.valeur_fonciere||0)) : transactions}

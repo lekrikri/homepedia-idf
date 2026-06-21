@@ -6,6 +6,7 @@ import MapView from "./components/MapView.jsx";
 import Transactions from "./components/Transactions.jsx";
 import Dashboard from "./components/Dashboard.jsx";
 import Pipeline from "./components/Pipeline.jsx";
+import Comparer from "./components/Comparer.jsx";
 import NotFound from "./components/NotFound.jsx";
 
 export default function App() {
@@ -19,6 +20,7 @@ export default function App() {
           <Route path="/transactions" element={<Transactions />} />
           <Route path="/dashboard"    element={<Dashboard />} />
           <Route path="/pipeline"     element={<Pipeline />} />
+          <Route path="/comparer"     element={<Comparer />} />
           <Route path="*"             element={<NotFound />} />
         </Routes>
       </main>
