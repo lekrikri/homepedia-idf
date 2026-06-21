@@ -292,7 +292,7 @@ function TopCommunesPanel({ communes, onSelectA, onSelectB, communeA, communeB }
     .slice(0, 5);
 
   return (
-    <div className="rounded-2xl overflow-hidden" style={{ background: "rgba(15,23,36,0.9)", border: "1px solid rgba(60,131,246,0.15)" }}>
+    <div className="rounded-2xl shrink-0" style={{ background: "rgba(15,23,36,0.9)", border: "1px solid rgba(60,131,246,0.15)", overflow: "hidden" }}>
       {/* Titre */}
       <div className="px-5 py-4 border-b border-slate-800/60">
         <div className="flex items-center gap-2">
