@@ -207,3 +207,5 @@ availableSecrets:
   secretManager:
     - versionName: projects/homepedia-493013/secrets/homepedia-supabase-password/versions/latest
       env: POSTGRES_PASSWORD
+    - versionName: projects/homepedia-493013/secrets/homepedia-jwt-secret/versions/latest
+      env: JWT_SECRET

@@ -101,6 +101,10 @@ type CommuneAgregat struct {
 	ScoreQualiteVie       *float64 `json:"score_qualite_vie,omitempty"`
 	ScoreInvestissement   *float64 `json:"score_investissement,omitempty"`
 	ScoreStabilite        *float64 `json:"score_stabilite,omitempty"`
+	// Sécurité / délinquance (source SSMSI — niveau département)
+	TauxCambriolages      *float64 `json:"taux_cambriolages,omitempty"`   // pour 1 000 logements
+	TauxVolsViolence      *float64 `json:"taux_vols_violence,omitempty"`  // pour 1 000 habitants
+	ScoreSecurite         *float64 `json:"score_securite,omitempty"`      // 0-100 (100 = très sûr)
 }
 
 // ScoreIris représente les agrégats calculés pour une zone IRIS.

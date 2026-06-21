@@ -36,7 +36,114 @@ function extractFeatureProps(feature) {
   return props;
 }
 
-export default function CesiumView3D({ selectedCommune, transactions, initCenter, flyTarget }) {
+// ── Mini-overlay métriques commune ────────────────────────────────────────────
+const DPE_LETTERS_3D = ["A","B","C","D","E","F","G"];
+
+function CommuneStats({ commune, agregat }) {
+  if (!agregat && !commune) return null;
+
+  const scores = [
+    { label: "Vie",   val: agregat?.score_qualite_vie    != null ? Math.round(agregat.score_qualite_vie)    : null, color: "#10b981" },
+    { label: "Invest",val: agregat?.score_investissement != null ? Math.round(agregat.score_investissement) : null, color: "#3c83f6" },
+    { label: "Stab",  val: agregat?.score_stabilite      != null ? Math.round(agregat.score_stabilite)      : null, color: "#f59e0b" },
+    { label: "Sécu",  val: agregat?.score_securite       != null ? Math.round(agregat.score_securite)       : null, color: "#a78bfa" },
+  ];
+
+  const ipsLabel = agregat?.ips_moyen != null
+    ? agregat.ips_moyen >= 110 ? { text: "Favorisé",     color: "#10b981" }
+    : agregat.ips_moyen >= 80  ? { text: "Intermédiaire",color: "#f59e0b" }
+    :                            { text: "Défavorisé",   color: "#ef4444" }
+    : null;
+
+  const dpeLetter = agregat?.score_dpe_moyen != null
+    ? DPE_LETTERS_3D[Math.min(6, Math.max(0, Math.round(agregat.score_dpe_moyen) - 1))]
+    : null;
+
+  const secBadge = agregat?.score_securite != null
+    ? agregat.score_securite >= 65 ? { text: "Sûr",      color: "#10b981" }
+    : agregat.score_securite >= 40 ? { text: "Modéré",   color: "#f59e0b" }
+    :                                { text: "Vigilance", color: "#ef4444" }
+    : null;
+
+  const DPE_HEX_3D = { A:"#22c55e", B:"#4ade80", C:"#a3e635", D:"#facc15", E:"#fb923c", F:"#f87171", G:"#dc2626" };
+
+  const hasAnyScore = scores.some(s => s.val != null);
+  const hasMeta     = ipsLabel || dpeLetter || secBadge;
+  if (!hasAnyScore && !hasMeta) return null;
+
+  return (
+    <div className="absolute bottom-16 left-4 z-10 rounded-xl px-3 py-3 w-64"
+      style={{ background: "rgba(6,13,24,0.90)", backdropFilter: "blur(12px)", border: "1px solid rgba(52,112,210,0.25)" }}>
+
+      {/* Titre commune */}
+      {commune && (
+        <p className="text-[10px] font-bold text-slate-200 truncate mb-2 leading-tight">
+          {commune.nom}
+          <span className="text-slate-500 font-normal ml-1">{commune.departement?.trim()}</span>
+        </p>
+      )}
+
+      {/* Scores — 4 petits cercles */}
+      {hasAnyScore && (
+        <div className="grid grid-cols-4 gap-1 mb-2.5">
+          {scores.map(({ label, val, color }) => (
+            <div key={label} className="flex flex-col items-center gap-1">
+              <div className="relative" style={{ width: 42, height: 42 }}>
+                <svg className="-rotate-90" width="42" height="42" viewBox="0 0 42 42">
+                  <circle cx="21" cy="21" r="17" fill="transparent" stroke="rgba(30,41,59,0.8)" strokeWidth="4" />
+                  {val != null && (
+                    <circle cx="21" cy="21" r="17" fill="transparent" stroke={color} strokeWidth="4"
+                      strokeDasharray="106.8"
+                      strokeDashoffset={Math.round(106.8 - (val / 100) * 106.8)}
+                      strokeLinecap="round" />
+                  )}
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-[10px] font-black" style={{ color: val != null ? "white" : "#475569" }}>
+                    {val ?? "—"}
+                  </span>
+                </div>
+              </div>
+              <span className="text-[8px] text-slate-500">{label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Badges : IPS + DPE + Sécurité */}
+      {hasMeta && (
+        <div className="flex flex-wrap gap-1.5 pt-2 border-t border-slate-800/60">
+          {ipsLabel && (
+            <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full"
+              style={{ color: ipsLabel.color, background: ipsLabel.color + "18", border: `1px solid ${ipsLabel.color}40` }}>
+              IPS {agregat.ips_moyen.toFixed(0)} · {ipsLabel.text}
+            </span>
+          )}
+          {dpeLetter && (
+            <span className="text-[8px] font-black px-1.5 py-0.5 rounded"
+              style={{ color: DPE_HEX_3D[dpeLetter], background: DPE_HEX_3D[dpeLetter] + "20", border: `1px solid ${DPE_HEX_3D[dpeLetter]}50` }}>
+              DPE {dpeLetter}
+            </span>
+          )}
+          {secBadge && (
+            <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full"
+              style={{ color: secBadge.color, background: secBadge.color + "18", border: `1px solid ${secBadge.color}40` }}>
+              {secBadge.text}
+            </span>
+          )}
+          {agregat?.prix_median_m2 && (
+            <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full"
+              style={{ color: "#3c83f6", background: "#3c83f620", border: "1px solid #3c83f640" }}>
+              {Math.round(agregat.prix_median_m2).toLocaleString()} €/m²
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function CesiumView3D({ selectedCommune, transactions, agregat, initCenter, flyTarget }) {
   const containerRef    = useRef(null);
   const viewerRef       = useRef(null);
   const tilesetRef      = useRef(null);
@@ -502,6 +609,9 @@ export default function CesiumView3D({ selectedCommune, transactions, initCenter
           </div>
         </div>
       )}
+
+      {/* ── Overlay métriques commune ─────────────────────────────────── */}
+      <CommuneStats commune={selectedCommune} agregat={agregat} />
 
       {/* ── Hint bas ──────────────────────────────────────────────────────── */}
       <div className="absolute bottom-10 left-4 z-10 flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] text-slate-400"
