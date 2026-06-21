@@ -204,45 +204,22 @@ export default function Pipeline() {
   const [runs, setRuns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [user] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("hp_user")); } catch { return null; }
-  });
-
   const load = () => {
     setLoading(true);
     setError(null);
-    const token = localStorage.getItem("hp_token");
-    axios.get("/api/v1/pipeline/runs", token ? { headers: { Authorization: `Bearer ${token}` } } : {})
+    axios.get("/api/v1/pipeline/runs")
       .then(r => setRuns(r.data.data || []))
       .catch(() => setError("Impossible de charger l'historique du pipeline."))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { if (user) load(); else setLoading(false); }, []);
+  useEffect(() => { load(); }, []);
 
   const successRuns   = runs.filter(r => r.status === "success");
   const totalTx       = successRuns.reduce((acc, r) => acc + (r.nb_transactions_exported || 0), 0);
   const avgDuration   = successRuns.length ? Math.round(successRuns.reduce((a, r) => a + (r.duration_s || 0), 0) / successRuns.length) : 0;
   const successRate   = runs.length ? Math.round(successRuns.length / runs.length * 100) : 0;
   const lastSuccess   = successRuns[0];
-
-  if (!user) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center max-w-sm">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full mb-6" style={{ background: "rgba(60,131,246,0.1)", border: "1px solid rgba(60,131,246,0.2)" }}>
-            <span className="material-symbols-outlined text-primary" style={{ fontSize: 32 }}>lock</span>
-          </div>
-          <h2 className="text-xl font-bold text-white mb-2">Accès restreint</h2>
-          <p className="text-slate-400 text-sm mb-6">
-            La page Pipeline est réservée aux comptes administrateurs.<br />
-            Connectez-vous avec vos identifiants admin pour y accéder.
-          </p>
-          <p className="text-xs text-slate-600 font-mono">admin@homepedia.fr · Homepedia2026!</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6 lg:px-10 flex flex-col gap-6">
