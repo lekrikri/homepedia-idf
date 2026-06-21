@@ -110,6 +110,18 @@ function createTransportMarkerEl(type, name) {
   return el;
 }
 
+// Taux SSMSI 2022 par département IDF (fallback quand BDD non peuplée)
+const DEPT_SECURITE_FALLBACK = {
+  "75": { taux_cambriolages: 8.2,  taux_vols_violence: 7.1,  score: 55 },
+  "77": { taux_cambriolages: 5.8,  taux_vols_violence: 4.2,  score: 69 },
+  "78": { taux_cambriolages: 4.7,  taux_vols_violence: 3.9,  score: 74 },
+  "91": { taux_cambriolages: 5.1,  taux_vols_violence: 4.5,  score: 71 },
+  "92": { taux_cambriolages: 5.4,  taux_vols_violence: 4.8,  score: 70 },
+  "93": { taux_cambriolages: 9.3,  taux_vols_violence: 10.2, score: 43 },
+  "94": { taux_cambriolages: 6.3,  taux_vols_violence: 5.6,  score: 65 },
+  "95": { taux_cambriolages: 6.8,  taux_vols_violence: 5.9,  score: 62 },
+};
+
 function TransportsSection({ lat, lon }) {
   const [stops, setStops] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -539,52 +551,73 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock }) {
         )}
 
         {/* ── SÉCURITÉ & DÉLINQUANCE ───────────────────────────────────── */}
-        {agregat?.score_securite != null && (() => {
-          const s = Math.round(agregat.score_securite);
-          const badge = s >= 65 ? { text: "Sûr",       color: "#10b981" }
-                      : s >= 40 ? { text: "Modéré",    color: "#f59e0b" }
-                      :           { text: "Vigilance",  color: "#ef4444" };
+        {(() => {
+          const dept = (commune?.code_departement || agregat?.code_departement || "").trim();
+          const fb = DEPT_SECURITE_FALLBACK[dept];
+          const s = agregat?.score_securite != null
+            ? Math.round(agregat.score_securite)
+            : (fb?.score ?? null);
+          const tauxCambrio  = agregat?.taux_cambriolages  ?? fb?.taux_cambriolages;
+          const tauxViolence = agregat?.taux_vols_violence ?? fb?.taux_vols_violence;
+          if (s == null) return null;
+          const badge = s >= 65 ? { text: "Sûr",        icon: "verified_user", color: "#10b981" }
+                      : s >= 40 ? { text: "Modéré",     icon: "security",      color: "#f59e0b" }
+                      :           { text: "Vigilance",   icon: "gpp_bad",       color: "#ef4444" };
+          const isFallback = agregat?.score_securite == null;
           return (
             <div className="rounded-xl p-4" style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(60,131,246,0.12)" }}>
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined" style={{ fontSize: 13, color: badge.color }}>shield</span>
-                  <p className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold">Sécurité</p>
+                  <span className="material-symbols-outlined" style={{ fontSize: 13, color: badge.color }}>{badge.icon}</span>
+                  <p className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold">Sécurité & Délinquance</p>
                 </div>
                 <span className="text-[9px] font-bold px-2 py-0.5 rounded-full"
                   style={{ color: badge.color, background: badge.color + "18", border: `1px solid ${badge.color}40` }}>
                   {badge.text}
                 </span>
               </div>
-              {/* Barre de score */}
+              {/* Score + barre */}
               <div className="flex items-center gap-3 mb-3">
                 <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: "rgba(30,41,59,0.8)" }}>
                   <div className="h-full rounded-full" style={{ width: `${s}%`, background: badge.color, transition: "width .4s ease" }} />
                 </div>
-                <span className="text-xl font-black mono-nums" style={{ color: badge.color, minWidth: 36, textAlign: "right" }}>{s}</span>
+                <span className="text-xl font-black mono-nums" style={{ color: badge.color, minWidth: 38, textAlign: "right" }}>{s}<span className="text-[9px] font-normal text-slate-500">/100</span></span>
               </div>
               {/* Taux détaillés */}
-              <div className="grid grid-cols-2 gap-2">
-                {agregat.taux_cambriolages != null && (
-                  <div>
-                    <p className="text-[9px] text-slate-500 mb-0.5">Cambriolages</p>
+              <div className="grid grid-cols-2 gap-2 mb-2">
+                {tauxCambrio != null && (
+                  <div className="rounded-lg p-2" style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.15)" }}>
+                    <div className="flex items-center gap-1 mb-0.5">
+                      <span className="material-symbols-outlined text-red-400" style={{ fontSize: 11 }}>home_work</span>
+                      <p className="text-[8px] text-slate-500">Cambriolages</p>
+                    </div>
                     <p className="text-[13px] font-bold mono-nums text-slate-200">
-                      {agregat.taux_cambriolages.toFixed(1)}
-                      <span className="text-[9px] font-normal text-slate-500"> ‰ log.</span>
+                      {tauxCambrio.toFixed(1)}<span className="text-[8px] font-normal text-slate-500"> ‰ log.</span>
                     </p>
                   </div>
                 )}
-                {agregat.taux_vols_violence != null && (
-                  <div>
-                    <p className="text-[9px] text-slate-500 mb-0.5">Coups & blessures</p>
+                {tauxViolence != null && (
+                  <div className="rounded-lg p-2" style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.15)" }}>
+                    <div className="flex items-center gap-1 mb-0.5">
+                      <span className="material-symbols-outlined text-amber-400" style={{ fontSize: 11 }}>personal_injury</span>
+                      <p className="text-[8px] text-slate-500">Coups & blessures</p>
+                    </div>
                     <p className="text-[13px] font-bold mono-nums text-slate-200">
-                      {agregat.taux_vols_violence.toFixed(1)}
-                      <span className="text-[9px] font-normal text-slate-500"> ‰ hab.</span>
+                      {tauxViolence.toFixed(1)}<span className="text-[8px] font-normal text-slate-500"> ‰ hab.</span>
                     </p>
                   </div>
                 )}
               </div>
-              <p className="text-[8px] text-slate-600 mt-2">Source SSMSI · données département · 100 = très sûr</p>
+              {/* Contexte IDF */}
+              {dept && (
+                <div className="flex items-center gap-1.5 mt-1">
+                  <span className="material-symbols-outlined text-slate-600" style={{ fontSize: 10 }}>info</span>
+                  <p className="text-[8px] text-slate-600">
+                    Source SSMSI · Dép. {dept} · moy. IDF : 6.5‰ cambriolages
+                    {isFallback && " · estimation département"}
+                  </p>
+                </div>
+              )}
             </div>
           );
         })()}
@@ -959,6 +992,8 @@ export default function MapView() {
   const setHoveredTxIdRef = useRef(null);
   const [showTransports, setShowTransports] = useState(false);
   const transportMarkersRef = useRef([]);
+  const [showSecurity, setShowSecurity] = useState(false);
+  const securityMarkersRef = useRef([]);
   const communeCenterRef = useRef(null);
 
   useEffect(() => { setHoveredTxIdRef.current = setHoveredTxId; }, []);
@@ -1170,6 +1205,59 @@ export default function MapView() {
         });
     } catch {}
   }, []);
+
+  const SECURITY_OSM_CFG = {
+    police:       { bg: "#1e40af", letter: "P", label: "Police" },
+    fire_station: { bg: "#dc2626", letter: "F", label: "Pompiers" },
+    hospital:     { bg: "#db2777", letter: "H", label: "Hôpital" },
+    pharmacy:     { bg: "#059669", letter: "Rx", label: "Pharmacie" },
+  };
+
+  const loadSecurityMarkers = useCallback(async () => {
+    securityMarkersRef.current.forEach(m => m.remove());
+    securityMarkersRef.current = [];
+    const center = communeCenterRef.current;
+    if (!center || !map.current) return;
+    const [lon, lat] = center;
+    const query = `[out:json][timeout:15];(node["amenity"~"police|fire_station|hospital|pharmacy"](around:3500,${lat},${lon});way["amenity"~"police|fire_station|hospital"](around:3500,${lat},${lon}););out center body;`;
+    try {
+      const res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
+      const d = await res.json();
+      const seen = new Set();
+      (d.elements || [])
+        .map(el => ({ ...el, lat: el.lat ?? el.center?.lat, lon: el.lon ?? el.center?.lon }))
+        .filter(el => el.lat && el.lon)
+        .slice(0, 50)
+        .forEach(el => {
+          const type = el.tags?.amenity;
+          const name = el.tags?.name || type;
+          const key = `${type}:${name}`;
+          if (seen.has(key)) return;
+          seen.add(key);
+          const cfg = SECURITY_OSM_CFG[type] || { bg: "#475569", letter: "?" };
+          const dom = document.createElement("div");
+          dom.title = name;
+          dom.style.cssText = `width:16px;height:16px;background:${cfg.bg};border-radius:50%;border:2px solid rgba(255,255,255,0.9);display:flex;align-items:center;justify-content:center;font-size:6px;font-weight:900;color:#fff;box-shadow:0 2px 6px rgba(0,0,0,0.6),0 0 0 1px ${cfg.bg}44;pointer-events:none;`;
+          dom.textContent = cfg.letter;
+          securityMarkersRef.current.push(
+            new maplibregl.Marker({ element: dom, anchor: "center" })
+              .setLngLat([el.lon, el.lat])
+              .addTo(map.current)
+          );
+        });
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (showSecurity && selectedCommune) {
+      loadSecurityMarkers();
+    } else {
+      securityMarkersRef.current.forEach(m => m.remove());
+      securityMarkersRef.current = [];
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showSecurity, selectedCommune]);
 
   // Garder les refs à jour pour les handlers enregistrés sur la carte
   useEffect(() => { allCommunesRef.current = allCommunes; }, [allCommunes]);
@@ -1556,6 +1644,17 @@ export default function MapView() {
             </span>
           </button>
 
+          {/* Toggle sécurité */}
+          <button
+            onClick={() => setShowSecurity(v => !v)}
+            title={showSecurity ? "Masquer services sécurité" : "Afficher police, pompiers, hôpitaux"}
+            className={`size-11 rounded-xl flex items-center justify-center transition-all ${
+              showSecurity ? "text-white shadow-lg" : "glass-panel hover:bg-primary/20 text-slate-300"
+            }`}
+            style={showSecurity ? { background: "#1e40af", boxShadow: "0 4px 20px rgba(30,64,175,0.4)" } : {}}>
+            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>local_police</span>
+          </button>
+
           {/* Toggle transports */}
           <button
             onClick={() => setShowTransports(v => !v)}
@@ -1622,24 +1721,47 @@ export default function MapView() {
           </button>
         )}
 
-        {/* Légende transports — visible seulement quand couche active */}
-        {showTransports && (
-          <div className="absolute bottom-10 left-[72px] z-10 flex items-center gap-1.5 px-3 py-2 rounded-xl"
-            style={{ background: "rgba(10,16,28,0.92)", border: "1px solid rgba(255,255,255,0.08)", backdropFilter: "blur(8px)" }}>
-            {[
-              { letter: "M", bg: "#3c83f6", label: "Métro" },
-              { letter: "R", bg: "#10b981", label: "RER" },
-              { letter: "T", bg: "#a78bfa", label: "Tram" },
-              { letter: "B", bg: "#f59e0b", label: "Bus", square: true },
-            ].map(({ letter, bg, label, square }) => (
-              <div key={letter} className="flex items-center gap-1">
-                <span className="flex items-center justify-center text-[8px] font-black text-white"
-                  style={{ width: 14, height: 14, background: bg, borderRadius: square ? 3 : "50%", border: "1.5px solid rgba(255,255,255,0.7)" }}>
-                  {letter}
-                </span>
-                <span className="text-[9px] text-slate-400">{label}</span>
+        {/* Légendes empilées — sécurité en bas, transport au dessus */}
+        {(showTransports || showSecurity) && (
+          <div className="absolute bottom-10 left-[72px] z-10 flex flex-col gap-1.5">
+            {showSecurity && (
+              <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl"
+                style={{ background: "rgba(10,16,28,0.92)", border: "1px solid rgba(30,64,175,0.3)", backdropFilter: "blur(8px)" }}>
+                {[
+                  { letter: "P",  bg: "#1e40af", label: "Police" },
+                  { letter: "F",  bg: "#dc2626", label: "Pompiers" },
+                  { letter: "H",  bg: "#db2777", label: "Hôpital" },
+                  { letter: "Rx", bg: "#059669", label: "Pharmacie" },
+                ].map(({ letter, bg, label }) => (
+                  <div key={letter} className="flex items-center gap-1">
+                    <span className="flex items-center justify-center font-black text-white"
+                      style={{ width: 14, height: 14, fontSize: 6, background: bg, borderRadius: "50%", border: "1.5px solid rgba(255,255,255,0.7)" }}>
+                      {letter}
+                    </span>
+                    <span className="text-[9px] text-slate-400">{label}</span>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
+            {showTransports && (
+              <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl"
+                style={{ background: "rgba(10,16,28,0.92)", border: "1px solid rgba(255,255,255,0.08)", backdropFilter: "blur(8px)" }}>
+                {[
+                  { letter: "M", bg: "#3c83f6", label: "Métro" },
+                  { letter: "R", bg: "#10b981", label: "RER" },
+                  { letter: "T", bg: "#a78bfa", label: "Tram" },
+                  { letter: "B", bg: "#f59e0b", label: "Bus", square: true },
+                ].map(({ letter, bg, label, square }) => (
+                  <div key={letter} className="flex items-center gap-1">
+                    <span className="flex items-center justify-center text-[8px] font-black text-white"
+                      style={{ width: 14, height: 14, background: bg, borderRadius: square ? 3 : "50%", border: "1.5px solid rgba(255,255,255,0.7)" }}>
+                      {letter}
+                    </span>
+                    <span className="text-[9px] text-slate-400">{label}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
