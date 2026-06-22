@@ -419,6 +419,11 @@ export default function Dashboard() {
                     className="text-xs text-slate-400 border border-slate-700 px-3 py-1.5 rounded-lg hover:border-slate-500 hover:text-slate-200 transition-colors">
                     Transactions
                   </button>
+                  <button onClick={() => navigate(`/comparer?a=${microCommune.code_insee}`)}
+                    className="text-xs text-slate-400 border border-slate-700 px-3 py-1.5 rounded-lg hover:border-slate-500 hover:text-slate-200 transition-colors flex items-center gap-1">
+                    <span className="material-symbols-outlined" style={{fontSize:14}}>compare_arrows</span>
+                    Comparer
+                  </button>
                   <button onClick={() => navigate(`/carte?q=${encodeURIComponent(microCommune.nom)}`)}
                     className="text-xs font-semibold bg-primary/10 border border-primary/40 text-primary px-3 py-1.5 rounded-lg hover:bg-primary/20 transition-colors flex items-center gap-1">
                     <span className="material-symbols-outlined" style={{fontSize:14}}>map</span>
@@ -473,6 +478,138 @@ export default function Dashboard() {
                     <div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.min(100, microStats.pct_dpe_bon * 100).toFixed(1)}%` }} />
                   </div>
                   <span className="text-xs font-bold text-emerald-400 mono-nums">{(microStats.pct_dpe_bon * 100).toFixed(1)}%</span>
+                </div>
+              )}
+
+              {/* ── Scores composites ── */}
+              {(microStats?.score_qualite_vie != null || microStats?.score_investissement != null ||
+                microStats?.score_stabilite != null || microStats?.score_securite != null) && (
+                <div className="px-5 py-4 border-t border-slate-800">
+                  <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-3">Scores synthèse</p>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                    {[
+                      { label: "Qualité de vie",  val: microStats?.score_qualite_vie,    color: "#10b981", icon: "favorite" },
+                      { label: "Investissement",   val: microStats?.score_investissement, color: "#3c83f6", icon: "trending_up" },
+                      { label: "Stabilité DPE",   val: microStats?.score_stabilite,      color: "#f59e0b", icon: "verified" },
+                      { label: "Sécurité",        val: microStats?.score_securite,       color: "#8b5cf6", icon: "shield" },
+                    ].map(({ label, val, color, icon }) => val != null ? (
+                      <div key={label}>
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="material-symbols-outlined" style={{ fontSize: 11, color }}>{icon}</span>
+                          <span className="text-[10px] text-slate-500">{label}</span>
+                          <span className="ml-auto text-[10px] font-bold" style={{ color }}>{Math.round(val)}/100</span>
+                        </div>
+                        <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${Math.min(100, val)}%`, background: color }} />
+                        </div>
+                      </div>
+                    ) : null)}
+                  </div>
+                </div>
+              )}
+
+              {/* ── IPS + Éducation ── */}
+              {microStats?.ips_moyen != null && (
+                <div className="px-5 py-3 border-t border-slate-800 flex items-center gap-4">
+                  <span className="material-symbols-outlined text-amber-400" style={{ fontSize: 16 }}>school</span>
+                  <div className="flex-1">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wider">IPS scolaire</p>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-base font-bold text-slate-100">{microStats.ips_moyen.toFixed(1)}</span>
+                      <span className={`text-[10px] font-semibold ${microStats.ips_moyen >= 110 ? "text-emerald-400" : microStats.ips_moyen >= 80 ? "text-amber-400" : "text-red-400"}`}>
+                        {microStats.ips_moyen >= 110 ? "Très favorisé" : microStats.ips_moyen >= 80 ? "Intermédiaire" : "Défavorisé"}
+                      </span>
+                    </div>
+                  </div>
+                  {microStats.nb_ecoles > 0 && (
+                    <div className="text-right">
+                      <p className="text-[10px] text-slate-500">Établissements</p>
+                      <p className="text-sm font-bold text-slate-200">{microStats.nb_ecoles}</p>
+                    </div>
+                  )}
+                  {microStats.pct_ecoles_favorisees != null && (
+                    <div className="text-right">
+                      <p className="text-[10px] text-slate-500">% favorisées</p>
+                      <p className="text-sm font-bold text-emerald-400">{microStats.pct_ecoles_favorisees.toFixed(0)}%</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── Énergie réelle ENEDIS/GRDF ── */}
+              {(microStats?.conso_elec_par_logement != null || microStats?.conso_gaz_par_logement != null) && (
+                <div className="px-5 py-3 border-t border-slate-800 flex items-center gap-4">
+                  <span className="material-symbols-outlined text-yellow-400" style={{ fontSize: 16 }}>bolt</span>
+                  <div className="flex-1">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Consommation réelle / logement</p>
+                    <div className="flex gap-4">
+                      {microStats.conso_elec_par_logement != null && (
+                        <div>
+                          <p className="text-[10px] text-slate-500">Électricité</p>
+                          <p className="text-sm font-bold text-yellow-400">{microStats.conso_elec_par_logement.toFixed(1)} <span className="text-[9px] text-slate-500">MWh/an</span></p>
+                        </div>
+                      )}
+                      {microStats.conso_gaz_par_logement != null && (
+                        <div>
+                          <p className="text-[10px] text-slate-500">Gaz</p>
+                          <p className="text-sm font-bold text-orange-400">{microStats.conso_gaz_par_logement.toFixed(1)} <span className="text-[9px] text-slate-500">MWh/an</span></p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Loyer + Rendement ── */}
+              {microStats?.loyer_median_m2 != null && (
+                <div className="px-5 py-3 border-t border-slate-800 flex items-center gap-4">
+                  <span className="material-symbols-outlined text-emerald-400" style={{ fontSize: 16 }}>account_balance</span>
+                  <div className="flex-1">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Rendement locatif</p>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-base font-bold text-slate-100">{microStats.loyer_median_m2.toFixed(1)} €/m²/mois</span>
+                      {microStats.zone_tendue && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-orange-500/15 text-orange-400 border border-orange-500/30">Zone tendue</span>
+                      )}
+                    </div>
+                  </div>
+                  {microStats.rendement_locatif_brut != null && (
+                    <div className="text-right">
+                      <p className="text-[10px] text-slate-500">Rendement brut</p>
+                      <p className="text-base font-bold" style={{
+                        color: microStats.rendement_locatif_brut >= 5 ? "#10b981"
+                             : microStats.rendement_locatif_brut >= 3.5 ? "#f59e0b" : "#ef4444"
+                      }}>{microStats.rendement_locatif_brut.toFixed(2)}%</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── Sécurité ── */}
+              {microStats?.score_securite != null && (
+                <div className="px-5 py-3 border-t border-slate-800 flex items-center gap-4">
+                  <span className="material-symbols-outlined text-violet-400" style={{ fontSize: 16 }}>shield</span>
+                  <div className="flex-1">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Sécurité (source SSMSI)</p>
+                    <div className="flex gap-4">
+                      {microStats.taux_cambriolages != null && (
+                        <div>
+                          <p className="text-[10px] text-slate-500">Cambriolages</p>
+                          <p className="text-sm font-bold text-slate-200">{microStats.taux_cambriolages.toFixed(1)} <span className="text-[9px] text-slate-500">‰ logements</span></p>
+                        </div>
+                      )}
+                      {microStats.taux_vols_violence != null && (
+                        <div>
+                          <p className="text-[10px] text-slate-500">CBV</p>
+                          <p className="text-sm font-bold text-slate-200">{microStats.taux_vols_violence.toFixed(1)} <span className="text-[9px] text-slate-500">‰ hab.</span></p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] text-slate-500">Score sécurité</p>
+                    <p className="text-base font-bold text-violet-400">{Math.round(microStats.score_securite)}/100</p>
+                  </div>
                 </div>
               )}
             </div>
@@ -558,7 +695,7 @@ export default function Dashboard() {
         <div className="border-t border-slate-800 pt-4 flex flex-wrap gap-4 text-xs text-slate-500">
           <span className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-            Sources : DVF (DGFiP), DPE (ADEME), INSEE
+            Sources : DVF (DGFiP), DPE (ADEME), INSEE, IPS (DEPP), SSMSI, ENEDIS/GRDF (agenceORE)
           </span>
           <span className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>

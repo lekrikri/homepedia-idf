@@ -73,14 +73,14 @@ function MetricRow({ label, valA, valB, higherIsBetter = true, format = fmt, suf
 // ── Score radar simple ────────────────────────────────────────────────────────
 
 function ScoreBar({ label, val, color }) {
-  const pct = val != null ? Math.min(Math.max(Number(val), 0), 10) * 10 : 0;
+  const pct = val != null ? Math.min(Math.max(Number(val), 0), 100) : 0;
   return (
     <div className="flex items-center gap-3 py-1">
       <span className="text-xs text-slate-400 w-28 shrink-0">{label}</span>
       <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden">
         <div className={`h-full rounded-full transition-all duration-700 ${color}`} style={{ width: `${pct}%` }} />
       </div>
-      <span className="text-xs font-bold text-slate-200 w-8 text-right">{val != null ? Number(val).toFixed(1) : "—"}</span>
+      <span className="text-xs font-bold text-slate-200 w-12 text-right">{val != null ? `${Number(val).toFixed(0)}/100` : "—"}</span>
     </div>
   );
 }
@@ -237,7 +237,7 @@ const TOP_CRITERIA = [
     icon: "trending_up",
     color: "#3c83f6",
     sort: c => -(c.score_investissement ?? -999),
-    badge: c => c.score_investissement != null ? `Score ${c.score_investissement.toFixed(1)}/10` : null,
+    badge: c => c.score_investissement != null ? `Score ${Math.round(c.score_investissement)}/100` : null,
     sub: c => c.prix_median_m2 != null ? `${fmt(c.prix_median_m2)} €/m²` : null,
   },
   {
@@ -246,7 +246,7 @@ const TOP_CRITERIA = [
     icon: "favorite",
     color: "#10b981",
     sort: c => -(c.score_qualite_vie ?? -999),
-    badge: c => c.score_qualite_vie != null ? `Score ${c.score_qualite_vie.toFixed(1)}/10` : null,
+    badge: c => c.score_qualite_vie != null ? `Score ${Math.round(c.score_qualite_vie)}/100` : null,
     sub: c => c.ips_moyen != null ? `IPS ${c.ips_moyen.toFixed(0)}` : null,
   },
   {
@@ -273,7 +273,7 @@ const TOP_CRITERIA = [
     icon: "shield",
     color: "#34d399",
     sort: c => -(c.score_securite ?? -999),
-    badge: c => c.score_securite != null ? `Score ${c.score_securite.toFixed(1)}/10` : null,
+    badge: c => c.score_securite != null ? `Score ${Math.round(c.score_securite)}/100` : null,
     sub: c => c.taux_cambriolages != null ? `${c.taux_cambriolages.toFixed(1)} ‰ camb.` : null,
   },
   {
