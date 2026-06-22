@@ -25,10 +25,10 @@ import (
 //   - pieces       (int)    — nombre de pièces
 //   - sort_by      (string) — date_mutation | valeur_fonciere | prix_m2 | surface_reelle_bati
 //   - sort_order   (string) — asc | desc (default: desc)
-//   - limit        (int, default 50, max 200)
+//   - limit        (int, default 50, max 5000)
 //   - offset       (int, default 0)
 func ListTransactions(c *gin.Context) {
-	limit  := queryInt(c, "limit", 50, 200)
+	limit  := queryInt(c, "limit", 50, 5000)
 	offset := queryInt(c, "offset", 0, -1)
 
 	// Filtres

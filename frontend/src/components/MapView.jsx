@@ -20,6 +20,58 @@ const COMMUNE_COORDS = {
   "92026": [2.2874, 48.8936],
 };
 
+// Cache POI par commune — 1 requête Overpass groupée partagée entre les 6 couches
+const POI_CACHE   = new Map(); // code_insee → { transports, security, restaurants, schools, parks, shops }
+const POI_PENDING = new Map(); // code_insee → Promise (évite les requêtes doublons en vol)
+
+async function fetchPOIBatch(code, lat, lon, signal) {
+  if (POI_CACHE.has(code)) return POI_CACHE.get(code);
+  if (POI_PENDING.has(code)) return POI_PENDING.get(code);
+  const q = `[out:json][timeout:20];(
+node["public_transport"="station"](around:3000,${lat},${lon});
+node["railway"~"station|tram_stop"](around:2500,${lat},${lon});
+node["amenity"~"police|fire_station|hospital|pharmacy"](around:3500,${lat},${lon});
+way["amenity"~"police|fire_station|hospital"](around:3500,${lat},${lon});
+node["amenity"~"restaurant|cafe|bar|fast_food|brasserie"](around:2000,${lat},${lon});
+node["amenity"~"school|university|college|kindergarten"](around:3000,${lat},${lon});
+way["amenity"~"school|university|college"](around:3000,${lat},${lon});
+node["leisure"~"park|garden|nature_reserve|playground"](around:3000,${lat},${lon});
+way["leisure"~"park|garden|nature_reserve"](around:3000,${lat},${lon});
+node["shop"~"supermarket|convenience|bakery|butcher|mall|marketplace|florist"](around:2000,${lat},${lon});
+);out center body;`;
+  const p = (async () => {
+    const res = await fetch(
+      `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`,
+      { signal }
+    );
+    const d = await res.json();
+    const b = { transports: [], security: [], restaurants: [], schools: [], parks: [], shops: [] };
+    for (const el of (d.elements || [])) {
+      const elLat = el.lat ?? el.center?.lat;
+      const elLon = el.lon ?? el.center?.lon;
+      if (!elLat || !elLon) continue;
+      const e = { ...el, lat: elLat, lon: elLon };
+      const am = el.tags?.amenity || "";
+      const pt = el.tags?.public_transport || "";
+      const ra = el.tags?.railway || "";
+      const le = el.tags?.leisure || "";
+      const sh = el.tags?.shop || "";
+      if (pt === "station" || /station|tram_stop/.test(ra)) b.transports.push(e);
+      else if (/police|fire_station|hospital|pharmacy/.test(am)) b.security.push(e);
+      else if (/restaurant|cafe|bar|fast_food|brasserie/.test(am)) b.restaurants.push(e);
+      else if (/school|university|college|kindergarten/.test(am)) b.schools.push(e);
+      else if (/park|garden|nature_reserve|playground/.test(le)) b.parks.push(e);
+      else if (sh) b.shops.push(e);
+    }
+    POI_CACHE.set(code, b);
+    POI_PENDING.delete(code);
+    return b;
+  })();
+  p.catch(() => POI_PENDING.delete(code));
+  POI_PENDING.set(code, p);
+  return p;
+}
+
 const DPE_COLORS = {
   A: { bg: "bg-green-500",   text: "text-green-400",   ring: "ring-green-500/40",   hex: "#22c55e" },
   B: { bg: "bg-green-400",   text: "text-green-400",   ring: "ring-green-400/40",   hex: "#84cc16" },
@@ -1065,6 +1117,8 @@ export default function MapView() {
   const setHoveredTxIdRef = useRef(null);
   const agregatAbortRef = useRef(null);
   const txAbortRef = useRef(null);
+  const poiLoadingRef = useRef(null);
+  const selectedCommuneRef = useRef(null);
   const [showTransports, setShowTransports] = useState(false);
   const transportMarkersRef = useRef([]);
   const [showSecurity, setShowSecurity] = useState(false);
@@ -1082,6 +1136,8 @@ export default function MapView() {
   useEffect(() => { setHoveredTxIdRef.current = setHoveredTxId; }, []);
   // Synchronise lockedRef avec le state pour les closures des handlers de carte
   useEffect(() => { lockedRef.current = !!lockedCommune; }, [lockedCommune]);
+  // Synchronise selectedCommuneRef pour les callbacks async (sans stale closure)
+  useEffect(() => { selectedCommuneRef.current = selectedCommune; }, [selectedCommune]);
 
   useEffect(() => {
     axios.get("/api/v1/communes/gold?limit=1300").then(r => {
@@ -1133,6 +1189,13 @@ export default function MapView() {
           const avgLat = withCoords.reduce((s, t) => s + t.latitude, 0) / withCoords.length;
           communeCenterRef.current = [avgLon, avgLat];
           map.current.flyTo({ center: [avgLon, avgLat], zoom: 13, duration: 900 });
+          // Prefetch POI immédiatement — dès qu'on connaît les coordonnées
+          const poiCode = commune.code_insee;
+          if (poiCode && !POI_CACHE.has(poiCode) && !POI_PENDING.has(poiCode)) {
+            poiLoadingRef.current?.abort();
+            poiLoadingRef.current = new AbortController();
+            fetchPOIBatch(poiCode, avgLat, avgLon, poiLoadingRef.current.signal).catch(() => {});
+          }
         }
       }
 
@@ -1262,18 +1325,18 @@ export default function MapView() {
     transportMarkersRef.current.forEach(m => m.remove());
     transportMarkersRef.current = [];
     const center = communeCenterRef.current;
-    if (!center || !map.current) return;
+    const code = selectedCommuneRef.current?.code_insee;
+    if (!center || !map.current || !code) return;
     const [lon, lat] = center;
-    const query = `[out:json][timeout:12];(node["public_transport"="station"](around:3000,${lat},${lon});node["railway"~"station|tram_stop"](around:2500,${lat},${lon}););out body;`;
     try {
-      const res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
-      const d = await res.json();
+      const data = await fetchPOIBatch(code, lat, lon, poiLoadingRef.current?.signal);
+      if (!data || !map.current) return;
       const seen = new Set();
-      (d.elements || [])
-        .filter(el => {
-          const name = el.tags?.name;
-          if (!name || !el.lat || !el.lon) return false;
-          const key = `${detectType(el.tags)}:${name}`;
+      data.transports
+        .filter(stop => {
+          const name = stop.tags?.name;
+          if (!name) return false;
+          const key = `${detectType(stop.tags)}:${name}`;
           if (seen.has(key)) return false;
           seen.add(key);
           return true;
@@ -1302,34 +1365,30 @@ export default function MapView() {
     securityMarkersRef.current.forEach(m => m.remove());
     securityMarkersRef.current = [];
     const center = communeCenterRef.current;
-    if (!center || !map.current) return;
+    const code = selectedCommuneRef.current?.code_insee;
+    if (!center || !map.current || !code) return;
     const [lon, lat] = center;
-    const query = `[out:json][timeout:15];(node["amenity"~"police|fire_station|hospital|pharmacy"](around:3500,${lat},${lon});way["amenity"~"police|fire_station|hospital"](around:3500,${lat},${lon}););out center body;`;
     try {
-      const res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
-      const d = await res.json();
+      const data = await fetchPOIBatch(code, lat, lon, poiLoadingRef.current?.signal);
+      if (!data || !map.current) return;
       const seen = new Set();
-      (d.elements || [])
-        .map(el => ({ ...el, lat: el.lat ?? el.center?.lat, lon: el.lon ?? el.center?.lon }))
-        .filter(el => el.lat && el.lon)
-        .slice(0, 50)
-        .forEach(el => {
-          const type = el.tags?.amenity;
-          const name = el.tags?.name || type;
-          const key = `${type}:${name}`;
-          if (seen.has(key)) return;
-          seen.add(key);
-          const cfg = SECURITY_OSM_CFG[type] || { bg: "#475569", letter: "?" };
-          const dom = document.createElement("div");
-          dom.title = name;
-          dom.style.cssText = `width:16px;height:16px;background:${cfg.bg};border-radius:50%;border:2px solid rgba(255,255,255,0.9);display:flex;align-items:center;justify-content:center;font-size:6px;font-weight:900;color:#fff;box-shadow:0 2px 6px rgba(0,0,0,0.6),0 0 0 1px ${cfg.bg}44;pointer-events:none;`;
-          dom.textContent = cfg.letter;
-          securityMarkersRef.current.push(
-            new maplibregl.Marker({ element: dom, anchor: "center" })
-              .setLngLat([el.lon, el.lat])
-              .addTo(map.current)
-          );
-        });
+      data.security.slice(0, 50).forEach(el => {
+        const type = el.tags?.amenity;
+        const name = el.tags?.name || type;
+        const key = `${type}:${name}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        const cfg = SECURITY_OSM_CFG[type] || { bg: "#475569", letter: "?" };
+        const dom = document.createElement("div");
+        dom.title = name;
+        dom.style.cssText = `width:16px;height:16px;background:${cfg.bg};border-radius:50%;border:2px solid rgba(255,255,255,0.9);display:flex;align-items:center;justify-content:center;font-size:6px;font-weight:900;color:#fff;box-shadow:0 2px 6px rgba(0,0,0,0.6),0 0 0 1px ${cfg.bg}44;pointer-events:none;`;
+        dom.textContent = cfg.letter;
+        securityMarkersRef.current.push(
+          new maplibregl.Marker({ element: dom, anchor: "center" })
+            .setLngLat([el.lon, el.lat])
+            .addTo(map.current)
+        );
+      });
     } catch (err) { console.warn("Overpass sécurité:", err); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1356,16 +1415,15 @@ export default function MapView() {
     restaurantMarkersRef.current.forEach(m => m.remove());
     restaurantMarkersRef.current = [];
     const center = communeCenterRef.current;
-    if (!center || !map.current) return;
+    const code = selectedCommuneRef.current?.code_insee;
+    if (!center || !map.current || !code) return;
     const [lon, lat] = center;
-    const q = `[out:json][timeout:15];node["amenity"~"restaurant|cafe|bar|fast_food|brasserie"](around:2000,${lat},${lon});out body;`;
     try {
-      const res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`);
-      const d = await res.json();
+      const data = await fetchPOIBatch(code, lat, lon, poiLoadingRef.current?.signal);
+      if (!data || !map.current) return;
       const seen = new Set();
-      (d.elements || [])
+      data.restaurants
         .filter(el => {
-          if (!el.lat || !el.lon) return false;
           const key = `${el.tags?.name || ""}:${Math.round(el.lat * 1000)}`;
           if (seen.has(key)) return false;
           seen.add(key);
@@ -1392,17 +1450,15 @@ export default function MapView() {
     schoolMarkersRef.current.forEach(m => m.remove());
     schoolMarkersRef.current = [];
     const center = communeCenterRef.current;
-    if (!center || !map.current) return;
+    const code = selectedCommuneRef.current?.code_insee;
+    if (!center || !map.current || !code) return;
     const [lon, lat] = center;
-    const q = `[out:json][timeout:15];(node["amenity"~"school|university|college|kindergarten"](around:3000,${lat},${lon});way["amenity"~"school|university|college"](around:3000,${lat},${lon}););out center body;`;
     try {
-      const res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`);
-      const d = await res.json();
+      const data = await fetchPOIBatch(code, lat, lon, poiLoadingRef.current?.signal);
+      if (!data || !map.current) return;
       const seen = new Set();
-      (d.elements || [])
-        .map(el => ({ ...el, lat: el.lat ?? el.center?.lat, lon: el.lon ?? el.center?.lon }))
+      data.schools
         .filter(el => {
-          if (!el.lat || !el.lon) return false;
           const key = `${el.tags?.name || ""}:${Math.round(el.lat * 1000)}`;
           if (seen.has(key)) return false;
           seen.add(key);
@@ -1433,17 +1489,15 @@ export default function MapView() {
     parkMarkersRef.current.forEach(m => m.remove());
     parkMarkersRef.current = [];
     const center = communeCenterRef.current;
-    if (!center || !map.current) return;
+    const code = selectedCommuneRef.current?.code_insee;
+    if (!center || !map.current || !code) return;
     const [lon, lat] = center;
-    const q = `[out:json][timeout:15];(node["leisure"~"park|garden|nature_reserve|playground"](around:3000,${lat},${lon});way["leisure"~"park|garden|nature_reserve"](around:3000,${lat},${lon}););out center body;`;
     try {
-      const res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`);
-      const d = await res.json();
+      const data = await fetchPOIBatch(code, lat, lon, poiLoadingRef.current?.signal);
+      if (!data || !map.current) return;
       const seen = new Set();
-      (d.elements || [])
-        .map(el => ({ ...el, lat: el.lat ?? el.center?.lat, lon: el.lon ?? el.center?.lon }))
+      data.parks
         .filter(el => {
-          if (!el.lat || !el.lon) return false;
           const key = `${el.tags?.name || ""}:${Math.round(el.lat * 1000)}`;
           if (seen.has(key)) return false;
           seen.add(key);
@@ -1474,16 +1528,15 @@ export default function MapView() {
     shopMarkersRef.current.forEach(m => m.remove());
     shopMarkersRef.current = [];
     const center = communeCenterRef.current;
-    if (!center || !map.current) return;
+    const code = selectedCommuneRef.current?.code_insee;
+    if (!center || !map.current || !code) return;
     const [lon, lat] = center;
-    const q = `[out:json][timeout:15];node["shop"~"supermarket|convenience|bakery|butcher|mall|marketplace|florist"](around:2000,${lat},${lon});out body;`;
     try {
-      const res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`);
-      const d = await res.json();
+      const data = await fetchPOIBatch(code, lat, lon, poiLoadingRef.current?.signal);
+      if (!data || !map.current) return;
       const seen = new Set();
-      (d.elements || [])
+      data.shops
         .filter(el => {
-          if (!el.lat || !el.lon) return false;
           const key = `${el.tags?.name || ""}:${Math.round(el.lat * 1000)}`;
           if (seen.has(key)) return false;
           seen.add(key);
