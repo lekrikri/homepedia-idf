@@ -1868,6 +1868,8 @@ export default function MapView() {
             </span>
           </button>
 
+          {/* Toggles couches OSM — désactivés en vue 3D (marqueurs MapLibre non visibles) */}
+          <div className={`flex flex-col gap-2 ${is3D ? "opacity-40 pointer-events-none" : ""}`}>
           {/* Toggle sécurité */}
           <button
             onClick={() => setShowSecurity(v => !v)}
@@ -1933,6 +1935,7 @@ export default function MapView() {
             style={showShops ? { background: "#a855f7", boxShadow: "0 4px 20px rgba(168,85,247,0.4)" } : {}}>
             <span className="material-symbols-outlined" style={{ fontSize: 20 }}>storefront</span>
           </button>
+          </div>
 
           <button
             onClick={() => map.current && map.current.setStyle(
@@ -1989,8 +1992,8 @@ export default function MapView() {
           </button>
         )}
 
-        {/* Légendes empilées — sécurité en bas, transport au dessus, puis POI */}
-        {(showTransports || showSecurity || showRestaurants || showSchools || showParks || showShops) && (
+        {/* Légendes empilées — sécurité en bas, transport au dessus, puis POI (masquées en vue 3D) */}
+        {(showTransports || showSecurity || showRestaurants || showSchools || showParks || showShops) && !is3D && (
           <div className="absolute bottom-10 left-[72px] z-10 flex flex-col gap-1.5">
             {showSecurity && (
               <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl"
