@@ -1,12 +1,14 @@
 """
 ingestion/scores/compute_scores.py
 =====================================
-Calcule 3 scores composites par commune IDF à partir des données
+Calcule 5 scores composites par commune IDF à partir des données
 déjà agrégées dans communes_agregat (PostgreSQL).
 
   - score_qualite_vie    : qualité du cadre de vie (0-100)
   - score_investissement : attractivité pour l'investissement (0-100)
-  - score_stabilite      : stabilité / faible risque (0-100)
+  - score_stabilite      : stabilité / faible risque DPE (0-100)
+  - score_accessibilite  : accessibilité TC + fibre + proximité Paris (0-100)
+  - score_global         : synthèse de tous les scores (0-100)
 
 Ces scores sont des indices normalisés percentile-based (5e-95e percentile)
 avec pondération thématique. Toutes les communes obtiennent un score :
@@ -118,6 +120,52 @@ def score_stabilite(df: pd.DataFrame) -> pd.Series:
     return s.round(1)
 
 
+# ─── Score Accessibilité ──────────────────────────────────────────────────────
+#
+# Mesure l'accessibilité aux services numériques et aux transports :
+#   - Transports en commun (nb arrêts TC) : 40 %
+#   - Couverture fibre FTTH (pct_fibre) : 20 %
+#   - Proximité Paris (distance inversée) : 40 %
+#       < 5km → 100 pts | 30km → 50 pts | > 70km → 0 pts
+
+def score_accessibilite(df: pd.DataFrame) -> pd.Series:
+    # Proximité Paris : distance inversée, normalisée sur 0-70km max IDF
+    MAX_DIST_IDF = 70.0
+    dist = fill_median(df, "distance_paris_km") if "distance_paris_km" in df.columns else pd.Series(20.0, index=df.index)
+    prox_paris = ((MAX_DIST_IDF - dist.clip(0, MAX_DIST_IDF)) / MAX_DIST_IDF * 100).clip(0, 100)
+
+    tc = minmax(fill_median(df, "nb_arrets_tc")) if "nb_arrets_tc" in df.columns else pd.Series(50.0, index=df.index)
+    fibre = fill_median(df, "pct_fibre").clip(0, 100) if "pct_fibre" in df.columns else pd.Series(70.0, index=df.index)
+
+    s = (
+        tc          * 0.40 +
+        fibre       * 0.20 +
+        prox_paris  * 0.40
+    )
+    return s.round(1)
+
+
+# ─── Score Global ─────────────────────────────────────────────────────────────
+#
+# Synthèse de tous les scores, pondérée par leur importance :
+#   - Qualité de vie  : 30 %
+#   - Investissement  : 20 %
+#   - Accessibilité   : 20 %
+#   - Stabilité DPE   : 15 %
+#   - Sécurité        : 15 %
+
+def score_global(df: pd.DataFrame) -> pd.Series:
+    securite = df["score_securite"].fillna(df["score_securite"].median()) if "score_securite" in df.columns else pd.Series(65.0, index=df.index)
+    s = (
+        df["score_qualite_vie"]    * 0.30 +
+        df["score_investissement"] * 0.20 +
+        df["score_accessibilite"]  * 0.20 +
+        df["score_stabilite"]      * 0.15 +
+        securite                   * 0.15
+    )
+    return s.round(1)
+
+
 # ─── Mise à jour PostgreSQL ───────────────────────────────────────────────────
 
 def add_score_columns(conn):
@@ -126,7 +174,9 @@ def add_score_columns(conn):
             ALTER TABLE communes_agregat
                 ADD COLUMN IF NOT EXISTS score_qualite_vie    DOUBLE PRECISION,
                 ADD COLUMN IF NOT EXISTS score_investissement  DOUBLE PRECISION,
-                ADD COLUMN IF NOT EXISTS score_stabilite       DOUBLE PRECISION
+                ADD COLUMN IF NOT EXISTS score_stabilite       DOUBLE PRECISION,
+                ADD COLUMN IF NOT EXISTS score_accessibilite   DOUBLE PRECISION,
+                ADD COLUMN IF NOT EXISTS score_global          DOUBLE PRECISION
         """)
         conn.commit()
     print("  ✅ Colonnes scores prêtes")
@@ -139,14 +189,18 @@ def update_scores(conn, df: pd.DataFrame) -> int:
                 code_commune         CHAR(5),
                 score_qualite_vie    DOUBLE PRECISION,
                 score_investissement DOUBLE PRECISION,
-                score_stabilite      DOUBLE PRECISION
+                score_stabilite      DOUBLE PRECISION,
+                score_accessibilite  DOUBLE PRECISION,
+                score_global         DOUBLE PRECISION
             ) ON COMMIT DROP
         """)
         data = [
             (str(row.code_commune).zfill(5),
              float(row.score_qualite_vie),
              float(row.score_investissement),
-             float(row.score_stabilite))
+             float(row.score_stabilite),
+             float(row.score_accessibilite),
+             float(row.score_global))
             for row in df.itertuples()
         ]
         execute_values(cur, "INSERT INTO tmp_scores VALUES %s", data)
@@ -155,7 +209,9 @@ def update_scores(conn, df: pd.DataFrame) -> int:
             SET
                 score_qualite_vie    = t.score_qualite_vie,
                 score_investissement = t.score_investissement,
-                score_stabilite      = t.score_stabilite
+                score_stabilite      = t.score_stabilite,
+                score_accessibilite  = t.score_accessibilite,
+                score_global         = t.score_global
             FROM tmp_scores t
             WHERE ca.code_commune = t.code_commune
         """)
@@ -185,7 +241,8 @@ def main():
             nb_commerce, nb_restauration, nb_parcs, nb_services, nb_bio_bobo,
             surface_km2, population_totale, densite_pop_km2,
             conso_elec_par_logement, conso_gaz_par_logement,
-            ips_moyen, pct_ecoles_favorisees
+            ips_moyen, pct_ecoles_favorisees, score_securite,
+            nb_arrets_tc, pct_fibre, distance_paris_km
         FROM communes_agregat
         WHERE prix_median_m2 IS NOT NULL
     """, conn)
@@ -195,9 +252,12 @@ def main():
     df["score_qualite_vie"]    = score_qualite_vie(df)
     df["score_investissement"] = score_investissement(df)
     df["score_stabilite"]      = score_stabilite(df)
+    df["score_accessibilite"]  = score_accessibilite(df)
+    df["score_global"]         = score_global(df)
 
     # Affichage distribution
-    for col in ["score_qualite_vie", "score_investissement", "score_stabilite"]:
+    for col in ["score_qualite_vie", "score_investissement", "score_stabilite",
+                "score_accessibilite", "score_global"]:
         print(f"  {col}: min={df[col].min():.0f} | p25={df[col].quantile(.25):.0f} "
               f"| median={df[col].median():.0f} | p75={df[col].quantile(.75):.0f} "
               f"| max={df[col].max():.0f}")
@@ -209,9 +269,13 @@ def main():
 
     # ─── Top / Bottom par score ──────────────────────────────────────────────
     print("─" * 65)
+    _show_ranking(df, "score_global",         "Score Global HomePedia")
+    print()
     _show_ranking(df, "score_qualite_vie",    "Qualité de Vie")
     print()
     _show_ranking(df, "score_investissement", "Investissement")
+    print()
+    _show_ranking(df, "score_accessibilite",  "Accessibilité (TC + Fibre + Paris)")
     print()
     _show_ranking(df, "score_stabilite",      "Stabilité (faible risque DPE)")
 

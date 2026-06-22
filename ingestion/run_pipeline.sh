@@ -62,6 +62,10 @@ echo "╚═══════════════════════�
 $PYTHON ingestion/ips/download_gcs.py
 $PYTHON ingestion/energie/download_gcs.py
 $PYTHON ingestion/delinquance/download_gcs.py
+$PYTHON ingestion/distance_paris/compute.py
+$PYTHON ingestion/georisques/download_gcs.py
+$PYTHON ingestion/transports/download_gcs.py
+$PYTHON ingestion/fibre/download_gcs.py
 $PYTHON ingestion/scores/compute_scores.py
 echo ""
 

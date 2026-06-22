@@ -100,17 +100,28 @@ df_pg = df_gold.select(
     F.col("score_qualite_vie"),
     F.col("score_investissement"),
     F.col("score_stabilite"),
+    # Accessibilité + Risques (migration 006) — calculés côté Python après export
+    F.col("pct_fibre"),
+    F.col("nb_arrets_tc"),
+    F.col("distance_paris_km"),
+    F.col("risque_inondation"),
+    F.col("risque_argile"),
+    F.col("score_accessibilite"),
+    F.col("score_risques"),
+    F.col("score_global"),
 )
 
-# Les colonnes enrichies (loyers, sécurité, IPS, énergie, scores) sont ajoutées
-# par les notebooks bronze_to_silver via MERGE INTO gold. Si elles n'existent pas
-# encore dans Gold, on les remplace par NULL pour ne pas bloquer l'export.
+# Les colonnes enrichies sont ajoutées par les notebooks bronze_to_silver via MERGE INTO gold
+# ou par les scripts Python post-export. Si elles n'existent pas dans Gold, on les met à NULL.
 OPTIONAL_COLS = [
     "loyer_median_m2", "zone_tendue", "rendement_locatif_brut",
     "taux_cambriolages", "taux_vols_violence", "score_securite",
     "ips_moyen", "ips_median", "nb_ecoles", "pct_ecoles_favorisees",
     "conso_elec_mwh", "conso_gaz_mwh", "conso_elec_par_logement", "conso_gaz_par_logement",
     "score_qualite_vie", "score_investissement", "score_stabilite",
+    "pct_fibre", "nb_arrets_tc", "distance_paris_km",
+    "risque_inondation", "risque_argile",
+    "score_accessibilite", "score_risques", "score_global",
 ]
 gold_cols = set(df_gold.columns)
 for col in OPTIONAL_COLS:
