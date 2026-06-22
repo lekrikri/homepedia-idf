@@ -39,6 +39,16 @@ function fmtPrixM2(v, s) {
   return Math.round(v / s).toLocaleString("fr-FR");
 }
 
+function fmtDate(dateStr, sourceAnnee) {
+  if (!dateStr) return "—";
+  const parts = dateStr.split("-");
+  if (parts.length === 3) {
+    const yr = parseInt(parts[0], 10);
+    if ((yr > 2030 || yr < 2000) && sourceAnnee) return `${sourceAnnee}-${parts[1]}-${parts[2]}`;
+  }
+  return dateStr;
+}
+
 // ─── Composant filtre slider ───────────────────────────────────────────────────
 
 function FilterSelect({ label, value, onChange, options, icon }) {
@@ -205,6 +215,53 @@ export default function Transactions() {
   const currentPage = Math.floor(offset / PER_PAGE) + 1;
   const totalPages  = Math.ceil(total / PER_PAGE);
 
+  const PaginationBar = ({ compact = false }) => (
+    <div className={`flex items-center justify-between px-5 ${compact ? "py-2" : "py-3"}`}
+      style={{ background: "rgba(15,22,36,0.6)", borderTop: compact ? "none" : "1px solid rgba(30,41,59,0.6)", borderBottom: compact ? "1px solid rgba(30,41,59,0.6)" : "none" }}>
+      <span className="text-xs text-slate-500 mono-nums">
+        {total > 0
+          ? <>Page <span className="text-slate-300 font-semibold">{currentPage}</span>/<span className="text-slate-300 font-semibold">{totalPages}</span> · <span className="text-slate-300 font-semibold">{total.toLocaleString("fr-FR")}</span> résultats</>
+          : "Aucun résultat"}
+      </span>
+      <div className="flex items-center gap-1.5">
+        <button onClick={() => setOffset(0)} disabled={offset === 0}
+          className="p-1.5 rounded-lg border border-slate-700/50 bg-slate-800/50 disabled:opacity-30 hover:border-primary/40 transition-colors">
+          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>first_page</span>
+        </button>
+        <button onClick={() => setOffset(o => Math.max(0, o - PER_PAGE))} disabled={offset === 0}
+          className="p-1.5 rounded-lg border border-slate-700/50 bg-slate-800/50 disabled:opacity-30 hover:border-primary/40 transition-colors">
+          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>chevron_left</span>
+        </button>
+        {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+          let p;
+          if (totalPages <= 7) p = i + 1;
+          else if (currentPage <= 4) p = i + 1;
+          else if (currentPage >= totalPages - 3) p = totalPages - 6 + i;
+          else p = currentPage - 3 + i;
+          return (
+            <button key={p} onClick={() => setOffset((p-1)*PER_PAGE)}
+              className="w-8 h-8 rounded-lg text-xs font-bold transition-all"
+              style={{
+                background: p === currentPage ? "#3c83f6" : "rgba(30,41,59,0.5)",
+                color: p === currentPage ? "white" : "#64748b",
+                border: p === currentPage ? "1px solid #3c83f6" : "1px solid rgba(30,41,59,0.5)",
+              }}>
+              {p}
+            </button>
+          );
+        })}
+        <button onClick={() => setOffset(o => Math.min((totalPages-1)*PER_PAGE, o + PER_PAGE))} disabled={currentPage === totalPages || totalPages === 0}
+          className="p-1.5 rounded-lg border border-slate-700/50 bg-slate-800/50 disabled:opacity-30 hover:border-primary/40 transition-colors">
+          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>chevron_right</span>
+        </button>
+        <button onClick={() => setOffset((totalPages-1)*PER_PAGE)} disabled={currentPage === totalPages || totalPages === 0}
+          className="p-1.5 rounded-lg border border-slate-700/50 bg-slate-800/50 disabled:opacity-30 hover:border-primary/40 transition-colors">
+          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>last_page</span>
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6 lg:px-10 flex flex-col gap-5"
       style={{ background: "rgba(8,13,24,1)" }}>
@@ -298,6 +355,7 @@ export default function Transactions() {
 
       {/* ── TABLEAU ────────────────────────────────────────────────────────── */}
       <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(60,131,246,0.12)" }}>
+        {!loading && total > PER_PAGE && <PaginationBar compact />}
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[900px]">
             <thead>
@@ -353,7 +411,7 @@ export default function Transactions() {
 
                     {/* Date */}
                     <td className="px-5 py-3 whitespace-nowrap">
-                      <span className="text-[11px] mono-nums text-slate-400">{t.date_mutation}</span>
+                      <span className="text-[11px] mono-nums text-slate-400">{fmtDate(t.date_mutation, t.source_annee)}</span>
                       {t.source_annee && <span className="text-[9px] text-slate-600 block">{t.source_annee}</span>}
                     </td>
 
@@ -442,52 +500,8 @@ export default function Transactions() {
           </table>
         </div>
 
-        {/* ── PAGINATION ─────────────────────────────────────────────────── */}
-        <div className="px-5 py-3 flex items-center justify-between"
-          style={{ background: "rgba(15,22,36,0.6)", borderTop: "1px solid rgba(30,41,59,0.6)" }}>
-          <span className="text-xs text-slate-500 mono-nums">
-            {total > 0
-              ? <>Affichage <span className="text-slate-300 font-semibold">{offset+1}–{Math.min(offset+PER_PAGE, total)}</span> sur <span className="text-slate-300 font-semibold">{total.toLocaleString("fr-FR")}</span></>
-              : "Aucun résultat"}
-          </span>
-          <div className="flex items-center gap-1.5">
-            <button onClick={() => setOffset(0)} disabled={offset === 0}
-              className="p-1.5 rounded-lg border border-slate-700/50 bg-slate-800/50 disabled:opacity-30 hover:border-primary/40 transition-colors">
-              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>first_page</span>
-            </button>
-            <button onClick={() => setOffset(o => Math.max(0, o - PER_PAGE))} disabled={offset === 0}
-              className="p-1.5 rounded-lg border border-slate-700/50 bg-slate-800/50 disabled:opacity-30 hover:border-primary/40 transition-colors">
-              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>chevron_left</span>
-            </button>
-            {/* Pages visibles */}
-            {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
-              let p;
-              if (totalPages <= 7) p = i + 1;
-              else if (currentPage <= 4) p = i + 1;
-              else if (currentPage >= totalPages - 3) p = totalPages - 6 + i;
-              else p = currentPage - 3 + i;
-              return (
-                <button key={p} onClick={() => setOffset((p-1)*PER_PAGE)}
-                  className="w-8 h-8 rounded-lg text-xs font-bold transition-all"
-                  style={{
-                    background: p === currentPage ? "#3c83f6" : "rgba(30,41,59,0.5)",
-                    color: p === currentPage ? "white" : "#64748b",
-                    border: p === currentPage ? "1px solid #3c83f6" : "1px solid rgba(30,41,59,0.5)",
-                  }}>
-                  {p}
-                </button>
-              );
-            })}
-            <button onClick={() => setOffset(o => Math.min((totalPages-1)*PER_PAGE, o + PER_PAGE))} disabled={currentPage === totalPages || totalPages === 0}
-              className="p-1.5 rounded-lg border border-slate-700/50 bg-slate-800/50 disabled:opacity-30 hover:border-primary/40 transition-colors">
-              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>chevron_right</span>
-            </button>
-            <button onClick={() => setOffset((totalPages-1)*PER_PAGE)} disabled={currentPage === totalPages || totalPages === 0}
-              className="p-1.5 rounded-lg border border-slate-700/50 bg-slate-800/50 disabled:opacity-30 hover:border-primary/40 transition-colors">
-              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>last_page</span>
-            </button>
-          </div>
-        </div>
+        {/* ── PAGINATION BAS ─────────────────────────────────────────────── */}
+        <PaginationBar />
       </div>
 
       <div className="h-2" />
