@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import maplibregl from "maplibre-gl";
 import axios from "axios";
@@ -21,21 +21,19 @@ const COMMUNE_COORDS = {
 };
 
 const DPE_COLORS = {
-  A: { bg: "bg-green-500",   text: "text-green-400",   ring: "ring-green-500/40"   },
-  B: { bg: "bg-green-400",   text: "text-green-400",   ring: "ring-green-400/40"   },
-  C: { bg: "bg-yellow-400",  text: "text-yellow-400",  ring: "ring-yellow-400/40"  },
-  D: { bg: "bg-orange-400",  text: "text-orange-400",  ring: "ring-orange-400/40"  },
-  E: { bg: "bg-orange-500",  text: "text-orange-500",  ring: "ring-orange-500/40"  },
-  F: { bg: "bg-red-400",     text: "text-red-400",     ring: "ring-red-400/40"     },
-  G: { bg: "bg-red-600",     text: "text-red-500",     ring: "ring-red-600/40"     },
+  A: { bg: "bg-green-500",   text: "text-green-400",   ring: "ring-green-500/40",   hex: "#22c55e" },
+  B: { bg: "bg-green-400",   text: "text-green-400",   ring: "ring-green-400/40",   hex: "#84cc16" },
+  C: { bg: "bg-yellow-400",  text: "text-yellow-400",  ring: "ring-yellow-400/40",  hex: "#eab308" },
+  D: { bg: "bg-orange-400",  text: "text-orange-400",  ring: "ring-orange-400/40",  hex: "#f97316" },
+  E: { bg: "bg-orange-500",  text: "text-orange-500",  ring: "ring-orange-500/40",  hex: "#ef4444" },
+  F: { bg: "bg-red-400",     text: "text-red-400",     ring: "ring-red-400/40",     hex: "#dc2626" },
+  G: { bg: "bg-red-600",     text: "text-red-500",     ring: "ring-red-600/40",     hex: "#991b1b" },
 };
 
 // Moyennes IDF de référence (ENEDIS/GRDF 2022)
 const IDF_AVG_ELEC_MWH = 5.1;   // MWh/logement/an
 const IDF_AVG_GAZ_MWH  = 12.5;  // MWh/logement/an
 const IPS_NATIONAL_AVG = 100;   // échelle 0-200
-
-const DPE_COLORS_HEX = { A:"#22c55e", B:"#84cc16", C:"#eab308", D:"#f97316", E:"#ef4444", F:"#dc2626", G:"#991b1b" };
 const DPE_LETTERS = ["A","B","C","D","E","F","G"];
 
 // Score tooltips descriptions
@@ -231,13 +229,15 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock }) {
           return prices.length ? Math.round(prices[Math.floor(prices.length / 2)]) : null;
         })();
 
-  const dpePrincipal = commune?.dpe_dominant
+  const dpePrincipal = useMemo(() =>
+    commune?.dpe_dominant
     ?? Object.entries(
         transactions.reduce((acc, t) => {
           if (t.classe_energie) acc[t.classe_energie] = (acc[t.classe_energie] || 0) + 1;
           return acc;
         }, {})
-       ).sort((a, b) => b[1] - a[1])[0]?.[0];
+       ).sort((a, b) => b[1] - a[1])[0]?.[0]
+  , [commune?.dpe_dominant, transactions]);
 
   const dpeStyle = dpePrincipal ? DPE_COLORS[dpePrincipal] : null;
   const nbTransactions = agregat?.nb_transactions ?? commune?.nb_transactions ?? transactions.length;
@@ -257,6 +257,19 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock }) {
       <div className="text-center p-6">
         <span className="material-symbols-outlined text-primary/30 mb-3 block" style={{ fontSize: 44 }}>map</span>
         <p className="text-slate-500 text-sm">Sélectionnez une commune<br/>pour voir ses statistiques</p>
+      </div>
+    </aside>
+  );
+
+  if (!agregat) return (
+    <aside className="w-80 h-full flex-shrink-0 overflow-y-auto"
+      style={{ background: "rgba(11,17,27,0.97)", borderLeft: "1px solid rgba(60,131,246,0.12)" }}>
+      <div className="p-5 space-y-3 animate-pulse">
+        <div className="h-6 bg-slate-700/60 rounded w-3/4" />
+        <div className="h-4 bg-slate-700/40 rounded w-1/2" />
+        {[...Array(6)].map((_, i) => (
+          <div key={i} className="h-16 bg-slate-800/60 rounded-lg" />
+        ))}
       </div>
     </aside>
   );
@@ -501,7 +514,7 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock }) {
               </div>
               {dpeMoyenLetter && (
                 <span className="text-[9px] font-black px-2 py-0.5 rounded"
-                  style={{ background: DPE_COLORS_HEX[dpeMoyenLetter] + "30", color: DPE_COLORS_HEX[dpeMoyenLetter], border: `1px solid ${DPE_COLORS_HEX[dpeMoyenLetter]}60` }}>
+                  style={{ background: DPE_COLORS[dpeMoyenLetter]?.hex + "30", color: DPE_COLORS[dpeMoyenLetter]?.hex, border: `1px solid ${DPE_COLORS[dpeMoyenLetter]?.hex}60` }}>
                   Classe {dpeMoyenLetter}
                 </span>
               )}
@@ -513,7 +526,7 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock }) {
                 const isActive = l === dpeMoyenLetter;
                 return (
                   <div key={l} className="flex-1 flex items-center justify-center relative"
-                    style={{ background: DPE_COLORS_HEX[l], opacity: isActive ? 1 : 0.25, transition: "opacity .2s" }}>
+                    style={{ background: DPE_COLORS[l]?.hex, opacity: isActive ? 1 : 0.25, transition: "opacity .2s" }}>
                     <span style={{ fontSize: isActive ? 11 : 9, fontWeight: isActive ? 900 : 400, color: "white", textShadow: "0 1px 2px rgba(0,0,0,0.5)" }}>{l}</span>
                     {isActive && <div className="absolute -bottom-0 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-white" />}
                   </div>
@@ -629,7 +642,7 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock }) {
               {/* Score + barre */}
               <div className="flex items-center gap-3 mb-3">
                 <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: "rgba(30,41,59,0.8)" }}>
-                  <div className="h-full rounded-full" style={{ width: `${s}%`, background: badge.color, transition: "width .4s ease" }} />
+                  <div className="h-full rounded-full" style={{ width: `${Math.min(100, Math.max(0, s))}%`, background: badge.color, transition: "width .4s ease" }} />
                 </div>
                 <span className="text-xl font-black mono-nums" style={{ color: badge.color, minWidth: 38, textAlign: "right" }}>{s}<span className="text-[9px] font-normal text-slate-500">/100</span></span>
               </div>
@@ -727,7 +740,7 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock }) {
                   : "—";
                 const ppm = t.valeur_fonciere && t.surface_reelle_bati
                   ? `${Math.round(t.valeur_fonciere / t.surface_reelle_bati).toLocaleString()} €/m²` : null;
-                const dpeColor = t.classe_energie ? DPE_COLORS_HEX[t.classe_energie] : null;
+                const dpeColor = t.classe_energie ? DPE_COLORS[t.classe_energie]?.hex : null;
                 return (
                   <div key={t.id} className="flex items-center justify-between p-2.5 rounded-lg"
                     style={{ background: i === 0 ? "rgba(60,131,246,0.07)" : "rgba(15,23,36,0.5)", border: `1px solid ${i === 0 ? "rgba(60,131,246,0.2)" : "rgba(30,41,59,0.5)"}` }}>
@@ -768,10 +781,20 @@ function LeftSidebar({ communes, transactions, selectedCommune, onSelectCommune,
   activeTypes, onToggleType, anneeMax, onAnneeChange, onReset, sortDesc, onToggleSort,
   hoveredTxId, onHoverTx, isLocked, onUnlock }) {
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const debounceRef = useRef(null);
 
-  const suggestions = search.length >= 1
-    ? communes.filter(c => c.nom.toLowerCase().includes(search.toLowerCase()) || (c.code_postal || "").includes(search)).slice(0, 6)
-    : [];
+  const handleSearchChange = (e) => {
+    const v = e.target.value;
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => onSearch(v), 200);
+    setShowSuggestions(true);
+  };
+
+  const suggestions = useMemo(() =>
+    search.length >= 1
+      ? communes.filter(c => c.nom.toLowerCase().includes(search.toLowerCase()) || (c.code_postal || "").includes(search)).slice(0, 6)
+      : []
+  , [search, communes]);
 
   return (
     <aside className="w-72 h-full flex-shrink-0 overflow-y-auto z-20"
@@ -797,7 +820,7 @@ function LeftSidebar({ communes, transactions, selectedCommune, onSelectCommune,
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" style={{ fontSize: 16 }}>search</span>
             <input
               value={search}
-              onChange={e => { onSearch(e.target.value); setShowSuggestions(true); }}
+              onChange={handleSearchChange}
               onFocus={() => setShowSuggestions(true)}
               onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
               className="w-full bg-slate-900/60 border border-slate-700 rounded-lg py-2 pl-9 pr-3 text-sm focus:border-primary outline-none text-slate-100 placeholder:text-slate-600"
@@ -1016,7 +1039,7 @@ export default function MapView() {
   const navigate = useNavigate();
   const initialSelectDone = useRef(false);
 
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const [allCommunes, setAllCommunes] = useState([]);
   const [communes, setCommunes] = useState([]);
   const [selectedCommune, setSelectedCommune] = useState(null);
@@ -1040,6 +1063,8 @@ export default function MapView() {
   const txTooltipDataRef = useRef(new Map());
   const hoverTipRef = useRef(null);
   const setHoveredTxIdRef = useRef(null);
+  const agregatAbortRef = useRef(null);
+  const txAbortRef = useRef(null);
   const [showTransports, setShowTransports] = useState(false);
   const transportMarkersRef = useRef([]);
   const [showSecurity, setShowSecurity] = useState(false);
@@ -1055,6 +1080,8 @@ export default function MapView() {
   const communeCenterRef = useRef(null);
 
   useEffect(() => { setHoveredTxIdRef.current = setHoveredTxId; }, []);
+  // Synchronise lockedRef avec le state pour les closures des handlers de carte
+  useEffect(() => { lockedRef.current = !!lockedCommune; }, [lockedCommune]);
 
   useEffect(() => {
     axios.get("/api/v1/communes/gold?limit=1300").then(r => {
@@ -1071,21 +1098,24 @@ export default function MapView() {
   // Recharge les transactions quand commune ou filtres changent
   const loadAgregat = useCallback((commune) => {
     if (!commune?.code_insee) return;
-    setAgregat(null); // reset immédiat pour éviter données stale
-    // Paris arrondissements (75101-75120) → fallback sur Paris entier (75056)
+    agregatAbortRef.current?.abort();
+    agregatAbortRef.current = new AbortController();
+    setAgregat(null);
     const code = commune.code_insee.startsWith("751") && commune.code_insee !== "75056"
       ? "75056"
       : commune.code_insee;
-    axios.get(`/api/v1/communes/${code}/agregat`)
+    axios.get(`/api/v1/communes/${code}/agregat`, { signal: agregatAbortRef.current.signal })
       .then(r => setAgregat(r.data))
-      .catch(() => setAgregat(null));
+      .catch(err => { if (!axios.isCancel(err)) setAgregat(null); });
   }, []);
 
   const loadTransactions = useCallback((commune, types, maxAnnee, fly = true) => {
     if (!commune) return;
+    txAbortRef.current?.abort();
+    txAbortRef.current = new AbortController();
     const typeParam = types.size === 1 ? `&type_local=${[...types][0]}` : "";
     const anneeParam = maxAnnee < ANNEE_MAX ? `&annee=${maxAnnee}` : "";
-    axios.get(`/api/v1/transactions?commune=${commune.code_insee}&limit=100${typeParam}${anneeParam}`).then(r => {
+    axios.get(`/api/v1/transactions?commune=${commune.code_insee}&limit=100${typeParam}${anneeParam}`, { signal: txAbortRef.current.signal }).then(r => {
       const data = r.data.data || [];
       setTransactions(data);
       popupsRef.current.forEach(p => p.remove());
@@ -1189,13 +1219,12 @@ export default function MapView() {
         popupsRef.current.push(popup);
         markersRef.current.push(new maplibregl.Marker(el).setLngLat([t.longitude, t.latitude]).addTo(map.current));
       });
-    }).catch(() => {});
+    }).catch(err => { if (!axios.isCancel(err)) console.warn("loadTransactions:", err); });
   }, []);
 
   const handleSelectCommune = useCallback((commune) => {
     setSelectedCommune(commune);
     setLockedCommune(commune);
-    lockedRef.current = true;
     loadTransactions(commune, activeTypes, anneeMax);
     loadAgregat(commune);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1222,13 +1251,11 @@ export default function MapView() {
 
   const handleUnlock = useCallback(() => {
     setLockedCommune(null);
-    lockedRef.current = false;
   }, []);
 
   const handleLock = useCallback((commune) => {
     if (!commune) return;
     setLockedCommune(commune);
-    lockedRef.current = true;
   }, []);
 
   const loadTransportMarkers = useCallback(async () => {
@@ -1261,7 +1288,7 @@ export default function MapView() {
               .addTo(map.current)
           );
         });
-    } catch {}
+    } catch (err) { console.warn("Overpass transports:", err); }
   }, []);
 
   const SECURITY_OSM_CFG = {
@@ -1303,7 +1330,7 @@ export default function MapView() {
               .addTo(map.current)
           );
         });
-    } catch {}
+    } catch (err) { console.warn("Overpass sécurité:", err); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1351,7 +1378,7 @@ export default function MapView() {
               .setLngLat([el.lon, el.lat]).addTo(map.current)
           );
         });
-    } catch {}
+    } catch (err) { console.warn("Overpass restaurants:", err); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1392,7 +1419,7 @@ export default function MapView() {
               .setLngLat([el.lon, el.lat]).addTo(map.current)
           );
         });
-    } catch {}
+    } catch (err) { console.warn("Overpass écoles:", err); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1433,7 +1460,7 @@ export default function MapView() {
               .setLngLat([el.lon, el.lat]).addTo(map.current)
           );
         });
-    } catch {}
+    } catch (err) { console.warn("Overpass parcs:", err); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1473,7 +1500,7 @@ export default function MapView() {
               .setLngLat([el.lon, el.lat]).addTo(map.current)
           );
         });
-    } catch {}
+    } catch (err) { console.warn("Overpass commerces:", err); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1569,7 +1596,7 @@ export default function MapView() {
         const coords = COMMUNE_COORDS[found.code_insee];
         if (coords && map.current) map.current.flyTo({ center: coords, zoom: 13, duration: 900 });
       }
-      setSearchParams({});
+      window.history.replaceState({}, "", window.location.pathname);
       return;
     }
 
@@ -1599,7 +1626,7 @@ export default function MapView() {
     pin.togglePopup();
 
     // Nettoyer les params après usage
-    setSearchParams({});
+    window.history.replaceState({}, "", window.location.pathname);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, allCommunes]);
 
@@ -1617,7 +1644,8 @@ export default function MapView() {
     map.current.on("load", async () => {
       try {
         const res = await fetch(
-          "https://geo.api.gouv.fr/communes?codeRegion=11&geometry=contour&format=geojson&fields=nom,code"
+          "https://geo.api.gouv.fr/communes?codeRegion=11&geometry=contour&format=geojson&fields=nom,code",
+          { signal: AbortSignal.timeout(5000) }
         );
         const geojson = await res.json();
         if (!map.current) return;
@@ -1699,7 +1727,15 @@ export default function MapView() {
       }
     });
 
-    return () => { map.current?.remove(); map.current = null; };
+    return () => {
+      markersRef.current.forEach(m => m.remove());
+      popupsRef.current.forEach(p => p.remove());
+      hoverTipRef.current?.remove();
+      [transportMarkersRef, securityMarkersRef, restaurantMarkersRef, schoolMarkersRef, parkMarkersRef, shopMarkersRef]
+        .forEach(ref => ref.current.forEach(m => m.remove()));
+      map.current?.remove();
+      map.current = null;
+    };
   }, []);
 
   // ── Clic sur la carte → géocoder la commune ───────────────────────────────
@@ -1737,7 +1773,8 @@ export default function MapView() {
       setMapClickLoading(true);
       try {
         const res = await fetch(
-          `https://geo.api.gouv.fr/communes?lat=${lat}&lon=${lng}&fields=nom,code,codesPostaux&limit=1`
+          `https://geo.api.gouv.fr/communes?lat=${lat}&lon=${lng}&fields=nom,code,codesPostaux&limit=1`,
+          { signal: AbortSignal.timeout(5000) }
         );
         const json = await res.json();
         if (json[0]) {

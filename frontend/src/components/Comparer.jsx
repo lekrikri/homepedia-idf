@@ -20,6 +20,7 @@ function fmtEur(v) {
 function MetricRow({ label, valA, valB, higherIsBetter = true, format = fmt, suffix = "" }) {
   const a = valA != null ? Number(valA) : null;
   const b = valB != null ? Number(valB) : null;
+  if (a == null && b == null) return null;
   const max = Math.max(a ?? 0, b ?? 0) || 1;
 
   const winA = a != null && b != null && (higherIsBetter ? a > b : a < b);
@@ -383,6 +384,8 @@ function TopCommunesPanel({ communes, onSelectA, onSelectB, communeA, communeB }
 // ── Section groupée ───────────────────────────────────────────────────────────
 
 function Section({ title, icon, children }) {
+  const visibleChildren = React.Children.toArray(children).filter(Boolean);
+  if (visibleChildren.length === 0) return null;
   return (
     <div className="rounded-xl overflow-hidden" style={{ background: "rgba(15,23,36,0.8)", border: "1px solid rgba(60,131,246,0.1)" }}>
       <div className="flex items-center gap-2 px-5 py-3 border-b border-slate-800/60">
@@ -654,7 +657,7 @@ function CommuneSearchLocal({ label, color, value, communes, onSelect }) {
   useEffect(() => {
     const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
     document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    return () => { document.removeEventListener("mousedown", handler); clearTimeout(debounce.current); };
   }, []);
 
   return (

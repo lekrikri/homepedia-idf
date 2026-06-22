@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
 
@@ -17,14 +17,11 @@ const DEPTS_IDF = [
   { code: "95", label: "Val-d'Oise (95)" },
 ];
 
-const SORT_COLS = [
-  { key: "date_mutation",      label: "Date" },
-  { key: "valeur_fonciere",    label: "Prix total" },
-  { key: "prix_m2",            label: "Prix/m²" },
-  { key: "surface_reelle_bati",label: "Surface" },
-];
+// Colonnes triables côté serveur (prix_m2 est calculé frontend → absent)
+const SERVER_SORT_COLS = ["date_mutation", "valeur_fonciere", "surface_reelle_bati"];
 
 const PER_PAGE = 50;
+const EXPORT_LIMIT = 5000;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -44,21 +41,61 @@ function fmtDate(dateStr, sourceAnnee) {
   const parts = dateStr.split("-");
   if (parts.length === 3) {
     const yr = parseInt(parts[0], 10);
+    // Correction années aberrantes (ex: 2825 → 2025)
     if ((yr > 2030 || yr < 2000) && sourceAnnee) return `${sourceAnnee}-${parts[1]}-${parts[2]}`;
+    if ((yr > 2030 || yr < 2000)) return `????-${parts[1]}-${parts[2]}`;
   }
   return dateStr;
 }
 
-// ─── Composant filtre slider ───────────────────────────────────────────────────
+function buildParams(filters, extra = {}) {
+  const { dept, commune, typeFilter, annee, dpe, prixMin, prixMax, surfMin, surfMax, pieces, sortBy, sortOrder } = filters;
+  const p = new URLSearchParams(extra);
+  if (dept)       p.set("departement", dept);
+  if (commune)    p.set("commune", commune);
+  if (typeFilter) p.set("type_local", typeFilter);
+  if (annee)      p.set("annee", annee);
+  if (dpe)        p.set("dpe", dpe);
+  if (prixMin)    p.set("prix_min", prixMin);
+  if (prixMax)    p.set("prix_max", prixMax);
+  if (surfMin)    p.set("surface_min", surfMin);
+  if (surfMax)    p.set("surface_max", surfMax);
+  if (pieces)     p.set("pieces", pieces);
+  // N'envoyer sort_by que pour les colonnes serveur
+  if (SERVER_SORT_COLS.includes(sortBy)) {
+    p.set("sort_by", sortBy);
+    p.set("sort_order", sortOrder);
+  }
+  return p;
+}
 
-function FilterSelect({ label, value, onChange, options, icon }) {
+function generateCSV(rows) {
+  const headers = ["date_mutation","commune","departement","type_local","surface_m2","pieces","prix_total","prix_m2","dpe","annee"];
+  const lines = rows.map(t => [
+    fmtDate(t.date_mutation, t.source_annee),
+    t.commune || "",
+    t.code_commune ? t.code_commune.slice(0,2) : "",
+    t.type_local || "",
+    t.surface_reelle_bati ?? "",
+    t.nombre_pieces ?? "",
+    t.valeur_fonciere ?? "",
+    fmtPrixM2(t.valeur_fonciere, t.surface_reelle_bati) ?? "",
+    t.classe_energie || "",
+    t.source_annee || "",
+  ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(","));
+  return [headers.join(","), ...lines].join("\n");
+}
+
+// ─── Composants filtres ───────────────────────────────────────────────────────
+
+function FilterSelect({ id, label, value, onChange, options, icon }) {
   return (
     <div className="flex flex-col gap-1 min-w-0">
-      <label className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold flex items-center gap-1">
+      <label htmlFor={id} className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold flex items-center gap-1">
         {icon && <span className="material-symbols-outlined" style={{ fontSize: 11 }}>{icon}</span>}
         {label}
       </label>
-      <select value={value} onChange={e => onChange(e.target.value)}
+      <select id={id} value={value} onChange={e => onChange(e.target.value)}
         className="bg-slate-800/80 text-slate-100 border border-slate-700/60 rounded-lg px-2.5 py-1.5 text-xs font-medium focus:border-primary outline-none cursor-pointer min-w-[130px]">
         {options.map(o => (
           <option key={o.value} value={o.value}>{o.label}</option>
@@ -68,14 +105,14 @@ function FilterSelect({ label, value, onChange, options, icon }) {
   );
 }
 
-function FilterInput({ label, value, onChange, placeholder, icon }) {
+function FilterInput({ id, label, value, onChange, placeholder, icon }) {
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold flex items-center gap-1">
+      <label htmlFor={id} className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold flex items-center gap-1">
         {icon && <span className="material-symbols-outlined" style={{ fontSize: 11 }}>{icon}</span>}
         {label}
       </label>
-      <input type="number" value={value} onChange={e => onChange(e.target.value)}
+      <input id={id} type="number" value={value} onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
         className="bg-slate-800/80 text-slate-100 border border-slate-700/60 rounded-lg px-2.5 py-1.5 text-xs font-medium focus:border-primary outline-none w-28 [appearance:textfield]" />
     </div>
@@ -101,6 +138,20 @@ function StatCard({ icon, label, value, sub, color }) {
   );
 }
 
+// ─── Skeleton loader ──────────────────────────────────────────────────────────
+
+function SkeletonRow({ i }) {
+  return (
+    <tr style={{ background: i % 2 === 0 ? "rgba(15,22,36,0.5)" : "rgba(22,32,48,0.3)", borderBottom: "1px solid rgba(30,41,59,0.4)" }}>
+      {[140, 160, 90, 70, 80, 70, 40, 30].map((w, j) => (
+        <td key={j} className="px-5 py-3.5">
+          <div className="h-3 rounded animate-pulse bg-slate-800" style={{ width: w, marginLeft: j >= 3 ? "auto" : 0 }} />
+        </td>
+      ))}
+    </tr>
+  );
+}
+
 // ─── Composant principal ──────────────────────────────────────────────────────
 
 export default function Transactions() {
@@ -119,58 +170,62 @@ export default function Transactions() {
   const [surfMax,    setSurfMax]    = useState("");
   const [pieces,     setPieces]     = useState("");
 
-  // Tri
+  // Tri — séparé serveur vs client
   const [sortBy,    setSortBy]    = useState("date_mutation");
   const [sortOrder, setSortOrder] = useState("desc");
+  // Tri client-side pour prix_m2 (colonne calculée, non disponible en DB)
+  const [clientSort, setClientSort] = useState(null); // { key: "prix_m2", order: "desc" }
 
-  // Pagination serveur
+  // Pagination
   const [offset, setOffset] = useState(0);
 
   // Données
-  const [data,  setData]  = useState([]);
-  const [total, setTotal] = useState(0);
+  const [data,    setData]    = useState([]);
+  const [total,   setTotal]   = useState(0);
   const [loading, setLoading] = useState(true);
+  const [exportLoading, setExportLoading] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  // Stats agrégées (calculées sur le résultat courant)
-  const withM2    = data.filter(t => t.valeur_fonciere && t.surface_reelle_bati);
-  const avgM2     = withM2.length ? Math.round(withM2.reduce((s,t) => s + t.valeur_fonciere/t.surface_reelle_bati, 0) / withM2.length) : null;
-  const totalVol  = data.reduce((s,t) => s + (t.valeur_fonciere||0), 0);
-  const typeCounts = data.reduce((acc,t) => { const k=t.type_local||"Autre"; acc[k]=(acc[k]||0)+1; return acc; }, {});
-  const topType   = Object.entries(typeCounts).sort((a,b)=>b[1]-a[1])[0];
-  const dpeCount  = data.filter(t => t.classe_energie).length;
+  const filters = useMemo(() => ({
+    dept, commune, typeFilter, annee, dpe, prixMin, prixMax, surfMin, surfMax, pieces, sortBy, sortOrder
+  }), [dept, commune, typeFilter, annee, dpe, prixMin, prixMax, surfMin, surfMax, pieces, sortBy, sortOrder]);
+
+  // Stats agrégées sur la page courante
+  const withM2    = useMemo(() => data.filter(t => t.valeur_fonciere && t.surface_reelle_bati), [data]);
+  const avgM2     = useMemo(() => withM2.length ? Math.round(withM2.reduce((s,t) => s + t.valeur_fonciere/t.surface_reelle_bati, 0) / withM2.length) : null, [withM2]);
+  const totalVol  = useMemo(() => data.reduce((s,t) => s + (t.valeur_fonciere||0), 0), [data]);
+  const topType   = useMemo(() => {
+    const counts = data.reduce((acc,t) => { const k=t.type_local||"Autre"; acc[k]=(acc[k]||0)+1; return acc; }, {});
+    return Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];
+  }, [data]);
+  const dpeCount  = useMemo(() => data.filter(t => t.classe_energie).length, [data]);
   const dpePct    = data.length ? Math.round(dpeCount/data.length*100) : 0;
+
+  // Tri client-side sur la page affichée (pour prix_m2)
+  const displayData = useMemo(() => {
+    if (!clientSort) return data;
+    return [...data].sort((a, b) => {
+      const pa = a.valeur_fonciere && a.surface_reelle_bati ? a.valeur_fonciere / a.surface_reelle_bati : -1;
+      const pb = b.valeur_fonciere && b.surface_reelle_bati ? b.valeur_fonciere / b.surface_reelle_bati : -1;
+      return clientSort.order === "desc" ? pb - pa : pa - pb;
+    });
+  }, [data, clientSort]);
 
   const hasFilters = dept || commune || typeFilter || annee || dpe || prixMin || prixMax || surfMin || surfMax || pieces;
 
   const fetchData = useCallback(() => {
     setLoading(true);
-    const params = new URLSearchParams({ limit: PER_PAGE, offset });
-    if (dept)       params.set("departement", dept);
-    if (commune)    params.set("commune", commune);
-    if (typeFilter) params.set("type_local", typeFilter);
-    if (annee)      params.set("annee", annee);
-    if (dpe)        params.set("dpe", dpe);
-    if (prixMin)    params.set("prix_min", prixMin);
-    if (prixMax)    params.set("prix_max", prixMax);
-    if (surfMin)    params.set("surface_min", surfMin);
-    if (surfMax)    params.set("surface_max", surfMax);
-    if (pieces)     params.set("pieces", pieces);
-    params.set("sort_by", sortBy);
-    params.set("sort_order", sortOrder);
-
+    setClientSort(null);
+    const params = buildParams(filters, { limit: PER_PAGE, offset });
     axios.get(`/api/v1/transactions?${params}`)
-      .then(r => {
-        setData(r.data.data || []);
-        setTotal(r.data.total ?? 0);
-      })
+      .then(r => { setData(r.data.data || []); setTotal(r.data.total ?? 0); })
       .catch(() => { setData([]); setTotal(0); })
       .finally(() => setLoading(false));
-  }, [dept, commune, typeFilter, annee, dpe, prixMin, prixMax, surfMin, surfMax, pieces, sortBy, sortOrder, offset]);
+  }, [filters, offset]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // Reset offset when filters change
+  // Reset offset quand les filtres changent
   useEffect(() => { setOffset(0); }, [dept, commune, typeFilter, annee, dpe, prixMin, prixMax, surfMin, surfMax, pieces, sortBy, sortOrder]);
 
   const resetFilters = () => {
@@ -179,37 +234,55 @@ export default function Transactions() {
   };
 
   const handleSort = (col) => {
+    if (col === "prix_m2") {
+      // Tri client-side uniquement
+      setClientSort(prev => prev?.key === "prix_m2" && prev.order === "desc"
+        ? { key: "prix_m2", order: "asc" }
+        : { key: "prix_m2", order: "desc" });
+      return;
+    }
+    setClientSort(null);
     if (sortBy === col) setSortOrder(o => o === "desc" ? "asc" : "desc");
     else { setSortBy(col); setSortOrder("desc"); }
   };
 
   const SortIcon = ({ col }) => {
-    if (sortBy !== col) return <span className="material-symbols-outlined text-slate-700" style={{ fontSize: 12 }}>unfold_more</span>;
+    const active = col === "prix_m2" ? clientSort?.key === "prix_m2" : sortBy === col;
+    const order  = col === "prix_m2" ? clientSort?.order : sortOrder;
+    if (!active) return <span className="material-symbols-outlined text-slate-700" style={{ fontSize: 12 }}>unfold_more</span>;
     return <span className="material-symbols-outlined text-primary" style={{ fontSize: 12 }}>
-      {sortOrder === "desc" ? "arrow_downward" : "arrow_upward"}
+      {order === "desc" ? "arrow_downward" : "arrow_upward"}
     </span>;
   };
 
-  const exportCSV = () => {
-    const headers = ["date_mutation","commune","departement","type_local","surface_m2","pieces","prix_total","prix_m2","dpe","annee"];
-    const rows = data.map(t => [
-      t.date_mutation,
-      t.commune || "",
-      t.code_commune ? t.code_commune.slice(0,2) : "",
-      t.type_local || "",
-      t.surface_reelle_bati ?? "",
-      t.nombre_pieces ?? "",
-      t.valeur_fonciere ?? "",
-      fmtPrixM2(t.valeur_fonciere, t.surface_reelle_bati) ?? "",
-      t.classe_energie || "",
-      t.source_annee || "",
-    ].map(v => `"${v}"`).join(","));
-    const csv = [headers.join(","), ...rows].join("\n");
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  // Export CSV — page courante uniquement
+  const exportCurrentPage = () => {
+    const csv = generateCSV(displayData);
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = `homepedia_transactions_${Date.now()}.csv`; a.click();
+    const a = document.createElement("a"); a.href = url;
+    a.download = `homepedia_p${currentPage}_${Date.now()}.csv`; a.click();
     URL.revokeObjectURL(url);
+  };
+
+  // Export CSV — toutes les pages (max EXPORT_LIMIT)
+  const exportAll = async () => {
+    setExportLoading(true);
+    try {
+      const params = buildParams(filters, { limit: EXPORT_LIMIT, offset: 0 });
+      const r = await axios.get(`/api/v1/transactions?${params}`);
+      const rows = r.data.data || [];
+      const csv = generateCSV(rows);
+      const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url;
+      a.download = `homepedia_export_${Date.now()}.csv`; a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      // silencieux — l'utilisateur verra que le téléchargement n'a pas démarré
+    } finally {
+      setExportLoading(false);
+    }
   };
 
   const currentPage = Math.floor(offset / PER_PAGE) + 1;
@@ -217,7 +290,11 @@ export default function Transactions() {
 
   const PaginationBar = ({ compact = false }) => (
     <div className={`flex items-center justify-between px-5 ${compact ? "py-2" : "py-3"}`}
-      style={{ background: "rgba(15,22,36,0.6)", borderTop: compact ? "none" : "1px solid rgba(30,41,59,0.6)", borderBottom: compact ? "1px solid rgba(30,41,59,0.6)" : "none" }}>
+      style={{
+        background: "rgba(15,22,36,0.6)",
+        borderTop:    compact ? "none"                           : "1px solid rgba(30,41,59,0.6)",
+        borderBottom: compact ? "1px solid rgba(30,41,59,0.6)"  : "none",
+      }}>
       <span className="text-xs text-slate-500 mono-nums">
         {total > 0
           ? <>Page <span className="text-slate-300 font-semibold">{currentPage}</span>/<span className="text-slate-300 font-semibold">{totalPages}</span> · <span className="text-slate-300 font-semibold">{total.toLocaleString("fr-FR")}</span> résultats</>
@@ -243,8 +320,8 @@ export default function Transactions() {
               className="w-8 h-8 rounded-lg text-xs font-bold transition-all"
               style={{
                 background: p === currentPage ? "#3c83f6" : "rgba(30,41,59,0.5)",
-                color: p === currentPage ? "white" : "#64748b",
-                border: p === currentPage ? "1px solid #3c83f6" : "1px solid rgba(30,41,59,0.5)",
+                color:      p === currentPage ? "white"   : "#64748b",
+                border:     p === currentPage ? "1px solid #3c83f6" : "1px solid rgba(30,41,59,0.5)",
               }}>
               {p}
             </button>
@@ -290,11 +367,23 @@ export default function Transactions() {
             Filtres
             {hasFilters && <span className="bg-primary text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center">!</span>}
           </button>
-          <button onClick={exportCSV}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-white"
-            style={{ background: "rgba(60,131,246,0.2)", border: "1px solid rgba(60,131,246,0.3)" }}>
+          {/* Export page courante */}
+          <button onClick={exportCurrentPage} disabled={loading || data.length === 0}
+            title={`Exporter les ${data.length} lignes affichées`}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-40"
+            style={{ background: "rgba(60,131,246,0.15)", border: "1px solid rgba(60,131,246,0.25)" }}>
             <span className="material-symbols-outlined" style={{ fontSize: 16 }}>download</span>
-            CSV
+            CSV ({data.length})
+          </button>
+          {/* Export toutes pages */}
+          <button onClick={exportAll} disabled={exportLoading || loading || total === 0}
+            title={`Exporter jusqu'à ${EXPORT_LIMIT.toLocaleString("fr-FR")} résultats`}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-40"
+            style={{ background: "rgba(60,131,246,0.2)", border: "1px solid rgba(60,131,246,0.3)" }}>
+            {exportLoading
+              ? <span className="material-symbols-outlined animate-spin" style={{ fontSize: 16 }}>progress_activity</span>
+              : <span className="material-symbols-outlined" style={{ fontSize: 16 }}>download</span>}
+            CSV (tout)
           </button>
         </div>
       </div>
@@ -303,9 +392,9 @@ export default function Transactions() {
       {filtersOpen && (
         <div className="rounded-xl p-4" style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(60,131,246,0.15)" }}>
           <div className="flex flex-wrap gap-4 items-end">
-            <FilterSelect label="Département" icon="location_city" value={dept} onChange={setDept}
+            <FilterSelect id="f-dept" label="Département" icon="location_city" value={dept} onChange={setDept}
               options={[{ value: "", label: "Tous les départements" }, ...DEPTS_IDF.map(d => ({ value: d.code, label: d.label }))]} />
-            <FilterSelect label="Type de bien" icon="home" value={typeFilter} onChange={setTypeFilter}
+            <FilterSelect id="f-type" label="Type de bien" icon="home" value={typeFilter} onChange={setTypeFilter}
               options={[
                 { value: "", label: "Tous les types" },
                 { value: "Appartement", label: "Appartement" },
@@ -313,15 +402,15 @@ export default function Transactions() {
                 { value: "Local industriel. commercial ou assimilé", label: "Local commercial" },
                 { value: "Dépendance", label: "Dépendance" },
               ]} />
-            <FilterSelect label="Année" icon="calendar_month" value={annee} onChange={setAnnee}
-              options={[{ value: "", label: "Toutes les années" }, ...[2025,2024,2023,2022,2021,2020].map(y => ({ value: y, label: y }))]} />
-            <FilterSelect label="Classe DPE" icon="bolt" value={dpe} onChange={setDpe}
+            <FilterSelect id="f-annee" label="Année" icon="calendar_month" value={annee} onChange={setAnnee}
+              options={[{ value: "", label: "Toutes les années" }, ...[2025,2024,2023,2022,2021,2020].map(y => ({ value: String(y), label: y }))]} />
+            <FilterSelect id="f-dpe" label="Classe DPE" icon="bolt" value={dpe} onChange={setDpe}
               options={[{ value: "", label: "Toutes classes" }, ...["A","B","C","D","E","F","G"].map(l => ({ value: l, label: `DPE ${l}` }))]} />
-            <FilterInput label="Prix min (€)" icon="euro" value={prixMin} onChange={setPrixMin} placeholder="ex: 100000" />
-            <FilterInput label="Prix max (€)" icon="euro" value={prixMax} onChange={setPrixMax} placeholder="ex: 1000000" />
-            <FilterInput label="Surface min (m²)" icon="square_foot" value={surfMin} onChange={setSurfMin} placeholder="ex: 30" />
-            <FilterInput label="Surface max (m²)" icon="square_foot" value={surfMax} onChange={setSurfMax} placeholder="ex: 150" />
-            <FilterInput label="Nb pièces" icon="meeting_room" value={pieces} onChange={setPieces} placeholder="ex: 3" />
+            <FilterInput id="f-pmin" label="Prix min (€)" icon="euro" value={prixMin} onChange={setPrixMin} placeholder="ex: 100000" />
+            <FilterInput id="f-pmax" label="Prix max (€)" icon="euro" value={prixMax} onChange={setPrixMax} placeholder="ex: 1000000" />
+            <FilterInput id="f-smin" label="Surface min (m²)" icon="square_foot" value={surfMin} onChange={setSurfMin} placeholder="ex: 30" />
+            <FilterInput id="f-smax" label="Surface max (m²)" icon="square_foot" value={surfMax} onChange={setSurfMax} placeholder="ex: 150" />
+            <FilterInput id="f-pieces" label="Nb pièces" icon="meeting_room" value={pieces} onChange={setPieces} placeholder="ex: 3" />
             {hasFilters && (
               <button onClick={resetFilters}
                 className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs text-red-400 border border-red-500/20 hover:bg-red-500/10 transition-colors self-end mb-0.5">
@@ -345,7 +434,7 @@ export default function Transactions() {
           color="#10b981" />
         <StatCard icon="bar_chart" label="Type dominant"
           value={topType ? topType[0] : "—"}
-          sub={topType ? `${Math.round(topType[1]/data.length*100)}% des ventes affichées` : ""}
+          sub={topType && data.length ? `${Math.round(topType[1]/data.length*100)}% des ventes affichées` : ""}
           color="#f59e0b" />
         <StatCard icon="bolt" label="Couverture DPE"
           value={data.length ? `${dpePct}%` : "—"}
@@ -361,21 +450,21 @@ export default function Transactions() {
             <thead>
               <tr style={{ background: "rgba(22,32,48,0.9)", borderBottom: "1px solid rgba(60,131,246,0.12)" }}>
                 {[
-                  { key: "date_mutation",       label: "Date",     align: "left"  },
-                  { key: null,                   label: "Commune",  align: "left"  },
-                  { key: null,                   label: "Type",     align: "left"  },
-                  { key: "surface_reelle_bati",  label: "Surface",  align: "right" },
-                  { key: "valeur_fonciere",      label: "Prix",     align: "right" },
-                  { key: "prix_m2",              label: "€/m²",     align: "right" },
-                  { key: null,                   label: "DPE",      align: "center"},
-                  { key: null,                   label: "",         align: "right" },
+                  { key: "date_mutation",      label: "Date",    align: "left"   },
+                  { key: null,                  label: "Commune", align: "left"   },
+                  { key: null,                  label: "Type",    align: "left"   },
+                  { key: "surface_reelle_bati", label: "Surface", align: "right"  },
+                  { key: "valeur_fonciere",     label: "Prix",    align: "right"  },
+                  { key: "prix_m2",             label: "€/m²",   align: "right"  },
+                  { key: null,                  label: "DPE",     align: "center" },
+                  { key: null,                  label: "",        align: "right"  },
                 ].map(({ key, label, align }) => (
-                  <th key={label}
+                  <th key={label || "_actions"}
                     onClick={key ? () => handleSort(key) : undefined}
                     className={`px-5 py-3.5 text-[10px] font-bold uppercase tracking-widest text-slate-400
                       ${align === "right" ? "text-right" : align === "center" ? "text-center" : ""}
                       ${key ? "cursor-pointer hover:text-slate-200 select-none" : ""}`}>
-                    <span className="flex items-center gap-1 ${align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : ''}">
+                    <span className={`flex items-center gap-1 ${align === "right" ? "justify-end" : align === "center" ? "justify-center" : ""}`}>
                       {label}
                       {key && <SortIcon col={key} />}
                     </span>
@@ -385,18 +474,15 @@ export default function Transactions() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={8} className="text-center py-16 text-slate-500">
-                  <span className="material-symbols-outlined animate-spin block mb-2" style={{ fontSize: 28 }}>progress_activity</span>
-                  Chargement…
-                </td></tr>
-              ) : data.length === 0 ? (
+                Array.from({ length: 12 }, (_, i) => <SkeletonRow key={i} i={i} />)
+              ) : displayData.length === 0 ? (
                 <tr><td colSpan={8} className="text-center py-16 text-slate-500">
                   <span className="material-symbols-outlined block mb-2 text-slate-700" style={{ fontSize: 36 }}>search_off</span>
-                  Aucune transaction pour ces critères
+                  {hasFilters ? "Aucune transaction pour ces critères" : "Aucune transaction disponible"}
                 </td></tr>
-              ) : data.map((t, i) => {
+              ) : displayData.map((t, i) => {
                 const prixM2 = fmtPrixM2(t.valeur_fonciere, t.surface_reelle_bati);
-                const commune = t.commune || `${t.code_commune || "—"}`;
+                const nom    = t.commune || t.code_commune || "—";
                 const dpeColor = t.classe_energie ? DPE_HEX[t.classe_energie] : null;
                 const isEven = i % 2 === 0;
                 return (
@@ -417,7 +503,7 @@ export default function Transactions() {
 
                     {/* Commune */}
                     <td className="px-5 py-3 max-w-[200px]">
-                      <span className="text-sm font-medium text-slate-200 truncate block">{commune}</span>
+                      <span className="text-sm font-medium text-slate-200 truncate block">{nom}</span>
                       {t.code_commune && (
                         <span className="text-[9px] mono-nums text-slate-600">{t.code_commune} · {t.code_commune.slice(0,2)}</span>
                       )}
@@ -467,10 +553,9 @@ export default function Transactions() {
                       }
                     </td>
 
-                    {/* Actions */}
+                    {/* Actions — toujours rendues mais invisibles hors hover */}
                     <td className="px-5 py-3 text-right">
                       <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {/* Lien commune → scores */}
                         {t.code_commune && (
                           <button
                             onClick={() => navigate(`/carte?commune=${t.code_commune}`)}
@@ -479,7 +564,6 @@ export default function Transactions() {
                             <span className="material-symbols-outlined" style={{ fontSize: 15 }}>analytics</span>
                           </button>
                         )}
-                        {/* Lien carte */}
                         <button
                           onClick={() => {
                             if (t.longitude && t.latitude)
@@ -487,8 +571,9 @@ export default function Transactions() {
                             else if (t.code_commune)
                               navigate(`/carte?commune=${t.code_commune}`);
                           }}
+                          disabled={!t.longitude && !t.latitude && !t.code_commune}
                           title="Voir sur la carte"
-                          className="p-1 rounded-lg hover:bg-slate-700/50 text-slate-500 hover:text-primary transition-colors">
+                          className="p-1 rounded-lg hover:bg-slate-700/50 text-slate-500 hover:text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
                           <span className="material-symbols-outlined" style={{ fontSize: 15 }}>map</span>
                         </button>
                       </div>
