@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 
@@ -16,26 +16,6 @@ const DEPT_LABELS = {
 };
 
 // ── Composants réutilisables ────────────────────────────────────────────────
-
-function KpiCard({ label, value, trend, up, sub, amber, loading }) {
-  return (
-    <div className={`bg-slate-900 border p-5 rounded-xl ${amber ? "border-amber-500/30" : "border-slate-800"}`}>
-      <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">{label}</p>
-      <div className="flex items-end justify-between mt-2">
-        <h3 className={`text-2xl font-bold ${amber ? "text-amber-500 text-xl" : "text-white"} ${loading ? "opacity-30" : ""}`}>
-          {loading ? "..." : value}
-        </h3>
-        {trend && !loading && (
-          <span className={`text-sm font-bold flex items-center gap-1 ${up ? "text-emerald-500" : "text-rose-500"}`}>
-            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{up ? "trending_up" : "trending_down"}</span>
-            {trend}
-          </span>
-        )}
-        {sub && <span className="text-slate-400 text-xs">{k?.sub}</span>}
-      </div>
-    </div>
-  );
-}
 
 function SectionTitle({ icon, title, badge }) {
   return (
@@ -114,43 +94,59 @@ export default function Dashboard() {
 
   // ── Explorateur commune (Niveau 3) ────────────────────────────────────────
   const [allCommunes, setAllCommunes] = useState([]);
+  const [communeSearchInput, setCommuneSearchInput] = useState("");
   const [communeSearch, setCommuneSearch] = useState("");
-  const [communeSuggestions, setCommuneSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [microCommune, setMicroCommune] = useState(null);
   const [microStats, setMicroStats] = useState(null);
   const [microLoading, setMicroLoading] = useState(false);
+  const microAbortRef = useRef(null);
+  const searchDebounceRef = useRef(null);
 
   useEffect(() => {
+    const ctrl = new AbortController();
     Promise.all([
-      axios.get("/api/v1/stats").then(r => r.data),
-      axios.get("/api/v1/health").then(r => r.data).catch(() => null),
-    ]).then(([s]) => setStats(s)).finally(() => setLoading(false));
+      axios.get("/api/v1/stats", { signal: ctrl.signal }).then(r => r.data),
+      axios.get("/api/v1/health", { signal: ctrl.signal }).then(r => r.data).catch(() => null),
+    ]).then(([s]) => setStats(s)).catch(() => {}).finally(() => setLoading(false));
 
-    axios.get("/api/v1/communes/gold?limit=1300").then(r => {
-      if (r.data?.data) setAllCommunes(r.data.data);
-    }).catch(() => {});
+    axios.get("/api/v1/communes/gold?limit=1300", { signal: ctrl.signal })
+      .then(r => { if (r.data?.data) setAllCommunes(r.data.data); })
+      .catch(() => {});
+
+    return () => ctrl.abort();
   }, []);
 
-  useEffect(() => {
-    if (!communeSearch) { setCommuneSuggestions([]); return; }
+  const communeSuggestions = useMemo(() => {
+    if (!communeSearch) return [];
     const q = communeSearch.toLowerCase();
-    setCommuneSuggestions(
-      allCommunes.filter(c => c.nom.toLowerCase().includes(q) || (c.code_postal || "").includes(communeSearch)).slice(0, 6)
-    );
+    return allCommunes
+      .filter(c => c.nom.toLowerCase().includes(q) || (c.code_postal || "").includes(communeSearch))
+      .slice(0, 6);
   }, [communeSearch, allCommunes]);
 
   const handleSelectMicroCommune = (c) => {
     setMicroCommune(c);
     setCommuneSearch("");
+    setCommuneSearchInput("");
     setShowSuggestions(false);
     setMicroStats(null);
     setMicroLoading(true);
+    microAbortRef.current?.abort();
+    microAbortRef.current = new AbortController();
     const code = c.code_insee.startsWith("751") && c.code_insee !== "75056" ? "75056" : c.code_insee;
-    axios.get(`/api/v1/communes/${code}/agregat`)
+    axios.get(`/api/v1/communes/${code}/agregat`, { signal: microAbortRef.current.signal })
       .then(r => setMicroStats(r.data))
-      .catch(() => setMicroStats(null))
+      .catch(err => { if (!axios.isCancel(err)) setMicroStats(null); })
       .finally(() => setMicroLoading(false));
+  };
+
+  const handleCommuneSearchChange = (e) => {
+    const v = e.target.value;
+    setCommuneSearchInput(v);
+    clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => setCommuneSearch(v), 150);
+    setShowSuggestions(true);
   };
 
   const fmt = n => {
@@ -351,8 +347,8 @@ export default function Dashboard() {
             <div className="relative">
               <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" style={{fontSize:18}}>search</span>
               <input
-                value={communeSearch}
-                onChange={e => { setCommuneSearch(e.target.value); setShowSuggestions(true); }}
+                value={communeSearchInput}
+                onChange={handleCommuneSearchChange}
                 onFocus={() => setShowSuggestions(true)}
                 onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
                 placeholder="Rechercher une commune IDF… ex: Boulogne, Vincennes"
@@ -474,7 +470,7 @@ export default function Dashboard() {
                 <div className="px-5 py-3 border-t border-slate-800 flex items-center gap-3">
                   <span className="text-[10px] text-slate-500 uppercase tracking-wider">Biens classés A/B</span>
                   <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full bg-emerald-500" style={{ width: `${(microStats.pct_dpe_bon * 100).toFixed(1)}%` }} />
+                    <div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.min(100, microStats.pct_dpe_bon * 100).toFixed(1)}%` }} />
                   </div>
                   <span className="text-xs font-bold text-emerald-400 mono-nums">{(microStats.pct_dpe_bon * 100).toFixed(1)}%</span>
                 </div>
