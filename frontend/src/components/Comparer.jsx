@@ -39,7 +39,7 @@ function MetricRow({ label, valA, valB, higherIsBetter = true, format = fmt, suf
             {a != null && (
               <div
                 className={`h-full rounded-full transition-all duration-500 ${winA ? "bg-emerald-500" : "bg-blue-500/60"}`}
-                style={{ width: `${Math.round((a / max) * 100)}%` }}
+                style={{ width: `${Math.min(100, Math.max(0, Math.round((a / max) * 100)))}%` }}
               />
             )}
           </div>
@@ -60,7 +60,7 @@ function MetricRow({ label, valA, valB, higherIsBetter = true, format = fmt, suf
             {b != null && (
               <div
                 className={`h-full rounded-full transition-all duration-500 ${winB ? "bg-emerald-500" : "bg-violet-500/60"}`}
-                style={{ width: `${Math.round((b / max) * 100)}%` }}
+                style={{ width: `${Math.min(100, Math.max(0, Math.round((b / max) * 100)))}%` }}
               />
             )}
           </div>
