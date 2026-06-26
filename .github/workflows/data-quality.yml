@@ -15,7 +15,7 @@ name: Qualité données — Vérification nocturne
 
 on:
   schedule:
-    - cron: '0 6 * * *'   # chaque jour à 6h UTC (8h Paris heure d'été)
+    - cron: '0 6 * * 1'   # chaque lundi à 6h UTC — hebdomadaire (économise les minutes Actions)
   workflow_dispatch:        # déclenchement manuel possible
 
 jobs:
