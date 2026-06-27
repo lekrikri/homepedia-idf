@@ -21,12 +21,49 @@ const COMMUNE_COORDS = {
 };
 
 // Cache POI par commune — 1 requête Overpass groupée partagée entre les 6 couches
-const POI_CACHE   = new Map(); // code_insee → { transports, security, restaurants, schools, parks, shops }
-const POI_PENDING = new Map(); // code_insee → Promise (évite les requêtes doublons en vol)
+// Niveau 1 : Map JS (session courante, accès immédiat)
+// Niveau 2 : localStorage avec TTL 24h (persisté entre rechargements)
+const POI_CACHE   = new Map();
+const POI_PENDING = new Map();
+const POI_LS_KEY  = (code) => `hp_poi_v2_${code}`;
+const POI_TTL_MS  = 24 * 60 * 60 * 1000; // 24h
+
+function poiLsGet(code) {
+  try {
+    const raw = localStorage.getItem(POI_LS_KEY(code));
+    if (!raw) return null;
+    const { data, ts } = JSON.parse(raw);
+    if (Date.now() - ts > POI_TTL_MS) { localStorage.removeItem(POI_LS_KEY(code)); return null; }
+    return data;
+  } catch { return null; }
+}
+
+function poiLsSet(code, data) {
+  try {
+    localStorage.setItem(POI_LS_KEY(code), JSON.stringify({ data, ts: Date.now() }));
+  } catch {
+    // localStorage plein — supprimer la moitié des entrées POI les plus vieilles
+    try {
+      const keys = Object.keys(localStorage).filter(k => k.startsWith("hp_poi_v2_"));
+      keys.sort((a, b) => {
+        try { return JSON.parse(localStorage.getItem(a)).ts - JSON.parse(localStorage.getItem(b)).ts; }
+        catch { return 0; }
+      });
+      keys.slice(0, Math.ceil(keys.length / 2)).forEach(k => localStorage.removeItem(k));
+      localStorage.setItem(POI_LS_KEY(code), JSON.stringify({ data, ts: Date.now() }));
+    } catch { /* ignore */ }
+  }
+}
 
 async function fetchPOIBatch(code, lat, lon, signal) {
+  // Niveau 1 — mémoire session
   if (POI_CACHE.has(code)) return POI_CACHE.get(code);
+  // Niveau 2 — localStorage 24h
+  const lsCached = poiLsGet(code);
+  if (lsCached) { POI_CACHE.set(code, lsCached); return lsCached; }
+  // Requête déjà en cours pour ce code
   if (POI_PENDING.has(code)) return POI_PENDING.get(code);
+
   const q = `[out:json][timeout:20];(
 node["public_transport"="station"](around:3000,${lat},${lon});
 node["railway"~"station|tram_stop"](around:2500,${lat},${lon});
@@ -64,6 +101,7 @@ node["shop"~"supermarket|convenience|bakery|butcher|mall|marketplace|florist"](a
       else if (sh) b.shops.push(e);
     }
     POI_CACHE.set(code, b);
+    poiLsSet(code, b);
     POI_PENDING.delete(code);
     return b;
   })();
@@ -172,42 +210,70 @@ const DEPT_SECURITE_FALLBACK = {
   "95": { taux_cambriolages: 6.8,  taux_vols_violence: 5.9,  score: 62 },
 };
 
-function TransportsSection({ lat, lon }) {
+function TransportsSection({ lat, lon, code }) {
   const [stops, setStops] = useState(null);
   const [loading, setLoading] = useState(true);
-  const cacheKey = `${lat.toFixed(3)},${lon.toFixed(3)}`;
 
   useEffect(() => {
-    const cached = sessionStorage.getItem(`transport_${cacheKey}`);
-    if (cached) { setStops(JSON.parse(cached)); setLoading(false); return; }
+    const ctrl = new AbortController();
 
-    const query = `[out:json][timeout:15];(node["public_transport"="station"](around:3000,${lat},${lon});node["railway"~"station|tram_stop"](around:2500,${lat},${lon}););out body;`;
-    fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`)
-      .then(r => r.json())
-      .then(d => {
-        // Dédoublonner par nom + type, garder les 8 premiers
-        const seen = new Set();
-        const results = (d.elements || [])
-          .filter(el => {
+    async function load() {
+      try {
+        let elems = [];
+        if (code) {
+          // Réutiliser le cache POI partagé (localStorage 24h) — 0 requête si déjà chargé
+          const b = await fetchPOIBatch(code, lat, lon, ctrl.signal);
+          elems = b.transports || [];
+        } else {
+          // Fallback sans code_insee : requête Overpass séparée (sessionStorage seulement)
+          const cacheKey = `${lat.toFixed(3)},${lon.toFixed(3)}`;
+          const cached = sessionStorage.getItem(`transport_${cacheKey}`);
+          if (cached) { setStops(JSON.parse(cached)); return; }
+          const q = `[out:json][timeout:15];(node["public_transport"="station"](around:3000,${lat},${lon});node["railway"~"station|tram_stop"](around:2500,${lat},${lon}););out body;`;
+          const r = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`, { signal: ctrl.signal });
+          const d = await r.json();
+          elems = d.elements || [];
+          const seen2 = new Set();
+          const res2 = elems.filter(el => {
             const name = el.tags?.name || el.tags?.["name:fr"];
             if (!name) return false;
-            const key = `${detectType(el.tags)}:${name}`;
-            if (seen.has(key)) return false;
-            seen.add(key);
+            const k = `${detectType(el.tags)}:${name}`;
+            if (seen2.has(k)) return false;
+            seen2.add(k);
             return true;
-          })
-          .slice(0, 8)
-          .map(el => ({
+          }).slice(0, 8).map(el => ({
             name: el.tags?.name || el.tags?.["name:fr"] || "Station",
             type: detectType(el.tags),
             lines: [el.tags?.ref, el.tags?.["ref:SNCF"], el.tags?.["network"]].filter(Boolean).join(" · "),
           }));
-        sessionStorage.setItem(`transport_${cacheKey}`, JSON.stringify(results));
+          sessionStorage.setItem(`transport_${cacheKey}`, JSON.stringify(res2));
+          setStops(res2);
+          return;
+        }
+        const seen = new Set();
+        const results = elems.filter(el => {
+          const name = el.tags?.name || el.tags?.["name:fr"];
+          if (!name) return false;
+          const k = `${detectType(el.tags)}:${name}`;
+          if (seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        }).slice(0, 8).map(el => ({
+          name: el.tags?.name || el.tags?.["name:fr"] || "Station",
+          type: detectType(el.tags),
+          lines: [el.tags?.ref, el.tags?.["ref:SNCF"], el.tags?.["network"]].filter(Boolean).join(" · "),
+        }));
         setStops(results);
-      })
-      .catch(() => setStops([]))
-      .finally(() => setLoading(false));
-  }, [cacheKey]);
+      } catch(err) {
+        if (err?.name !== "AbortError") setStops([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    load();
+    return () => ctrl.abort();
+  }, [code, lat, lon]);
 
   if (loading) return (
     <div className="rounded-xl p-4 animate-pulse" style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(60,131,246,0.12)" }}>
@@ -249,6 +315,7 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock }) {
   const [activeScoreTip, setActiveScoreTip] = useState(null);
   const codeCommune = agregat?.code_commune || commune?.code_insee;
   const [fav, setFav] = useState(() => codeCommune ? isFavorite(codeCommune) : false);
+  useEffect(() => { setFav(codeCommune ? isFavorite(codeCommune) : false); }, [codeCommune]);
 
   const toggleFav = () => {
     if (!codeCommune) return;
@@ -335,7 +402,7 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock }) {
   const ipsDelta = agregat?.ips_moyen != null ? (agregat.ips_moyen - IPS_NATIONAL_AVG) : null;
 
   return (
-    <aside className="w-80 h-full flex-shrink-0 overflow-y-auto"
+    <aside className="w-80 h-full flex-shrink-0 relative z-20 overflow-y-auto"
       style={{ background: "rgba(11,17,27,0.97)", backdropFilter: "blur(16px)", borderLeft: "1px solid rgba(60,131,246,0.12)" }}>
       <div className="p-5 space-y-3">
 
@@ -392,7 +459,7 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock }) {
                 { key: "qv",   val: scoreQV,   ...SCORE_DETAILS.qv   },
                 { key: "inv",  val: scoreInv,  ...SCORE_DETAILS.inv  },
                 { key: "stab", val: scoreStab, ...SCORE_DETAILS.stab },
-              ].map(({ key, label, val, color, items }) => (
+              ].map(({ key, label, val, color, items }, i) => (
                 <div key={key} className="flex flex-col items-center gap-1.5 relative">
                   <div className="relative" style={{ width: 58, height: 58 }}>
                     <svg className="-rotate-90" width="58" height="58" viewBox="0 0 58 58">
@@ -414,7 +481,8 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock }) {
                   </div>
                   <p className="text-[9px] text-center leading-tight" style={{ color: "#64748b" }}>{label}</p>
                   {activeScoreTip === key && (
-                    <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 z-50 w-52 rounded-xl p-3 shadow-2xl"
+                    <div
+                      className={`absolute top-full mt-2 z-50 w-52 rounded-xl p-3 shadow-2xl ${i === 0 ? "left-0" : i === 2 ? "right-0" : "left-1/2 -translate-x-1/2"}`}
                       style={{ background: "#0a1120", border: `1px solid ${color}50` }}>
                       <p className="text-[10px] font-bold mb-2" style={{ color }}>{label}</p>
                       {items.map(({ pct, desc }) => (
@@ -772,7 +840,7 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock }) {
 
         {/* ── TRANSPORTS EN COMMUN ─────────────────────────────────────── */}
         {agregat?.centroid_lat && agregat?.centroid_lon && (
-          <TransportsSection lat={agregat.centroid_lat} lon={agregat.centroid_lon} />
+          <TransportsSection lat={agregat.centroid_lat} lon={agregat.centroid_lon} code={agregat.code_commune} />
         )}
 
         {/* ── DERNIÈRES VENTES ──────────────────────────────────────────── */}
@@ -833,10 +901,15 @@ function LeftSidebar({ communes, transactions, selectedCommune, onSelectCommune,
   activeTypes, onToggleType, anneeMax, onAnneeChange, onReset, sortDesc, onToggleSort,
   hoveredTxId, onHoverTx, isLocked, onUnlock }) {
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [localSearch, setLocalSearch] = useState(search);
   const debounceRef = useRef(null);
+
+  // Sync si le parent remet search à "" (ex: après sélection)
+  useEffect(() => { setLocalSearch(search); }, [search]);
 
   const handleSearchChange = (e) => {
     const v = e.target.value;
+    setLocalSearch(v);
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => onSearch(v), 200);
     setShowSuggestions(true);
@@ -871,7 +944,7 @@ function LeftSidebar({ communes, transactions, selectedCommune, onSelectCommune,
           <div className="relative">
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" style={{ fontSize: 16 }}>search</span>
             <input
-              value={search}
+              value={localSearch}
               onChange={handleSearchChange}
               onFocus={() => setShowSuggestions(true)}
               onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
@@ -1074,7 +1147,7 @@ function LeftSidebar({ communes, transactions, selectedCommune, onSelectCommune,
 }
 
 // ─── Main ──────────────────────────────────────────────────────────────────────
-const ANNEE_MIN = 2020;
+const ANNEE_MIN = 2021;
 const ANNEE_MAX = 2025;
 const TYPES_ALL = ["Appartement", "Maison"];
 

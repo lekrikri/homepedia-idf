@@ -582,21 +582,36 @@ export default function Comparer() {
             {/* Scores A */}
             <div className="rounded-xl p-5" style={{ background: "rgba(15,23,36,0.8)", border: "1px solid rgba(59,130,246,0.2)" }}>
               <p className="text-xs font-bold text-blue-400 uppercase tracking-wider mb-3">{A?.city || "Commune A"} — Scores synthèse</p>
-              <ScoreBar label="Qualité de vie" val={A?.score_qualite_vie} color="bg-emerald-500" />
-              <ScoreBar label="Investissement" val={A?.score_investissement} color="bg-blue-500" />
-              <ScoreBar label="Stabilité" val={A?.score_stabilite} color="bg-amber-500" />
-              <ScoreBar label="Sécurité" val={A?.score_securite} color="bg-violet-500" />
+              <ScoreBar label="Qualité de vie (30%)" val={A?.score_qualite_vie}    color="bg-emerald-500" />
+              <ScoreBar label="Investissement (20%)" val={A?.score_investissement}  color="bg-blue-500" />
+              <ScoreBar label="Accessibilité (20%)"  val={A?.score_accessibilite}  color="bg-cyan-500" />
+              <ScoreBar label="Stabilité DPE (15%)"  val={A?.score_stabilite}      color="bg-amber-500" />
+              <ScoreBar label="Sécurité (15%)"       val={A?.score_securite}       color="bg-violet-500" />
+              {A?.score_global != null && (
+                <div className="mt-3 pt-3 border-t border-slate-800 flex items-center justify-between">
+                  <span className="text-xs text-slate-400 font-semibold">Score global pondéré</span>
+                  <span className="text-sm font-black text-white">{Math.round(A.score_global)}<span className="text-[10px] text-slate-500">/100</span></span>
+                </div>
+              )}
             </div>
 
             {/* Scores B */}
             <div className="rounded-xl p-5" style={{ background: "rgba(15,23,36,0.8)", border: "1px solid rgba(139,92,246,0.2)" }}>
               <p className="text-xs font-bold text-violet-400 uppercase tracking-wider mb-3">{B?.city || "Commune B"} — Scores synthèse</p>
-              <ScoreBar label="Qualité de vie" val={B?.score_qualite_vie} color="bg-emerald-500" />
-              <ScoreBar label="Investissement" val={B?.score_investissement} color="bg-blue-500" />
-              <ScoreBar label="Stabilité" val={B?.score_stabilite} color="bg-amber-500" />
-              <ScoreBar label="Sécurité" val={B?.score_securite} color="bg-violet-500" />
+              <ScoreBar label="Qualité de vie (30%)" val={B?.score_qualite_vie}    color="bg-emerald-500" />
+              <ScoreBar label="Investissement (20%)" val={B?.score_investissement}  color="bg-blue-500" />
+              <ScoreBar label="Accessibilité (20%)"  val={B?.score_accessibilite}  color="bg-cyan-500" />
+              <ScoreBar label="Stabilité DPE (15%)"  val={B?.score_stabilite}      color="bg-amber-500" />
+              <ScoreBar label="Sécurité (15%)"       val={B?.score_securite}       color="bg-violet-500" />
+              {B?.score_global != null && (
+                <div className="mt-3 pt-3 border-t border-slate-800 flex items-center justify-between">
+                  <span className="text-xs text-slate-400 font-semibold">Score global pondéré</span>
+                  <span className="text-sm font-black text-white">{Math.round(B.score_global)}<span className="text-[10px] text-slate-500">/100</span></span>
+                </div>
+              )}
             </div>
           </div>
+          <p className="text-[10px] text-slate-600 text-center">Les pourcentages indiquent la pondération de chaque critère dans le score global · chaque score est un percentile IDF 0-100</p>
 
           {/* Lien partage */}
           <div className="flex items-center gap-3 rounded-xl p-4" style={{ background: "rgba(59,130,246,0.05)", border: "1px solid rgba(59,130,246,0.15)" }}>

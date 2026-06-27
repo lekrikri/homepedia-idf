@@ -182,9 +182,8 @@ export default function Header() {
 
         {/* Right actions */}
         <div className="flex items-center gap-4">
-          <button className="p-2 text-slate-400 hover:text-slate-100 relative">
+          <button className="p-2 text-slate-400 hover:text-slate-100 relative" title="Notifications — bientôt disponible" disabled>
             <span className="material-symbols-outlined" style={{ fontSize: 22 }}>notifications</span>
-            <span className="absolute top-2 right-2 size-2 bg-red-500 rounded-full border-2 border-background-dark" />
           </button>
 
           {user ? (

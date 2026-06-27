@@ -56,7 +56,7 @@ export default function LoginModal({ onClose, onLogin }) {
       style={{ background: "rgba(16,23,34,0.6)", backdropFilter: "blur(6px)" }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="glass-panel glow-border modal-enter w-full max-w-[440px] rounded-xl overflow-hidden relative">
+      <div className="glass-panel glow-border modal-enter w-full max-w-[440px] rounded-xl overflow-hidden relative" style={{ maxHeight: "90svh", overflowY: "auto" }}>
 
         <button
           onClick={onClose}
