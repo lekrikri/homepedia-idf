@@ -22,34 +22,20 @@ func GetCommunesGold(c *gin.Context) {
 
 	rows, err := db.Pool.Query(c.Request.Context(), `
 		SELECT
-			c.code_insee,
-			c.nom,
-			c.departement,
-			c.population,
-			COUNT(t.id)                                                          AS nb_transactions,
-			ROUND(
-				PERCENTILE_CONT(0.5) WITHIN GROUP (
-					ORDER BY t.valeur_fonciere / NULLIF(t.surface_reelle_bati, 0)
-				)::numeric, 0
-			)::float                                                             AS prix_m2_median,
-			ROUND(AVG(t.valeur_fonciere / NULLIF(t.surface_reelle_bati, 0))::numeric, 0)::float
-			                                                                     AS prix_m2_moyen,
-			ROUND(AVG(CASE t.classe_energie
-				WHEN 'A' THEN 1 WHEN 'B' THEN 2 WHEN 'C' THEN 3
-				WHEN 'D' THEN 4 WHEN 'E' THEN 5 WHEN 'F' THEN 6
-				WHEN 'G' THEN 7 ELSE NULL END)::numeric, 1)::float              AS score_dpe_moyen,
-			MODE() WITHIN GROUP (ORDER BY t.classe_energie)                     AS dpe_dominant,
-			ROUND(COUNT(CASE WHEN t.type_local = 'Appartement' THEN 1 END) * 100.0
-				/ NULLIF(COUNT(t.id), 0), 1)::float                             AS pct_appartements,
-			ROUND(AVG(t.surface_reelle_bati)::numeric, 1)::float                AS surface_moyenne
-		FROM communes c
-		LEFT JOIN transactions t
-			ON t.code_commune = c.code_insee
-			AND t.valeur_fonciere IS NOT NULL
-			AND t.surface_reelle_bati > 0
-		WHERE ($1 = '' OR c.departement = $1)
-		GROUP BY c.code_insee, c.nom, c.departement, c.population
-		ORDER BY nb_transactions DESC
+			ca.code_commune                          AS code_insee,
+			ca.city                                  AS nom,
+			TRIM(ca.code_departement)                AS departement,
+			ca.population_totale::int                AS population,
+			COALESCE(ca.nb_transactions, 0)::int     AS nb_transactions,
+			ca.prix_median_m2                        AS prix_m2_median,
+			ca.prix_moyen_m2                         AS prix_m2_moyen,
+			ca.score_dpe_moyen,
+			NULL::text                               AS dpe_dominant,
+			NULL::float8                             AS pct_appartements,
+			ca.surface_moyenne
+		FROM communes_agregat ca
+		WHERE ($1 = '' OR TRIM(ca.code_departement) = $1)
+		ORDER BY ca.nb_transactions DESC NULLS LAST
 		LIMIT $2 OFFSET $3
 	`, dept, limit, offset)
 
@@ -91,33 +77,19 @@ func GetCommuneGold(c *gin.Context) {
 	var cg models.CommuneGold
 	err := db.Pool.QueryRow(c.Request.Context(), `
 		SELECT
-			c.code_insee,
-			c.nom,
-			c.departement,
-			c.population,
-			COUNT(t.id)                                                          AS nb_transactions,
-			ROUND(
-				PERCENTILE_CONT(0.5) WITHIN GROUP (
-					ORDER BY t.valeur_fonciere / NULLIF(t.surface_reelle_bati, 0)
-				)::numeric, 0
-			)::float                                                             AS prix_m2_median,
-			ROUND(AVG(t.valeur_fonciere / NULLIF(t.surface_reelle_bati, 0))::numeric, 0)::float
-			                                                                     AS prix_m2_moyen,
-			ROUND(AVG(CASE t.classe_energie
-				WHEN 'A' THEN 1 WHEN 'B' THEN 2 WHEN 'C' THEN 3
-				WHEN 'D' THEN 4 WHEN 'E' THEN 5 WHEN 'F' THEN 6
-				WHEN 'G' THEN 7 ELSE NULL END)::numeric, 1)::float              AS score_dpe_moyen,
-			MODE() WITHIN GROUP (ORDER BY t.classe_energie)                     AS dpe_dominant,
-			ROUND(COUNT(CASE WHEN t.type_local = 'Appartement' THEN 1 END) * 100.0
-				/ NULLIF(COUNT(t.id), 0), 1)::float                             AS pct_appartements,
-			ROUND(AVG(t.surface_reelle_bati)::numeric, 1)::float                AS surface_moyenne
-		FROM communes c
-		LEFT JOIN transactions t
-			ON t.code_commune = c.code_insee
-			AND t.valeur_fonciere IS NOT NULL
-			AND t.surface_reelle_bati > 0
-		WHERE c.code_insee = $1
-		GROUP BY c.code_insee, c.nom, c.departement, c.population
+			ca.code_commune                          AS code_insee,
+			ca.city                                  AS nom,
+			TRIM(ca.code_departement)                AS departement,
+			ca.population_totale::int                AS population,
+			COALESCE(ca.nb_transactions, 0)::int     AS nb_transactions,
+			ca.prix_median_m2                        AS prix_m2_median,
+			ca.prix_moyen_m2                         AS prix_m2_moyen,
+			ca.score_dpe_moyen,
+			NULL::text                               AS dpe_dominant,
+			NULL::float8                             AS pct_appartements,
+			ca.surface_moyenne
+		FROM communes_agregat ca
+		WHERE ca.code_commune = $1
 	`, code).Scan(
 		&cg.CodeInsee, &cg.Nom, &cg.Departement, &cg.Population,
 		&cg.NbTransactions, &cg.PrixM2Median, &cg.PrixM2Moyen,
