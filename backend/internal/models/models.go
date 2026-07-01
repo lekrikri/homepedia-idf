@@ -101,6 +101,8 @@ type CommuneAgregat struct {
 	ScoreQualiteVie       *float64 `json:"score_qualite_vie,omitempty"`
 	ScoreInvestissement   *float64 `json:"score_investissement,omitempty"`
 	ScoreStabilite        *float64 `json:"score_stabilite,omitempty"`
+	ScoreAccessibilite    *float64 `json:"score_accessibilite,omitempty"`
+	ScoreGlobal           *float64 `json:"score_global,omitempty"`
 	// Sécurité / délinquance (source SSMSI — niveau département)
 	TauxCambriolages      *float64 `json:"taux_cambriolages,omitempty"`   // pour 1 000 logements
 	TauxVolsViolence      *float64 `json:"taux_vols_violence,omitempty"`  // pour 1 000 habitants

@@ -9,28 +9,36 @@ import (
 )
 
 // GetStats handles GET /api/v1/stats
-// Returns aggregate statistics over all transactions.
+// Returns aggregate statistics. Heavy queries (PERCENTILE_CONT, JOINs) are
+// replaced by reads on communes_agregat (pre-computed) to avoid Cloud Run timeouts.
 func GetStats(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	// 1. Global KPIs
-	var totalVolume float64
+	// 1. Global KPIs — depuis communes_agregat (pré-calculé, O(1264))
 	var nbTransactions int
 	var avgPrixM2 float64
 	_ = db.Pool.QueryRow(ctx, `
 		SELECT
-			COALESCE(SUM(valeur_fonciere), 0),
-			COUNT(*),
-			COALESCE(AVG(valeur_fonciere / NULLIF(surface_reelle_bati, 0)), 0)
+			COALESCE(SUM(nb_transactions), 0)::bigint,
+			COALESCE(ROUND(AVG(prix_median_m2)::numeric, 0), 0)::float
+		FROM communes_agregat
+		WHERE prix_median_m2 IS NOT NULL
+	`).Scan(&nbTransactions, &avgPrixM2)
+
+	// Total volume : SUM simple sur transactions (pas de PERCENTILE ni GROUP BY complexe)
+	var totalVolume float64
+	_ = db.Pool.QueryRow(ctx, `
+		SELECT COALESCE(SUM(valeur_fonciere), 0)
 		FROM transactions
 		WHERE valeur_fonciere IS NOT NULL
-	`).Scan(&totalVolume, &nbTransactions, &avgPrixM2)
+		  AND valeur_fonciere BETWEEN 10000 AND 50000000
+	`).Scan(&totalVolume)
 
-	// 2. Price evolution by year
+	// 2. Évolution prix par année — AVG simple (pas PERCENTILE_CONT)
 	type YearPoint struct {
-		Year  int     `json:"year"`
+		Year   int     `json:"year"`
 		PrixM2 float64 `json:"prix_m2"`
-		Count int     `json:"count"`
+		Count  int     `json:"count"`
 	}
 	rows, err := db.Pool.Query(ctx, `
 		SELECT
@@ -38,7 +46,9 @@ func GetStats(c *gin.Context) {
 			ROUND(AVG(valeur_fonciere / NULLIF(surface_reelle_bati, 0))::numeric, 0)::float,
 			COUNT(*)
 		FROM transactions
-		WHERE valeur_fonciere IS NOT NULL AND surface_reelle_bati IS NOT NULL AND surface_reelle_bati > 0
+		WHERE valeur_fonciere IS NOT NULL
+		  AND surface_reelle_bati > 5
+		  AND valeur_fonciere / surface_reelle_bati BETWEEN 500 AND 50000
 		GROUP BY yr
 		ORDER BY yr
 	`)
@@ -53,7 +63,7 @@ func GetStats(c *gin.Context) {
 		}
 	}
 
-	// 3. Volume by type_local
+	// 3. Volume par type_local — COUNT + SUM sans PERCENTILE_CONT
 	type TypeVolume struct {
 		TypeLocal string  `json:"type_local"`
 		Volume    float64 `json:"volume"`
@@ -81,7 +91,7 @@ func GetStats(c *gin.Context) {
 		}
 	}
 
-	// 4. DPE distribution
+	// 4. Distribution DPE — COUNT par classe (pas de PERCENTILE)
 	type DPECount struct {
 		Classe string `json:"classe"`
 		Count  int    `json:"count"`
@@ -104,7 +114,7 @@ func GetStats(c *gin.Context) {
 		}
 	}
 
-	// 5. Top communes by transaction count
+	// 5. Top communes — depuis communes_agregat (pré-calculé, instantané)
 	type TopCommune struct {
 		Commune   string  `json:"commune"`
 		NbTx      int     `json:"nb_transactions"`
@@ -112,13 +122,12 @@ func GetStats(c *gin.Context) {
 	}
 	rows4, err := db.Pool.Query(ctx, `
 		SELECT
-			commune,
-			COUNT(*) as nb,
-			ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY valeur_fonciere / NULLIF(surface_reelle_bati, 0))::numeric, 0)::float
-		FROM transactions
-		WHERE commune IS NOT NULL AND valeur_fonciere IS NOT NULL AND surface_reelle_bati > 0
-		GROUP BY commune
-		ORDER BY nb DESC
+			city,
+			COALESCE(nb_transactions, 0)::int,
+			COALESCE(prix_median_m2, 0)::float
+		FROM communes_agregat
+		WHERE prix_median_m2 IS NOT NULL
+		ORDER BY nb_transactions DESC NULLS LAST
 		LIMIT 5
 	`)
 	topCommunes := []TopCommune{}
@@ -132,7 +141,7 @@ func GetStats(c *gin.Context) {
 		}
 	}
 
-	// 6. Stats par département (niveau méso : entre IDF global et commune)
+	// 6. Stats par département — depuis communes_agregat (pré-calculé, instantané)
 	type DeptStat struct {
 		Dept       string  `json:"dept"`
 		NbTx       int     `json:"nb_transactions"`
@@ -141,17 +150,14 @@ func GetStats(c *gin.Context) {
 	}
 	rows5, err := db.Pool.Query(ctx, `
 		SELECT
-			code_departement,
-			COUNT(*) AS nb_tx,
-			ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY valeur_fonciere / NULLIF(surface_reelle_bati, 0))::numeric, 0)::float AS prix_median,
-			ROUND(AVG(valeur_fonciere / NULLIF(surface_reelle_bati, 0))::numeric, 0)::float AS prix_moyen
-		FROM transactions
-		WHERE code_departement IS NOT NULL
-		  AND valeur_fonciere IS NOT NULL
-		  AND surface_reelle_bati > 0
-		  AND valeur_fonciere / surface_reelle_bati BETWEEN 500 AND 50000
-		GROUP BY code_departement
-		ORDER BY prix_median DESC
+			TRIM(code_departement),
+			COALESCE(SUM(nb_transactions), 0)::int,
+			COALESCE(ROUND(AVG(prix_median_m2)::numeric, 0), 0)::float,
+			COALESCE(ROUND(AVG(prix_moyen_m2)::numeric, 0), 0)::float
+		FROM communes_agregat
+		WHERE prix_median_m2 IS NOT NULL
+		GROUP BY TRIM(code_departement)
+		ORDER BY AVG(prix_median_m2) DESC
 	`)
 	byDept := []DeptStat{}
 	if err == nil {

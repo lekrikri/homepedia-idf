@@ -33,6 +33,7 @@ func GetCommunesAgregat(c *gin.Context) {
 			conso_elec_par_logement, conso_gaz_par_logement,
 			ips_moyen, pct_ecoles_favorisees, nb_ecoles,
 			score_qualite_vie, score_investissement, score_stabilite,
+			score_accessibilite, score_global,
 			taux_cambriolages, taux_vols_violence, score_securite,
 			loyer_median_m2, zone_tendue, rendement_locatif_brut
 		FROM communes_agregat
@@ -61,6 +62,7 @@ func GetCommunesAgregat(c *gin.Context) {
 			&a.ConsoElecParLogement, &a.ConsoGazParLogement,
 			&a.IPSMoyen, &a.PctEcolesFavorisees, &a.NbEcoles,
 			&a.ScoreQualiteVie, &a.ScoreInvestissement, &a.ScoreStabilite,
+			&a.ScoreAccessibilite, &a.ScoreGlobal,
 			&a.TauxCambriolages, &a.TauxVolsViolence, &a.ScoreSecurite,
 			&a.LoyerMedianM2, &a.ZoneTendue, &a.RendementLocatifBrut,
 		); err != nil {
@@ -94,6 +96,7 @@ func GetCommuneAgregat(c *gin.Context) {
 			conso_elec_par_logement, conso_gaz_par_logement,
 			ips_moyen, pct_ecoles_favorisees, nb_ecoles,
 			score_qualite_vie, score_investissement, score_stabilite,
+			score_accessibilite, score_global,
 			taux_cambriolages, taux_vols_violence, score_securite,
 			loyer_median_m2, zone_tendue, rendement_locatif_brut
 		FROM communes_agregat
@@ -109,6 +112,7 @@ func GetCommuneAgregat(c *gin.Context) {
 		&a.ConsoElecParLogement, &a.ConsoGazParLogement,
 		&a.IPSMoyen, &a.PctEcolesFavorisees, &a.NbEcoles,
 		&a.ScoreQualiteVie, &a.ScoreInvestissement, &a.ScoreStabilite,
+		&a.ScoreAccessibilite, &a.ScoreGlobal,
 		&a.TauxCambriolages, &a.TauxVolsViolence, &a.ScoreSecurite,
 		&a.LoyerMedianM2, &a.ZoneTendue, &a.RendementLocatifBrut,
 	)
