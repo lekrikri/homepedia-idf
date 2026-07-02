@@ -1,17 +1,30 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
+	"homepedia/backend/internal/cache"
 	"homepedia/backend/internal/db"
 )
+
+const statsCacheKey = "stats_v1"
+const statsCacheTTL = time.Hour
 
 // GetStats handles GET /api/v1/stats
 // Returns aggregate statistics. Heavy queries (PERCENTILE_CONT, JOINs) are
 // replaced by reads on communes_agregat (pre-computed) to avoid Cloud Run timeouts.
+// Results are cached 1h in-process to absorb cold start latency.
 func GetStats(c *gin.Context) {
+	if data, ok := cache.Global.Get(statsCacheKey); ok {
+		c.Header("X-Cache", "HIT")
+		c.Data(http.StatusOK, "application/json; charset=utf-8", data)
+		return
+	}
+
 	ctx := c.Request.Context()
 
 	// 1. Global KPIs — depuis communes_agregat (pré-calculé, O(1264))
@@ -25,13 +38,18 @@ func GetStats(c *gin.Context) {
 		WHERE prix_median_m2 IS NOT NULL
 	`).Scan(&nbTransactions, &avgPrixM2)
 
-	// Total volume : SUM simple sur transactions (pas de PERCENTILE ni GROUP BY complexe)
+	// Total volume — approximé depuis communes_agregat (prix_median * surface * nb_tx)
+	// Evite un SUM global sur 1.9M lignes sans index sur valeur_fonciere.
 	var totalVolume float64
 	_ = db.Pool.QueryRow(ctx, `
-		SELECT COALESCE(SUM(valeur_fonciere), 0)
-		FROM transactions
-		WHERE valeur_fonciere IS NOT NULL
-		  AND valeur_fonciere BETWEEN 10000 AND 50000000
+		SELECT COALESCE(
+			SUM(prix_median_m2 * surface_moyenne * nb_transactions),
+			0
+		)
+		FROM communes_agregat
+		WHERE prix_median_m2 IS NOT NULL
+		  AND surface_moyenne IS NOT NULL
+		  AND nb_transactions IS NOT NULL
 	`).Scan(&totalVolume)
 
 	// 2. Évolution prix par année — AVG simple (pas PERCENTILE_CONT)
@@ -40,9 +58,10 @@ func GetStats(c *gin.Context) {
 		PrixM2 float64 `json:"prix_m2"`
 		Count  int     `json:"count"`
 	}
+	// Utilise date_part() pour profiter de l'index transactions_year_idx
 	rows, err := db.Pool.Query(ctx, `
 		SELECT
-			EXTRACT(YEAR FROM date_mutation)::int AS yr,
+			date_part('year', date_mutation)::int AS yr,
 			ROUND(AVG(valeur_fonciere / NULLIF(surface_reelle_bati, 0))::numeric, 0)::float,
 			COUNT(*)
 		FROM transactions
@@ -170,7 +189,7 @@ func GetStats(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	resp := gin.H{
 		"total_volume":    totalVolume,
 		"nb_transactions": nbTransactions,
 		"avg_prix_m2":     avgPrixM2,
@@ -179,5 +198,12 @@ func GetStats(c *gin.Context) {
 		"dpe":             dpe,
 		"top_communes":    topCommunes,
 		"by_dept":         byDept,
-	})
+	}
+	if data, err := json.Marshal(resp); err == nil {
+		cache.Global.Set(statsCacheKey, data, statsCacheTTL)
+		c.Header("X-Cache", "MISS")
+		c.Data(http.StatusOK, "application/json; charset=utf-8", data)
+	} else {
+		c.JSON(http.StatusOK, resp)
+	}
 }
