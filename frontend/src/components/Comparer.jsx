@@ -213,7 +213,7 @@ function CommuneHeader({ data, color, side }) {
         </button>
       </div>
       <h2 className="text-xl font-bold text-slate-100">{data.nom || data.city}</h2>
-      <p className="text-xs text-slate-400 mt-0.5">Code INSEE {data.code_commune} · Dép. {data.code_departement}</p>
+      <p className="text-xs text-slate-400 mt-0.5">Code INSEE {data.code_commune || data.code_insee} · Dép. {data.code_departement || data.departement}</p>
       <div className="flex gap-4 mt-3 flex-wrap">
         {data.population_totale && (
           <div><p className="text-[10px] text-slate-500 uppercase">Population</p><p className="text-sm font-bold text-slate-200">{fmt(data.population_totale)}</p></div>

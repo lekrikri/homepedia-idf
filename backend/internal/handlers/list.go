@@ -16,18 +16,23 @@ import (
 // Les alias JSON (nom, code_insee, prix_m2_median) sont volontairement identiques
 // à ceux de /communes/gold pour ne pas avoir à adapter MapView et Dashboard.
 type CommuneListItem struct {
-	CodeInsee          string   `json:"code_insee"`
-	Nom                string   `json:"nom"`
-	Departement        string   `json:"departement"`
-	CentroidLon        *float64 `json:"centroid_lon,omitempty"`
-	CentroidLat        *float64 `json:"centroid_lat,omitempty"`
-	PrixM2Median       *float64 `json:"prix_m2_median,omitempty"`
-	NbTransactions     *int64   `json:"nb_transactions,omitempty"`
-	ScoreQualiteVie    *float64 `json:"score_qualite_vie,omitempty"`
+	CodeInsee           string   `json:"code_insee"`
+	Nom                 string   `json:"nom"`
+	Departement         string   `json:"departement"`
+	CentroidLon         *float64 `json:"centroid_lon,omitempty"`
+	CentroidLat         *float64 `json:"centroid_lat,omitempty"`
+	PrixM2Median        *float64 `json:"prix_m2_median,omitempty"`
+	NbTransactions      *int64   `json:"nb_transactions,omitempty"`
+	ScoreQualiteVie     *float64 `json:"score_qualite_vie,omitempty"`
 	ScoreInvestissement *float64 `json:"score_investissement,omitempty"`
-	ScoreStabilite     *float64 `json:"score_stabilite,omitempty"`
-	ScoreAccessibilite *float64 `json:"score_accessibilite,omitempty"`
-	ScoreGlobal        *float64 `json:"score_global,omitempty"`
+	ScoreStabilite      *float64 `json:"score_stabilite,omitempty"`
+	ScoreAccessibilite  *float64 `json:"score_accessibilite,omitempty"`
+	ScoreGlobal         *float64 `json:"score_global,omitempty"`
+	ScoreSecurite       *float64 `json:"score_securite,omitempty"`
+	RendementLocatifBrut *float64 `json:"rendement_locatif_brut,omitempty"`
+	LoyerMedianM2       *float64 `json:"loyer_median_m2,omitempty"`
+	IPSMoyen            *float64 `json:"ips_moyen,omitempty"`
+	TauxCambriolages    *float64 `json:"taux_cambriolages,omitempty"`
 }
 
 const communesListCacheKey = "communes_list_v1"
@@ -57,7 +62,12 @@ func GetCommunesList(c *gin.Context) {
 			score_investissement,
 			score_stabilite,
 			score_accessibilite,
-			score_global
+			score_global,
+			score_securite,
+			rendement_locatif_brut,
+			loyer_median_m2,
+			ips_moyen,
+			taux_cambriolages
 		FROM communes_agregat
 		ORDER BY nb_transactions DESC NULLS LAST
 	`)
@@ -76,6 +86,8 @@ func GetCommunesList(c *gin.Context) {
 			&item.PrixM2Median, &item.NbTransactions,
 			&item.ScoreQualiteVie, &item.ScoreInvestissement,
 			&item.ScoreStabilite, &item.ScoreAccessibilite, &item.ScoreGlobal,
+			&item.ScoreSecurite, &item.RendementLocatifBrut, &item.LoyerMedianM2,
+			&item.IPSMoyen, &item.TauxCambriolages,
 		); err != nil {
 			continue
 		}
