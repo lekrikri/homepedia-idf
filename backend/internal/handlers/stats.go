@@ -11,7 +11,7 @@ import (
 	"homepedia/backend/internal/db"
 )
 
-const statsCacheKey = "stats_v1"
+const statsCacheKey = "stats_v2"
 const statsCacheTTL = time.Hour
 
 // GetStats handles GET /api/v1/stats
@@ -110,17 +110,29 @@ func GetStats(c *gin.Context) {
 		}
 	}
 
-	// 4. Distribution DPE — COUNT par classe (pas de PERCENTILE)
+	// 4. Distribution DPE — estimée depuis communes_agregat (score_dpe_moyen 1→A … 7→G)
+	// transactions.classe_energie est vide ; on pondère nb_dpe par classe estimée par commune.
 	type DPECount struct {
 		Classe string `json:"classe"`
 		Count  int    `json:"count"`
 	}
 	rows3, err := db.Pool.Query(ctx, `
-		SELECT classe_energie, COUNT(*)
-		FROM transactions
-		WHERE classe_energie IS NOT NULL
-		GROUP BY classe_energie
-		ORDER BY classe_energie
+		SELECT
+			CASE
+				WHEN score_dpe_moyen < 1.5 THEN 'A'
+				WHEN score_dpe_moyen < 2.5 THEN 'B'
+				WHEN score_dpe_moyen < 3.5 THEN 'C'
+				WHEN score_dpe_moyen < 4.5 THEN 'D'
+				WHEN score_dpe_moyen < 5.5 THEN 'E'
+				WHEN score_dpe_moyen < 6.5 THEN 'F'
+				ELSE 'G'
+			END AS classe,
+			COALESCE(SUM(nb_dpe), 0)::int AS count
+		FROM communes_agregat
+		WHERE score_dpe_moyen IS NOT NULL
+		  AND nb_dpe IS NOT NULL
+		GROUP BY 1
+		ORDER BY 1
 	`)
 	dpe := []DPECount{}
 	if err == nil {
