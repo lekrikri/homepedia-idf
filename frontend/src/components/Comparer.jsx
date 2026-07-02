@@ -169,8 +169,8 @@ function CommuneSearch({ label, color, value, onSelect }) {
                 <p className="text-sm font-medium text-slate-100 truncate">{c.nom || c.city}</p>
                 <p className="text-[11px] text-slate-500">{c.code_commune} · Dép. {c.code_departement}</p>
               </div>
-              {c.prix_median_m2 && (
-                <span className="text-xs text-blue-400 shrink-0">{fmt(c.prix_median_m2)} €/m²</span>
+              {(c.prix_m2_median ?? c.prix_median_m2) != null && (
+                <span className="text-xs text-blue-400 shrink-0">{fmt(c.prix_m2_median ?? c.prix_median_m2)} €/m²</span>
               )}
             </button>
           ))}
@@ -239,7 +239,7 @@ const TOP_CRITERIA = [
     color: "#3c83f6",
     sort: c => -(c.score_investissement ?? -999),
     badge: c => c.score_investissement != null ? `Score ${Math.round(c.score_investissement)}/100` : null,
-    sub: c => c.prix_median_m2 != null ? `${fmt(c.prix_median_m2)} €/m²` : null,
+    sub: c => { const p = c.prix_m2_median ?? c.prix_median_m2; return p != null ? `${fmt(p)} €/m²` : null; },
   },
   {
     key: "qualite_vie",
@@ -255,8 +255,8 @@ const TOP_CRITERIA = [
     label: "Prix accessibles",
     icon: "savings",
     color: "#f59e0b",
-    sort: c => (c.prix_median_m2 ?? 999999),
-    badge: c => c.prix_median_m2 != null ? `${fmt(c.prix_median_m2)} €/m²` : null,
+    sort: c => (c.prix_m2_median ?? c.prix_median_m2 ?? 999999),
+    badge: c => { const p = c.prix_m2_median ?? c.prix_median_m2; return p != null ? `${fmt(p)} €/m²` : null; },
     sub: c => c.nb_transactions != null ? `${fmt(c.nb_transactions)} transactions` : null,
   },
   {
@@ -266,7 +266,7 @@ const TOP_CRITERIA = [
     color: "#a78bfa",
     sort: c => -(c.nb_transactions ?? -999),
     badge: c => c.nb_transactions != null ? `${fmt(c.nb_transactions)} ventes` : null,
-    sub: c => c.prix_median_m2 != null ? `${fmt(c.prix_median_m2)} €/m²` : null,
+    sub: c => { const p = c.prix_m2_median ?? c.prix_median_m2; return p != null ? `${fmt(p)} €/m²` : null; },
   },
   {
     key: "securite",
@@ -700,8 +700,8 @@ function CommuneSearchLocal({ label, color, value, communes, onSelect }) {
                 <p className="text-sm font-medium text-slate-100 truncate">{c.nom || c.city}</p>
                 <p className="text-[11px] text-slate-500">{c.code_commune} · Dép. {c.code_departement}</p>
               </div>
-              {c.prix_median_m2 && (
-                <span className="text-xs text-blue-400 shrink-0">{fmt(c.prix_median_m2)} €/m²</span>
+              {(c.prix_m2_median ?? c.prix_median_m2) != null && (
+                <span className="text-xs text-blue-400 shrink-0">{fmt(c.prix_m2_median ?? c.prix_median_m2)} €/m²</span>
               )}
             </button>
           ))}
