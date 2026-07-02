@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import { useCommunes } from "../contexts/CommunesContext.jsx";
 
 const terminalGridStyle = {
   backgroundImage: "radial-gradient(circle at 2px 2px, rgba(60,131,246,0.05) 1px, transparent 0)",
@@ -93,7 +94,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
 
   // ── Explorateur commune (Niveau 3) ────────────────────────────────────────
-  const [allCommunes, setAllCommunes] = useState([]);
+  const { communes: allCommunes } = useCommunes();
   const [communeSearchInput, setCommuneSearchInput] = useState("");
   const [communeSearch, setCommuneSearch] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -109,10 +110,6 @@ export default function Dashboard() {
       axios.get("/api/v1/stats", { signal: ctrl.signal }).then(r => r.data),
       axios.get("/api/v1/health", { signal: ctrl.signal }).then(r => r.data).catch(() => null),
     ]).then(([s]) => setStats(s)).catch(() => {}).finally(() => setLoading(false));
-
-    axios.get("/api/v1/communes/gold?limit=1300", { signal: ctrl.signal })
-      .then(r => { if (r.data?.data) setAllCommunes(r.data.data); })
-      .catch(() => {});
 
     return () => ctrl.abort();
   }, []);

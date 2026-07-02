@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { isFavorite, addFavorite, removeFavorite } from "../utils/favorites.js";
+import { useCommunes } from "../contexts/CommunesContext.jsx";
 
 // ── Utilitaires ───────────────────────────────────────────────────────────────
 
@@ -110,7 +111,7 @@ function CommuneSearch({ label, color, value, onSelect }) {
         });
         // Filtre côté client car l'endpoint agregat n'a pas de param q
         const filtered = (data.data || []).filter(c =>
-          c.city?.toLowerCase().includes(q.toLowerCase())
+          (c.nom || c.city)?.toLowerCase().includes(q.toLowerCase())
         ).slice(0, 8);
         setResults(filtered);
         setOpen(true);
@@ -123,7 +124,7 @@ function CommuneSearch({ label, color, value, onSelect }) {
   }, []);
 
   const handleSelect = (commune) => {
-    setQuery(commune.city);
+    setQuery(commune.nom || commune.city);
     setOpen(false);
     setResults([]);
     onSelect(commune);
@@ -165,7 +166,7 @@ function CommuneSearch({ label, color, value, onSelect }) {
               className="w-full text-left px-4 py-2.5 flex items-center gap-3 hover:bg-blue-500/10 border-b border-slate-800/40 last:border-0 transition-colors">
               <span className="material-symbols-outlined text-slate-500" style={{ fontSize: 14 }}>location_city</span>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-slate-100 truncate">{c.city}</p>
+                <p className="text-sm font-medium text-slate-100 truncate">{c.nom || c.city}</p>
                 <p className="text-[11px] text-slate-500">{c.code_commune} · Dép. {c.code_departement}</p>
               </div>
               {c.prix_median_m2 && (
@@ -211,7 +212,7 @@ function CommuneHeader({ data, color, side }) {
           <span className="material-symbols-outlined" style={{ fontSize: 16, fontVariationSettings: fav ? "'FILL' 1" : "'FILL' 0" }}>favorite</span>
         </button>
       </div>
-      <h2 className="text-xl font-bold text-slate-100">{data.city}</h2>
+      <h2 className="text-xl font-bold text-slate-100">{data.nom || data.city}</h2>
       <p className="text-xs text-slate-400 mt-0.5">Code INSEE {data.code_commune} · Dép. {data.code_departement}</p>
       <div className="flex gap-4 mt-3 flex-wrap">
         {data.population_totale && (
@@ -296,7 +297,7 @@ function TopCommunesPanel({ communes, onSelectA, onSelectB, communeA, communeB }
   const top5 = [...communes]
     .filter(c => {
       const v = criterion.sort(c);
-      return v !== 999999 && v !== 999 && c.city;
+      return v !== 999999 && v !== 999 && (c.nom || c.city);
     })
     .sort((a, b) => criterion.sort(a) - criterion.sort(b))
     .slice(0, 5);
@@ -351,7 +352,7 @@ function TopCommunesPanel({ communes, onSelectA, onSelectB, communeA, communeB }
               </div>
 
               {/* Nom commune — priorité maximale */}
-              <p className="text-[13px] font-bold text-white leading-tight mb-0.5">{c.city}</p>
+              <p className="text-[13px] font-bold text-white leading-tight mb-0.5">{c.nom || c.city}</p>
               <p className="text-[10px] text-slate-500 mb-2">Dép. {c.code_departement}</p>
 
               {/* Métrique principale */}
@@ -405,14 +406,7 @@ export default function Comparer() {
   const [communeB, setCommuneB] = useState(null);
   const [loadingA, setLoadingA] = useState(false);
   const [loadingB, setLoadingB] = useState(false);
-  const [allCommunes, setAllCommunes] = useState([]);
-
-  // Charger toutes les communes au démarrage (pour l'autocomplete)
-  useEffect(() => {
-    axios.get("/api/v1/communes/agregat?limit=1300")
-      .then(r => setAllCommunes(r.data.data || []))
-      .catch(() => {});
-  }, []);
+  const { communes: allCommunes } = useCommunes();
 
   const loadFromCode = useCallback(async (code, setter, setLoading) => {
     if (!code) return;
@@ -437,13 +431,13 @@ export default function Comparer() {
 
   const handleSelectA = (c) => {
     setCommuneA(c);
-    if (c) setSearchParams(p => { p.set("a", c.code_commune); return p; });
+    if (c) setSearchParams(p => { p.set("a", c.code_insee || c.code_commune); return p; });
     else setSearchParams(p => { p.delete("a"); return p; });
   };
 
   const handleSelectB = (c) => {
     setCommuneB(c);
-    if (c) setSearchParams(p => { p.set("b", c.code_commune); return p; });
+    if (c) setSearchParams(p => { p.set("b", c.code_insee || c.code_commune); return p; });
     else setSearchParams(p => { p.delete("b"); return p; });
   };
 
@@ -648,15 +642,15 @@ function CommuneSearchLocal({ label, color, value, communes, onSelect }) {
   const debounce = useRef(null);
 
   useEffect(() => {
-    if (value) setQuery(value.city || "");
-  }, [value?.city]);
+    if (value) setQuery(value.nom || value.city || "");
+  }, [value?.nom, value?.city]);
 
   const search = (q) => {
     setQuery(q);
     clearTimeout(debounce.current);
     debounce.current = setTimeout(() => {
       if (q.length < 2) { setResults([]); setOpen(false); return; }
-      const filtered = communes.filter(c => c.city?.toLowerCase().includes(q.toLowerCase())).slice(0, 8);
+      const filtered = communes.filter(c => (c.nom || c.city)?.toLowerCase().includes(q.toLowerCase())).slice(0, 8);
       setResults(filtered);
       setOpen(filtered.length > 0);
     }, 150);
@@ -703,7 +697,7 @@ function CommuneSearchLocal({ label, color, value, communes, onSelect }) {
               className="w-full text-left px-4 py-2.5 flex items-center gap-3 hover:bg-blue-500/10 border-b border-slate-800/40 last:border-0 transition-colors">
               <span className="material-symbols-outlined text-slate-500" style={{ fontSize: 14 }}>location_city</span>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-slate-100 truncate">{c.city}</p>
+                <p className="text-sm font-medium text-slate-100 truncate">{c.nom || c.city}</p>
                 <p className="text-[11px] text-slate-500">{c.code_commune} · Dép. {c.code_departement}</p>
               </div>
               {c.prix_median_m2 && (

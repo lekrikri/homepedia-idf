@@ -5,6 +5,7 @@ import axios from "axios";
 import "maplibre-gl/dist/maplibre-gl.css";
 import CesiumView3D from "./CesiumView3D";
 import { isFavorite, addFavorite, removeFavorite } from "../utils/favorites.js";
+import { useCommunes } from "../contexts/CommunesContext.jsx";
 
 // Coordonnées par code INSEE pour le flyTo
 const COMMUNE_COORDS = {
@@ -1165,6 +1166,7 @@ export default function MapView() {
   const initialSelectDone = useRef(false);
 
   const [searchParams] = useSearchParams();
+  const { communes: contextCommunes } = useCommunes();
   const [allCommunes, setAllCommunes] = useState([]);
   const [communes, setCommunes] = useState([]);
   const [selectedCommune, setSelectedCommune] = useState(null);
@@ -1213,10 +1215,11 @@ export default function MapView() {
   useEffect(() => { selectedCommuneRef.current = selectedCommune; }, [selectedCommune]);
 
   useEffect(() => {
-    axios.get("/api/v1/communes/gold?limit=1300").then(r => {
-      if (r.data.data) { setAllCommunes(r.data.data); setCommunes(r.data.data); }
-    }).catch(() => {});
-  }, []);
+    if (contextCommunes.length > 0) {
+      setAllCommunes(contextCommunes);
+      setCommunes(contextCommunes);
+    }
+  }, [contextCommunes]);
 
   useEffect(() => {
     if (!search) { setCommunes(allCommunes); return; }

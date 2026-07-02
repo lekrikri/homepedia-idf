@@ -45,6 +45,9 @@ func main() {
 	// CORS — allow any origin in dev
 	r.Use(corsMiddleware())
 
+	// Gzip compression for all JSON/text responses
+	r.Use(middleware.Gzip())
+
 	// ── API v1 ───────────────────────────────────────────────────────────────
 	v1 := r.Group("/api/v1")
 	{
@@ -61,6 +64,7 @@ func main() {
 
 		// Communes
 		v1.GET("/communes", handlers.ListCommunes)
+		v1.GET("/communes/list", handlers.GetCommunesList)       // Endpoint léger : 12 champs, cache 2h (MapView/Dashboard/Comparer)
 		v1.GET("/communes/gold", handlers.GetCommunesGold)       // Gold calculé à la volée depuis transactions
 		v1.GET("/communes/agregat", handlers.GetCommunesAgregat) // Gold importé depuis Databricks (population, POI OSM, DPE enrichi)
 		v1.GET("/communes/:code", handlers.GetCommune)

@@ -8,22 +8,25 @@ import Dashboard from "./components/Dashboard.jsx";
 import Pipeline from "./components/Pipeline.jsx";
 import Comparer from "./components/Comparer.jsx";
 import NotFound from "./components/NotFound.jsx";
+import { CommunesProvider } from "./contexts/CommunesContext.jsx";
 
 export default function App() {
   return (
-    <div className="dark h-screen flex flex-col bg-background-dark text-slate-100 overflow-hidden font-display">
-      <Header />
-      <main className="flex-1 min-h-0 flex flex-col overflow-hidden">
-        <Routes>
-          <Route path="/"             element={<LandingPage />} />
-          <Route path="/carte"        element={<MapView />} />
-          <Route path="/transactions" element={<Transactions />} />
-          <Route path="/dashboard"    element={<Dashboard />} />
-          <Route path="/pipeline"     element={<Pipeline />} />
-          <Route path="/comparer"     element={<Comparer />} />
-          <Route path="*"             element={<NotFound />} />
-        </Routes>
-      </main>
-    </div>
+    <CommunesProvider>
+      <div className="dark h-screen flex flex-col bg-background-dark text-slate-100 overflow-hidden font-display">
+        <Header />
+        <main className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          <Routes>
+            <Route path="/"             element={<LandingPage />} />
+            <Route path="/carte"        element={<MapView />} />
+            <Route path="/transactions" element={<Transactions />} />
+            <Route path="/dashboard"    element={<Dashboard />} />
+            <Route path="/pipeline"     element={<Pipeline />} />
+            <Route path="/comparer"     element={<Comparer />} />
+            <Route path="*"             element={<NotFound />} />
+          </Routes>
+        </main>
+      </div>
+    </CommunesProvider>
   );
 }
