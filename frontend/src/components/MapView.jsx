@@ -1190,6 +1190,9 @@ export default function MapView() {
   const txTooltipDataRef = useRef(new Map());
   const hoverTipRef = useRef(null);
   const txHoverDivRef = useRef(null);
+  const [txHover, setTxHover] = useState(null); // { x, y, html }
+  const setTxHoverRef = useRef(null);
+  useEffect(() => { setTxHoverRef.current = setTxHover; }, []);
   const setHoveredTxIdRef = useRef(null);
   const agregatAbortRef = useRef(null);
   const txAbortRef = useRef(null);
@@ -1257,7 +1260,7 @@ export default function MapView() {
       markersRef.current = [];
       txMarkerElsRef.current.clear();
       txTooltipDataRef.current.clear();
-      if (txHoverDivRef.current) txHoverDivRef.current.style.display = "none";
+      setTxHoverRef.current?.(null);
 
       // FlyTo seulement lors d'un changement de commune, pas lors d'un filtre
       if (fly) {
@@ -1277,14 +1280,6 @@ export default function MapView() {
         }
       }
 
-      // Div overlay HTML pur — plus fiable que MapLibre Popup pour le hover
-      if (!txHoverDivRef.current) {
-        const hd = document.createElement("div");
-        hd.style.cssText = "position:absolute;z-index:200;pointer-events:none;display:none;min-width:200px;max-width:250px;border-radius:12px;padding:12px 14px;background:rgba(10,16,28,0.97);border:1px solid rgba(60,131,246,0.45);box-shadow:0 8px 32px rgba(0,0,0,0.6);backdrop-filter:blur(8px);font-family:Inter,sans-serif;animation:none;";
-        mapContainer.current.appendChild(hd);
-        txHoverDivRef.current = hd;
-      }
-      const hoverDiv = txHoverDivRef.current;
 
       data.forEach(t => {
         if (!t.longitude || !t.latitude) return;
@@ -1327,23 +1322,18 @@ export default function MapView() {
           setHoveredTxIdRef.current?.(t.id);
           dot.style.transform = "scale(1.7)";
           dot.style.boxShadow = "0 0 14px rgba(60,131,246,0.95)";
-          // Positionner le div overlay par rapport au conteneur carte
-          const rect = mapContainer.current.getBoundingClientRect();
-          const px = e.clientX - rect.left;
-          const py = e.clientY - rect.top;
-          const leftPos = px + 18;
-          // Eviter de sortir à droite du conteneur
-          const finalLeft = leftPos + 255 > rect.width ? px - 265 : leftPos;
-          hoverDiv.style.left = finalLeft + "px";
-          hoverDiv.style.top = (py - 20) + "px";
-          hoverDiv.innerHTML = tipHtml;
-          hoverDiv.style.display = "block";
+          const rect = mapContainer.current?.getBoundingClientRect();
+          if (rect) {
+            const px = e.clientX - rect.left;
+            const py = e.clientY - rect.top;
+            setTxHoverRef.current?.({ x: px, y: py, html: tipHtml });
+          }
         });
         el.addEventListener("mouseleave", () => {
           setHoveredTxIdRef.current?.(null);
           dot.style.transform = "scale(1)";
           dot.style.boxShadow = "0 0 8px rgba(60,131,246,0.7)";
-          hoverDiv.style.display = "none";
+          setTxHoverRef.current?.(null);
         });
         const popup = new maplibregl.Popup({ offset: 16, closeButton: true, maxWidth: "280px", closeOnClick: false })
           .setHTML(`<div style="font-family:Inter,sans-serif;min-width:220px;padding:4px 2px">
@@ -1400,20 +1390,14 @@ export default function MapView() {
         d.style.boxShadow = "0 0 8px rgba(60,131,246,0.7)";
       }
     });
-    if (txId && txHoverDivRef.current && map.current) {
+    if (txId && map.current) {
       const data = txTooltipDataRef.current.get(txId);
       if (data) {
         const px = map.current.project(data.lngLat);
-        const rect = mapContainer.current?.getBoundingClientRect();
-        const containerW = rect?.width ?? 800;
-        const leftPos = px.x + 18;
-        txHoverDivRef.current.style.left = (leftPos + 255 > containerW ? px.x - 265 : leftPos) + "px";
-        txHoverDivRef.current.style.top = (px.y - 20) + "px";
-        txHoverDivRef.current.innerHTML = data.html;
-        txHoverDivRef.current.style.display = "block";
+        setTxHover({ x: px.x, y: px.y, html: data.html });
       }
     } else {
-      if (txHoverDivRef.current) txHoverDivRef.current.style.display = "none";
+      setTxHover(null);
     }
   }, []);
 
@@ -2002,6 +1986,33 @@ export default function MapView() {
             flyTarget={cesiumFlyTarget}
           />
         )}
+
+        {/* ── Hover tooltip transaction — overlay React ── */}
+        {txHover && (() => {
+          const containerW = mapContainer.current?.offsetWidth ?? 800;
+          const left = txHover.x + 18 + 255 > containerW ? txHover.x - 265 : txHover.x + 18;
+          return (
+            <div
+              style={{
+                position: "absolute",
+                left: Math.max(4, left),
+                top: Math.max(4, txHover.y - 20),
+                zIndex: 9999,
+                pointerEvents: "none",
+                minWidth: 200,
+                maxWidth: 250,
+                borderRadius: 12,
+                padding: "12px 14px",
+                background: "rgba(10,16,28,0.97)",
+                border: "1px solid rgba(60,131,246,0.5)",
+                boxShadow: "0 8px 32px rgba(0,0,0,0.7)",
+                backdropFilter: "blur(8px)",
+                fontFamily: "Inter,sans-serif",
+              }}
+              dangerouslySetInnerHTML={{ __html: txHover.html }}
+            />
+          );
+        })()}
 
         {/* Breadcrumb + loading indicator */}
         <div className="absolute top-4 left-4 flex items-center gap-2 z-10 rounded-full px-4 py-1.5 text-xs font-medium"
