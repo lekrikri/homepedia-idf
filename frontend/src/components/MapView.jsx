@@ -1283,8 +1283,12 @@ export default function MapView() {
 
       data.forEach(t => {
         if (!t.longitude || !t.latitude) return;
+        // Wrapper transparent 26px pour une zone de hover confortable
         const el = document.createElement("div");
-        el.style.cssText = "width:10px;height:10px;background:#3c83f6;border-radius:50%;border:2px solid rgba(255,255,255,0.6);cursor:pointer;box-shadow:0 0 8px rgba(60,131,246,0.7);transition:transform .15s";
+        el.style.cssText = "width:26px;height:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:50%;";
+        const dot = document.createElement("div");
+        dot.style.cssText = "width:10px;height:10px;background:#3c83f6;border-radius:50%;border:2px solid rgba(255,255,255,0.65);box-shadow:0 0 8px rgba(60,131,246,0.7);transition:transform .15s,box-shadow .15s;pointer-events:none;";
+        el.appendChild(dot);
         const dpeColors = { A:"#22c55e",B:"#4ade80",C:"#facc15",D:"#fb923c",E:"#f97316",F:"#ef4444",G:"#dc2626" };
         const prixM2 = t.valeur_fonciere && t.surface_reelle_bati ? Math.round(t.valeur_fonciere / t.surface_reelle_bati) : null;
         const prixFmt = t.valeur_fonciere
@@ -1316,14 +1320,14 @@ export default function MapView() {
 
         el.addEventListener("mouseenter", () => {
           setHoveredTxIdRef.current?.(t.id);
-          el.style.transform = "scale(1.6)";
-          el.style.boxShadow = "0 0 14px rgba(60,131,246,0.9)";
+          dot.style.transform = "scale(1.7)";
+          dot.style.boxShadow = "0 0 14px rgba(60,131,246,0.95)";
           hoverTip.setLngLat([t.longitude, t.latitude]).setHTML(tipHtml).addTo(map.current);
         });
         el.addEventListener("mouseleave", () => {
           setHoveredTxIdRef.current?.(null);
-          el.style.transform = "scale(1)";
-          el.style.boxShadow = "0 0 8px rgba(60,131,246,0.7)";
+          dot.style.transform = "scale(1)";
+          dot.style.boxShadow = "0 0 8px rgba(60,131,246,0.7)";
           hoverTip.remove();
         });
         const popup = new maplibregl.Popup({ offset: 16, closeButton: true, maxWidth: "280px", closeOnClick: false })
@@ -1372,12 +1376,13 @@ export default function MapView() {
   const handleHoverTx = useCallback((txId) => {
     setHoveredTxId(txId);
     txMarkerElsRef.current.forEach((el, id) => {
+      const d = el.firstChild || el;
       if (id === txId) {
-        el.style.transform = "scale(1.6)";
-        el.style.boxShadow = "0 0 14px rgba(60,131,246,0.9)";
+        d.style.transform = "scale(1.7)";
+        d.style.boxShadow = "0 0 14px rgba(60,131,246,0.95)";
       } else {
-        el.style.transform = "scale(1)";
-        el.style.boxShadow = "0 0 8px rgba(60,131,246,0.7)";
+        d.style.transform = "scale(1)";
+        d.style.boxShadow = "0 0 8px rgba(60,131,246,0.7)";
       }
     });
     if (txId && hoverTipRef.current && map.current) {
