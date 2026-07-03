@@ -1189,6 +1189,7 @@ export default function MapView() {
   const txMarkerElsRef = useRef(new Map());
   const txTooltipDataRef = useRef(new Map());
   const hoverTipRef = useRef(null);
+  const txHoverDivRef = useRef(null);
   const setHoveredTxIdRef = useRef(null);
   const agregatAbortRef = useRef(null);
   const txAbortRef = useRef(null);
@@ -1256,6 +1257,7 @@ export default function MapView() {
       markersRef.current = [];
       txMarkerElsRef.current.clear();
       txTooltipDataRef.current.clear();
+      if (txHoverDivRef.current) txHoverDivRef.current.style.display = "none";
 
       // FlyTo seulement lors d'un changement de commune, pas lors d'un filtre
       if (fly) {
@@ -1275,17 +1277,20 @@ export default function MapView() {
         }
       }
 
-      const hoverTip = new maplibregl.Popup({
-        closeButton: false, closeOnClick: false, offset: 14, maxWidth: "240px",
-        className: "hp-hover-tip",
-      });
-      hoverTipRef.current = hoverTip;
+      // Div overlay HTML pur — plus fiable que MapLibre Popup pour le hover
+      if (!txHoverDivRef.current) {
+        const hd = document.createElement("div");
+        hd.style.cssText = "position:absolute;z-index:200;pointer-events:none;display:none;min-width:200px;max-width:250px;border-radius:12px;padding:12px 14px;background:rgba(10,16,28,0.97);border:1px solid rgba(60,131,246,0.45);box-shadow:0 8px 32px rgba(0,0,0,0.6);backdrop-filter:blur(8px);font-family:Inter,sans-serif;animation:none;";
+        mapContainer.current.appendChild(hd);
+        txHoverDivRef.current = hd;
+      }
+      const hoverDiv = txHoverDivRef.current;
 
       data.forEach(t => {
         if (!t.longitude || !t.latitude) return;
-        // Wrapper transparent 26px pour une zone de hover confortable
+        // Wrapper 26px avec fond presque invisible pour capturer les events souris
         const el = document.createElement("div");
-        el.style.cssText = "width:26px;height:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:50%;";
+        el.style.cssText = "width:26px;height:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:50%;background:rgba(60,131,246,0.08);";
         const dot = document.createElement("div");
         dot.style.cssText = "width:10px;height:10px;background:#3c83f6;border-radius:50%;border:2px solid rgba(255,255,255,0.65);box-shadow:0 0 8px rgba(60,131,246,0.7);transition:transform .15s,box-shadow .15s;pointer-events:none;";
         el.appendChild(dot);
@@ -1318,17 +1323,27 @@ export default function MapView() {
 
         txTooltipDataRef.current.set(t.id, { lngLat: [t.longitude, t.latitude], html: tipHtml });
 
-        el.addEventListener("mouseenter", () => {
+        el.addEventListener("mouseenter", (e) => {
           setHoveredTxIdRef.current?.(t.id);
           dot.style.transform = "scale(1.7)";
           dot.style.boxShadow = "0 0 14px rgba(60,131,246,0.95)";
-          hoverTip.setLngLat([t.longitude, t.latitude]).setHTML(tipHtml).addTo(map.current);
+          // Positionner le div overlay par rapport au conteneur carte
+          const rect = mapContainer.current.getBoundingClientRect();
+          const px = e.clientX - rect.left;
+          const py = e.clientY - rect.top;
+          const leftPos = px + 18;
+          // Eviter de sortir à droite du conteneur
+          const finalLeft = leftPos + 255 > rect.width ? px - 265 : leftPos;
+          hoverDiv.style.left = finalLeft + "px";
+          hoverDiv.style.top = (py - 20) + "px";
+          hoverDiv.innerHTML = tipHtml;
+          hoverDiv.style.display = "block";
         });
         el.addEventListener("mouseleave", () => {
           setHoveredTxIdRef.current?.(null);
           dot.style.transform = "scale(1)";
           dot.style.boxShadow = "0 0 8px rgba(60,131,246,0.7)";
-          hoverTip.remove();
+          hoverDiv.style.display = "none";
         });
         const popup = new maplibregl.Popup({ offset: 16, closeButton: true, maxWidth: "280px", closeOnClick: false })
           .setHTML(`<div style="font-family:Inter,sans-serif;min-width:220px;padding:4px 2px">
@@ -1385,11 +1400,20 @@ export default function MapView() {
         d.style.boxShadow = "0 0 8px rgba(60,131,246,0.7)";
       }
     });
-    if (txId && hoverTipRef.current && map.current) {
+    if (txId && txHoverDivRef.current && map.current) {
       const data = txTooltipDataRef.current.get(txId);
-      if (data) hoverTipRef.current.setLngLat(data.lngLat).setHTML(data.html).addTo(map.current);
+      if (data) {
+        const px = map.current.project(data.lngLat);
+        const rect = mapContainer.current?.getBoundingClientRect();
+        const containerW = rect?.width ?? 800;
+        const leftPos = px.x + 18;
+        txHoverDivRef.current.style.left = (leftPos + 255 > containerW ? px.x - 265 : leftPos) + "px";
+        txHoverDivRef.current.style.top = (px.y - 20) + "px";
+        txHoverDivRef.current.innerHTML = data.html;
+        txHoverDivRef.current.style.display = "block";
+      }
     } else {
-      hoverTipRef.current?.remove();
+      if (txHoverDivRef.current) txHoverDivRef.current.style.display = "none";
     }
   }, []);
 
