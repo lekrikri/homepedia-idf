@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
 
@@ -180,15 +180,25 @@ export default function Transactions() {
   const [offset, setOffset] = useState(0);
 
   // Données
-  const [data,    setData]    = useState([]);
-  const [total,   setTotal]   = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [data,         setData]         = useState([]);
+  const [total,        setTotal]        = useState(0);
+  const [loading,      setLoading]      = useState(true);
+  const [staleLoading, setStaleLoading] = useState(false); // refresh silencieux
   const [exportLoading, setExportLoading] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filtersOpen,  setFiltersOpen]  = useState(false);
+
+  // Cache de pages : { cacheKey → { data, total } }
+  const pageCache   = useRef({});
+  const prefetchCtrl = useRef(null);
 
   const filters = useMemo(() => ({
     dept, commune, typeFilter, annee, dpe, prixMin, prixMax, surfMin, surfMax, pieces, sortBy, sortOrder
   }), [dept, commune, typeFilter, annee, dpe, prixMin, prixMax, surfMin, surfMax, pieces, sortBy, sortOrder]);
+
+  const cacheKey = useCallback((off) =>
+    `${dept}|${commune}|${typeFilter}|${annee}|${dpe}|${prixMin}|${prixMax}|${surfMin}|${surfMax}|${pieces}|${sortBy}|${sortOrder}|${off}`,
+    [dept, commune, typeFilter, annee, dpe, prixMin, prixMax, surfMin, surfMax, pieces, sortBy, sortOrder]
+  );
 
   // Stats agrégées sur la page courante
   const withM2    = useMemo(() => data.filter(t => t.valeur_fonciere && t.surface_reelle_bati), [data]);
@@ -214,19 +224,59 @@ export default function Transactions() {
   const hasFilters = dept || commune || typeFilter || annee || dpe || prixMin || prixMax || surfMin || surfMax || pieces;
 
   const fetchData = useCallback(() => {
-    setLoading(true);
     setClientSort(null);
+    const key = cacheKey(offset);
+    const cached = pageCache.current[key];
+
+    if (cached) {
+      // Affichage instantané depuis le cache + refresh silencieux
+      setData(cached.data);
+      setTotal(cached.total);
+      setLoading(false);
+      setStaleLoading(true);
+    } else {
+      setLoading(true);
+    }
+
     const params = buildParams(filters, { limit: PER_PAGE, offset });
     axios.get(`/api/v1/transactions?${params}`)
-      .then(r => { setData(r.data.data || []); setTotal(r.data.total ?? 0); })
-      .catch(() => { setData([]); setTotal(0); })
-      .finally(() => setLoading(false));
-  }, [filters, offset]);
+      .then(r => {
+        const result = { data: r.data.data || [], total: r.data.total ?? 0 };
+        pageCache.current[key] = result;
+        setData(result.data);
+        setTotal(result.total);
+      })
+      .catch(() => { if (!cached) { setData([]); setTotal(0); } })
+      .finally(() => { setLoading(false); setStaleLoading(false); });
+  }, [filters, offset, cacheKey]);
+
+  // Préchargement de la page suivante (et précédente) en arrière-plan
+  const prefetchPage = useCallback((off) => {
+    if (off < 0) return;
+    const key = cacheKey(off);
+    if (pageCache.current[key]) return;
+    if (prefetchCtrl.current) prefetchCtrl.current.abort();
+    prefetchCtrl.current = new AbortController();
+    const params = buildParams(filters, { limit: PER_PAGE, offset: off });
+    axios.get(`/api/v1/transactions?${params}`, { signal: prefetchCtrl.current.signal })
+      .then(r => { pageCache.current[key] = { data: r.data.data || [], total: r.data.total ?? 0 }; })
+      .catch(() => {});
+  }, [filters, cacheKey]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // Reset offset quand les filtres changent
-  useEffect(() => { setOffset(0); }, [dept, commune, typeFilter, annee, dpe, prixMin, prixMax, surfMin, surfMax, pieces, sortBy, sortOrder]);
+  // Précharger la page suivante dès que les données arrivent
+  useEffect(() => {
+    if (loading || !data.length) return;
+    const nextOff = offset + PER_PAGE;
+    if (nextOff < total) prefetchPage(nextOff);
+  }, [loading, data, offset, total, prefetchPage]);
+
+  // Reset offset + cache quand les filtres changent
+  useEffect(() => {
+    pageCache.current = {};
+    setOffset(0);
+  }, [dept, commune, typeFilter, annee, dpe, prixMin, prixMax, surfMin, surfMax, pieces, sortBy, sortOrder]);
 
   const resetFilters = () => {
     setDept(""); setCommune(""); setTypeFilter(""); setAnnee(""); setDpe("");
@@ -345,18 +395,24 @@ export default function Transactions() {
   );};
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6 lg:px-10 flex flex-col gap-5"
+    <div className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-6 py-6 lg:px-10 flex flex-col gap-5"
       style={{ background: "rgba(8,13,24,1)" }}>
+
+      {/* ── Barre de progression fine (stale refresh) ──────────────────────── */}
+      <div className="fixed top-0 left-0 right-0 z-50 h-0.5 pointer-events-none" style={{ opacity: staleLoading ? 1 : 0, transition: "opacity 0.2s" }}>
+        <div className="h-full bg-primary animate-pulse" style={{ width: staleLoading ? "85%" : "0%", transition: "width 1.2s ease-out" }} />
+      </div>
 
       {/* ── HEADER ─────────────────────────────────────────────────────────── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white tracking-tight">Transactions DVF</h1>
           <p className="text-slate-400 text-sm mt-0.5">
-            {loading
+            {loading && !data.length
               ? "Chargement…"
               : <><span className="text-slate-200 font-semibold">{total.toLocaleString("fr-FR")}</span> transactions en Île-de-France
-                {hasFilters && <span className="text-primary ml-1">· filtres actifs</span>}</>
+                {hasFilters && <span className="text-primary ml-1">· filtres actifs</span>}
+                {staleLoading && <span className="text-slate-600 ml-1 text-xs">· actualisation…</span>}</>
             }
           </p>
         </div>
@@ -449,7 +505,7 @@ export default function Transactions() {
 
       {/* ── TABLEAU ────────────────────────────────────────────────────────── */}
       <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(60,131,246,0.12)" }}>
-        {!loading && total > PER_PAGE && <PaginationBar compact />}
+        {(!loading || data.length > 0) && total > PER_PAGE && <PaginationBar compact />}
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[900px]">
             <thead>
@@ -477,8 +533,8 @@ export default function Transactions() {
                 ))}
               </tr>
             </thead>
-            <tbody>
-              {loading ? (
+            <tbody style={{ opacity: staleLoading ? 0.6 : 1, transition: "opacity 0.15s" }}>
+              {loading && !data.length ? (
                 Array.from({ length: 12 }, (_, i) => <SkeletonRow key={i} i={i} />)
               ) : displayData.length === 0 ? (
                 <tr><td colSpan={8} className="text-center py-16 text-slate-500">
