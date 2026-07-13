@@ -70,29 +70,39 @@ function RunCard({ run, defaultOpen = false }) {
 
       {/* ── Header cliquable ─────────────────────────────────────────── */}
       <button onClick={() => setOpen(o => !o)} className="w-full text-left">
-        <div className="px-5 pt-4 pb-3 flex items-start gap-4">
+        <div className="px-4 sm:px-5 pt-4 pb-3 flex items-start gap-3">
 
           {/* Statut + titre */}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-3 flex-wrap mb-2">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
               <StatusBadge status={run.status} />
               <h3 className="text-base font-bold text-white">
                 Pipeline {run.annee || "—"}
               </h3>
-              {run.execution_id && (
-                <span className="text-[11px] text-slate-500 font-mono hidden lg:block">
-                  exec/{run.execution_id.split("-").slice(-1)[0]}
-                </span>
-              )}
             </div>
-            <p className="text-xs text-slate-500">
-              Démarré le {fmtDate(run.started_at)}
-              {run.finished_at && ` · Terminé le ${fmtDate(run.finished_at)}`}
+            <p className="text-xs text-slate-500 truncate">
+              {fmtDate(run.started_at)}
+              {run.finished_at && <span className="hidden sm:inline"> · Terminé le {fmtDate(run.finished_at)}</span>}
             </p>
+            {/* Métriques sur mobile — sous le titre */}
+            <div className="flex items-center gap-4 mt-2 sm:hidden">
+              <div>
+                <p className="text-[10px] text-slate-500 uppercase">Durée</p>
+                <p className="text-sm font-bold text-white">{fmt(total) || "—"}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-500 uppercase">Communes</p>
+                <p className="text-sm font-bold text-amber-400">{fmtNum(run.nb_communes_exported)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-500 uppercase">Transactions</p>
+                <p className="text-sm font-bold text-blue-400">{fmtNum(run.nb_transactions_exported)}</p>
+              </div>
+            </div>
           </div>
 
-          {/* Métriques inline */}
-          <div className="flex items-center gap-5 shrink-0">
+          {/* Métriques desktop — à droite */}
+          <div className="hidden sm:flex items-center gap-5 shrink-0">
             <div className="text-center">
               <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Durée</p>
               <p className="text-lg font-bold text-white leading-none">{fmt(total) || "—"}</p>
@@ -105,13 +115,13 @@ function RunCard({ run, defaultOpen = false }) {
               <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Transactions</p>
               <p className="text-lg font-bold text-blue-400 leading-none">{fmtNum(run.nb_transactions_exported)}</p>
             </div>
-            <span
-              className="material-symbols-outlined text-slate-600 shrink-0 transition-transform"
-              style={{ fontSize: 20, transform: open ? "rotate(180deg)" : "" }}
-            >
-              expand_more
-            </span>
           </div>
+          <span
+            className="material-symbols-outlined text-slate-600 shrink-0 transition-transform mt-1"
+            style={{ fontSize: 20, transform: open ? "rotate(180deg)" : "" }}
+          >
+            expand_more
+          </span>
         </div>
 
         {/* Step bars — toujours visibles dans le header */}
@@ -131,12 +141,12 @@ function RunCard({ run, defaultOpen = false }) {
                 );
               })}
             </div>
-            <div className="flex gap-4 mt-1.5">
+            <div className="flex gap-2 mt-1.5 flex-wrap">
               {STEPS_CFG.map(s => {
                 const dur = steps[s.key] || 0;
                 const pct = Math.max(1, Math.round((dur / total) * 100));
                 return (
-                  <span key={s.key} className={`text-[10px] ${s.textColor} flex items-center gap-1`}>
+                  <span key={s.key} className={`text-[10px] ${s.textColor} flex items-center gap-1 whitespace-nowrap`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${s.color}`} />
                     {s.label} · {fmt(dur)} ({pct}%)
                   </span>
@@ -253,7 +263,7 @@ export default function Pipeline() {
   const lastSuccess   = successRuns[0];
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6 lg:px-10 flex flex-col gap-6">
+    <div className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-6 py-6 lg:px-10 flex flex-col gap-6">
 
       {/* ── Page header ─────────────────────────────────────────────── */}
       <div className="flex items-start justify-between gap-4">

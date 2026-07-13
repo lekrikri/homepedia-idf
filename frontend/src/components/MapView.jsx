@@ -250,9 +250,11 @@ function TransportsSection({ lat, lon, code }) {
 
 function RightPanel({ commune, transactions, agregat, isLocked, onUnlock }) {
   const [activeScoreTip, setActiveScoreTip] = useState(null);
+  const [expanded, setExpanded] = useState(false);
   const codeCommune = agregat?.code_commune || commune?.code_insee;
   const [fav, setFav] = useState(() => codeCommune ? isFavorite(codeCommune) : false);
   useEffect(() => { setFav(codeCommune ? isFavorite(codeCommune) : false); }, [codeCommune]);
+  useEffect(() => { setExpanded(false); }, [codeCommune]);
 
   const toggleFav = () => {
     if (!codeCommune) return;
@@ -320,8 +322,11 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock }) {
   );
 
   if (!agregat) return (
-    <aside className={`${panelBase} translate-y-0`} style={{ ...panelStyle, maxHeight: "72vh" }}>
-      <div className="w-10 h-1 bg-slate-600 rounded-full mx-auto mt-3 mb-1 md:hidden" />
+    <aside className={`${panelBase} translate-y-0`} style={{ ...panelStyle, maxHeight: expanded ? "82vh" : "45vh" }}>
+      <button className="w-full flex flex-col items-center pt-2 pb-1 md:hidden" onClick={() => setExpanded(v => !v)} aria-label="Agrandir le panneau">
+        <div className="w-10 h-1 bg-slate-600 rounded-full mb-1" />
+        <span className="material-symbols-outlined text-slate-600" style={{ fontSize: 16 }}>{expanded ? "expand_more" : "expand_less"}</span>
+      </button>
       <div className="p-5 space-y-3 animate-pulse">
         <div className="h-6 bg-slate-700/60 rounded w-3/4" />
         <div className="h-4 bg-slate-700/40 rounded w-1/2" />
@@ -341,9 +346,12 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock }) {
   const ipsDelta = agregat?.ips_moyen != null ? (agregat.ips_moyen - IPS_NATIONAL_AVG) : null;
 
   return (
-    <aside className={`${panelBase} translate-y-0`} style={{ ...panelStyle, maxHeight: "72vh" }}>
-      {/* Drag handle mobile */}
-      <div className="w-10 h-1 bg-slate-600 rounded-full mx-auto mt-3 mb-1 md:hidden" />
+    <aside className={`${panelBase} translate-y-0`} style={{ ...panelStyle, maxHeight: expanded ? "82vh" : "45vh" }}>
+      {/* Drag handle mobile — cliquable pour agrandir/réduire */}
+      <button className="w-full flex flex-col items-center pt-2 pb-1 md:hidden" onClick={() => setExpanded(v => !v)} aria-label="Agrandir le panneau">
+        <div className="w-10 h-1 bg-slate-600 rounded-full mb-1" />
+        <span className="material-symbols-outlined text-slate-600" style={{ fontSize: 16 }}>{expanded ? "expand_more" : "expand_less"}</span>
+      </button>
       <div className="p-5 space-y-3">
 
         {/* ── HEADER ────────────────────────────────────────────────────── */}

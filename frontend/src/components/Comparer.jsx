@@ -326,7 +326,8 @@ function TopCommunesPanel({ communes, onSelectA, onSelectB, communeA, communeB }
       </div>
 
       {/* Résultats */}
-      <div className="p-3 grid grid-cols-5 gap-2">
+      <div className="overflow-x-auto">
+      <div className="p-3 grid grid-cols-5 gap-2 min-w-[380px]">
         {top5.length === 0 ? (
           <div className="col-span-5 text-center py-4 text-slate-500 text-xs">Aucune donnée pour ce critère</div>
         ) : top5.map((c, i) => {
@@ -377,6 +378,7 @@ function TopCommunesPanel({ communes, onSelectA, onSelectB, communeA, communeB }
             </div>
           );
         })}
+      </div>
       </div>
     </div>
   );

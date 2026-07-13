@@ -288,33 +288,38 @@ export default function Transactions() {
   const currentPage = Math.floor(offset / PER_PAGE) + 1;
   const totalPages  = Math.ceil(total / PER_PAGE);
 
-  const PaginationBar = ({ compact = false }) => (
-    <div className={`flex items-center justify-between px-5 ${compact ? "py-2" : "py-3"}`}
+  const PaginationBar = ({ compact = false }) => {
+    const maxVisible = typeof window !== "undefined" && window.innerWidth < 640 ? 3 : 7;
+    return (
+    <div className={`flex items-center justify-between px-3 sm:px-5 ${compact ? "py-2" : "py-3"}`}
       style={{
         background: "rgba(15,22,36,0.6)",
         borderTop:    compact ? "none"                           : "1px solid rgba(30,41,59,0.6)",
         borderBottom: compact ? "1px solid rgba(30,41,59,0.6)"  : "none",
       }}>
-      <span className="text-xs text-slate-500 mono-nums">
+      <span className="text-xs text-slate-500 mono-nums hidden sm:block">
         {total > 0
           ? <>Page <span className="text-slate-300 font-semibold">{currentPage}</span>/<span className="text-slate-300 font-semibold">{totalPages}</span> · <span className="text-slate-300 font-semibold">{total.toLocaleString("fr-FR")}</span> résultats</>
           : "Aucun résultat"}
       </span>
-      <div className="flex items-center gap-1.5">
+      <span className="text-xs text-slate-500 mono-nums sm:hidden">
+        {currentPage}/{totalPages}
+      </span>
+      <div className="flex items-center gap-1">
         <button onClick={() => setOffset(0)} disabled={offset === 0}
-          className="p-1.5 rounded-lg border border-slate-700/50 bg-slate-800/50 disabled:opacity-30 hover:border-primary/40 transition-colors">
+          className="hidden sm:block p-1.5 rounded-lg border border-slate-700/50 bg-slate-800/50 disabled:opacity-30 hover:border-primary/40 transition-colors">
           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>first_page</span>
         </button>
         <button onClick={() => setOffset(o => Math.max(0, o - PER_PAGE))} disabled={offset === 0}
           className="p-1.5 rounded-lg border border-slate-700/50 bg-slate-800/50 disabled:opacity-30 hover:border-primary/40 transition-colors">
           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>chevron_left</span>
         </button>
-        {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+        {Array.from({ length: Math.min(totalPages, maxVisible) }, (_, i) => {
           let p;
-          if (totalPages <= 7) p = i + 1;
-          else if (currentPage <= 4) p = i + 1;
-          else if (currentPage >= totalPages - 3) p = totalPages - 6 + i;
-          else p = currentPage - 3 + i;
+          if (totalPages <= maxVisible) p = i + 1;
+          else if (currentPage <= Math.floor(maxVisible / 2) + 1) p = i + 1;
+          else if (currentPage >= totalPages - Math.floor(maxVisible / 2)) p = totalPages - maxVisible + 1 + i;
+          else p = currentPage - Math.floor(maxVisible / 2) + i;
           return (
             <button key={p} onClick={() => setOffset((p-1)*PER_PAGE)}
               className="w-8 h-8 rounded-lg text-xs font-bold transition-all"
@@ -332,12 +337,12 @@ export default function Transactions() {
           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>chevron_right</span>
         </button>
         <button onClick={() => setOffset((totalPages-1)*PER_PAGE)} disabled={currentPage === totalPages || totalPages === 0}
-          className="p-1.5 rounded-lg border border-slate-700/50 bg-slate-800/50 disabled:opacity-30 hover:border-primary/40 transition-colors">
+          className="hidden sm:block p-1.5 rounded-lg border border-slate-700/50 bg-slate-800/50 disabled:opacity-30 hover:border-primary/40 transition-colors">
           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>last_page</span>
         </button>
       </div>
     </div>
-  );
+  );};
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6 lg:px-10 flex flex-col gap-5"
