@@ -152,7 +152,7 @@ export default function ChatWidget() {
       {open && (
         <div
           style={{ background: C.bg, boxShadow: C.shadow, border: `1px solid ${C.border}` }}
-          className="fixed bottom-24 right-6 z-50 w-80 sm:w-96 h-[520px] rounded-2xl flex flex-col overflow-hidden"
+          className="fixed bottom-24 right-3 left-3 sm:left-auto sm:right-6 z-50 sm:w-96 h-[70vh] sm:h-[520px] rounded-2xl flex flex-col overflow-hidden"
         >
           {/* Header */}
           <div style={{ background: C.headerBg, borderBottom: `1px solid ${C.border}` }} className="px-4 py-3 flex items-center gap-2 shrink-0">

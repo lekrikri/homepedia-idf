@@ -451,14 +451,14 @@ export default function Comparer() {
   }, [allCommunes]);
 
   return (
-    <div className="flex flex-col h-full overflow-auto bg-background-dark p-6 gap-6">
+    <div className="flex flex-col h-full overflow-auto bg-background-dark p-4 md:p-6 gap-4 md:gap-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-100">Analyse comparative — Communes IDF</h1>
-        <p className="text-sm text-slate-400 mt-1">Outil professionnel de comparaison : immobilier, qualité de vie, énergie, sécurité et scores d'investissement.</p>
+        <h1 className="text-xl md:text-2xl font-bold text-slate-100">Analyse comparative — Communes IDF</h1>
+        <p className="text-xs md:text-sm text-slate-400 mt-1">Outil professionnel de comparaison : immobilier, qualité de vie, énergie, sécurité et scores d'investissement.</p>
       </div>
 
       {/* Sélecteurs */}
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
         <CommuneSearchLocal
           label="Commune A"
           color="text-blue-400"
@@ -496,7 +496,7 @@ export default function Comparer() {
 
       {/* Comparaisons */}
       {(A || B) && (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4 overflow-x-auto">
           {/* Header colonnes */}
           <div className="grid grid-cols-[1fr_200px_1fr] gap-4 px-0">
             <div className="text-right">

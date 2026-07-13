@@ -483,7 +483,7 @@ export default function Dashboard() {
                 microStats?.score_stabilite != null || microStats?.score_securite != null) && (
                 <div className="px-5 py-4 border-t border-slate-800">
                   <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-3">Scores synthèse</p>
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
                     {[
                       { label: "Qualité de vie",  val: microStats?.score_qualite_vie,    color: "#10b981", icon: "favorite" },
                       { label: "Investissement",   val: microStats?.score_investissement, color: "#3c83f6", icon: "trending_up" },

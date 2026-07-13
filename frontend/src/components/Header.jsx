@@ -37,6 +37,7 @@ export default function Header() {
   const [showProfile,  setShowProfile]  = useState(false);
   const [user,         setUser]         = useState(null);
   const [showMenu,     setShowMenu]     = useState(false);
+  const [showMobileNav, setShowMobileNav] = useState(false);
   const menuRef   = useRef(null);
   const searchRef = useRef(null);
   const debounce  = useRef(null);
@@ -105,14 +106,19 @@ export default function Header() {
 
   return (
     <>
-      <header className="h-16 flex items-center justify-between px-6 border-b border-primary/20 bg-background-dark/80 backdrop-blur-md z-50 shrink-0">
+      <header className="h-16 flex items-center justify-between px-4 md:px-6 border-b border-primary/20 bg-background-dark/80 backdrop-blur-md z-50 shrink-0">
         {/* Logo + Nav */}
-        <div className="flex items-center gap-8">
+        <div className="flex items-center gap-4 md:gap-8">
+          {/* Bouton hamburger mobile */}
+          <button className="md:hidden p-1 text-slate-400 hover:text-slate-100" onClick={() => setShowMobileNav(v => !v)}>
+            <span className="material-symbols-outlined" style={{ fontSize: 24 }}>{showMobileNav ? "close" : "menu"}</span>
+          </button>
+
           <div className="flex items-center gap-3">
             <div className="size-8 bg-primary rounded-lg flex items-center justify-center">
               <span className="material-symbols-outlined text-white" style={{ fontSize: 18 }}>domain</span>
             </div>
-            <h1 className="text-xl font-bold tracking-tight text-slate-100">
+            <h1 className="text-lg md:text-xl font-bold tracking-tight text-slate-100">
               HomePedia <span className="text-primary">IDF</span>
             </h1>
           </div>
@@ -135,8 +141,8 @@ export default function Header() {
           </nav>
         </div>
 
-        {/* Search */}
-        <div className="flex-1 max-w-md px-10">
+        {/* Search — masqué sur mobile */}
+        <div className="hidden md:block flex-1 max-w-md px-10">
           <div className="relative group" ref={searchRef}>
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors" style={{ fontSize: 18 }}>
               {loading ? "sync" : "search"}
@@ -181,8 +187,8 @@ export default function Header() {
         </div>
 
         {/* Right actions */}
-        <div className="flex items-center gap-4">
-          <button className="p-2 text-slate-400 hover:text-slate-100 relative" title="Notifications — bientôt disponible" disabled>
+        <div className="flex items-center gap-2 md:gap-4">
+          <button className="hidden md:block p-2 text-slate-400 hover:text-slate-100 relative" title="Notifications — bientôt disponible" disabled>
             <span className="material-symbols-outlined" style={{ fontSize: 22 }}>notifications</span>
           </button>
 
@@ -262,6 +268,35 @@ export default function Header() {
           )}
         </div>
       </header>
+
+      {/* Drawer nav mobile */}
+      {showMobileNav && (
+        <div className="md:hidden fixed inset-0 z-40" onClick={() => setShowMobileNav(false)}>
+          <div className="absolute inset-0 bg-black/60" />
+          <nav className="absolute top-16 left-0 right-0 py-2 shadow-2xl"
+            style={{ background: "#0b1117", borderBottom: "1px solid rgba(60,131,246,0.2)" }}
+            onClick={e => e.stopPropagation()}>
+            {(user?.role === "admin" ? NAV_ADMIN : NAV_PUBLIC).map(({ to, label, end }) => (
+              <NavLink key={to} to={to} end={end ?? false}
+                onClick={() => setShowMobileNav(false)}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-6 py-3.5 text-sm font-medium transition-colors ${isActive ? "text-primary bg-primary/10 border-l-2 border-primary" : "text-slate-400 hover:text-slate-100 hover:bg-slate-800/50"}`
+                }>
+                {label}
+              </NavLink>
+            ))}
+            {/* Barre de recherche dans le drawer mobile */}
+            <div className="px-4 pb-4 pt-2 border-t border-slate-800 mt-2">
+              <input
+                value={search}
+                onChange={e => { setSearch(e.target.value); fetchSuggestions(e.target.value); }}
+                className="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 outline-none focus:border-primary/50"
+                placeholder="Rechercher une adresse..."
+              />
+            </div>
+          </nav>
+        </div>
+      )}
 
       {showLogin    && <LoginModal    onClose={() => setShowLogin(false)}    onLogin={handleLogin} />}
       {showFav      && <FavoritesModal onClose={() => setShowFav(false)} />}

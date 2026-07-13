@@ -307,9 +307,11 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock }) {
     ? DPE_LETTERS[Math.min(6, Math.max(0, Math.round(agregat.score_dpe_moyen) - 1))]
     : null;
 
+  const panelBase = "fixed md:relative bottom-0 left-0 right-0 md:inset-auto w-full md:w-80 md:h-full flex-shrink-0 z-30 md:z-20 transition-transform duration-300 rounded-t-2xl md:rounded-none overflow-y-auto";
+  const panelStyle = { background: "rgba(11,17,27,0.97)", backdropFilter: "blur(16px)", borderTop: "1px solid rgba(60,131,246,0.2)", borderLeft: "1px solid rgba(60,131,246,0.12)" };
+
   if (!commune) return (
-    <aside className="w-80 h-full flex-shrink-0 flex items-center justify-center"
-      style={{ background: "rgba(11,17,27,0.95)", borderLeft: "1px solid rgba(60,131,246,0.12)" }}>
+    <aside className={`${panelBase} hidden md:flex items-center justify-center`} style={panelStyle}>
       <div className="text-center p-6">
         <span className="material-symbols-outlined text-primary/30 mb-3 block" style={{ fontSize: 44 }}>map</span>
         <p className="text-slate-500 text-sm">Sélectionnez une commune<br/>pour voir ses statistiques</p>
@@ -318,8 +320,8 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock }) {
   );
 
   if (!agregat) return (
-    <aside className="w-80 h-full flex-shrink-0 overflow-y-auto"
-      style={{ background: "rgba(11,17,27,0.97)", borderLeft: "1px solid rgba(60,131,246,0.12)" }}>
+    <aside className={`${panelBase} translate-y-0`} style={{ ...panelStyle, maxHeight: "72vh" }}>
+      <div className="w-10 h-1 bg-slate-600 rounded-full mx-auto mt-3 mb-1 md:hidden" />
       <div className="p-5 space-y-3 animate-pulse">
         <div className="h-6 bg-slate-700/60 rounded w-3/4" />
         <div className="h-4 bg-slate-700/40 rounded w-1/2" />
@@ -339,8 +341,9 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock }) {
   const ipsDelta = agregat?.ips_moyen != null ? (agregat.ips_moyen - IPS_NATIONAL_AVG) : null;
 
   return (
-    <aside className="w-80 h-full flex-shrink-0 relative z-20 overflow-y-auto"
-      style={{ background: "rgba(11,17,27,0.97)", backdropFilter: "blur(16px)", borderLeft: "1px solid rgba(60,131,246,0.12)" }}>
+    <aside className={`${panelBase} translate-y-0`} style={{ ...panelStyle, maxHeight: "72vh" }}>
+      {/* Drag handle mobile */}
+      <div className="w-10 h-1 bg-slate-600 rounded-full mx-auto mt-3 mb-1 md:hidden" />
       <div className="p-5 space-y-3">
 
         {/* ── HEADER ────────────────────────────────────────────────────── */}
@@ -836,7 +839,7 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock }) {
 // ─── Left Sidebar ──────────────────────────────────────────────────────────────
 function LeftSidebar({ communes, transactions, selectedCommune, onSelectCommune, onSelectTransaction, search, onSearch,
   activeTypes, onToggleType, anneeMax, onAnneeChange, onReset, sortDesc, onToggleSort,
-  hoveredTxId, onHoverTx, isLocked, onUnlock }) {
+  hoveredTxId, onHoverTx, isLocked, onUnlock, open, onClose }) {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [localSearch, setLocalSearch] = useState(search);
   const debounceRef = useRef(null);
@@ -859,8 +862,8 @@ function LeftSidebar({ communes, transactions, selectedCommune, onSelectCommune,
   , [search, communes]);
 
   return (
-    <aside className="w-72 h-full flex-shrink-0 overflow-y-auto z-20"
-      style={{ background: "rgba(16,23,34,0.85)", backdropFilter: "blur(12px)", borderRight: "1px solid rgba(60,131,246,0.1)" }}>
+    <aside className={`fixed md:relative inset-y-0 left-0 w-72 h-full flex-shrink-0 overflow-y-auto z-30 md:z-20 transition-transform duration-300 ${open ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}
+      style={{ background: "rgba(16,23,34,0.95)", backdropFilter: "blur(12px)", borderRight: "1px solid rgba(60,131,246,0.1)" }}>
       <div className="p-5 flex flex-col gap-5">
 
         {/* Commune selector */}
@@ -1122,6 +1125,7 @@ export default function MapView() {
   const [hoveredTxId, setHoveredTxId] = useState(null);
   const [lockedCommune, setLockedCommune] = useState(null);
   const lockedRef = useRef(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const txMarkerElsRef = useRef(new Map());
   const txTooltipDataRef = useRef(new Map());
   const hoverTipRef = useRef(null);
@@ -1893,12 +1897,17 @@ export default function MapView() {
     : ["Île-de-France"];
 
   return (
-    <div className="flex h-full">
+    <div className="relative flex h-full">
+      {/* Backdrop mobile — ferme sidebar au clic dehors */}
+      {sidebarOpen && (
+        <div className="md:hidden fixed inset-0 bg-black/50 z-20" onClick={() => setSidebarOpen(false)} />
+      )}
+
       <LeftSidebar
         communes={communes}
         transactions={sortDesc ? [...transactions].sort((a,b) => (b.valeur_fonciere||0)-(a.valeur_fonciere||0)) : transactions}
         selectedCommune={selectedCommune}
-        onSelectCommune={handleSelectCommune}
+        onSelectCommune={(c) => { handleSelectCommune(c); setSidebarOpen(false); }}
         onSelectTransaction={handleSelectTransaction}
         search={search}
         onSearch={setSearch}
@@ -1913,9 +1922,22 @@ export default function MapView() {
         onHoverTx={handleHoverTx}
         isLocked={!!lockedCommune}
         onUnlock={handleUnlock}
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
       />
 
       <div className="relative flex-1">
+        {/* Bouton hamburger — mobile uniquement */}
+        <button
+          className="md:hidden absolute bottom-24 left-4 z-20 size-12 rounded-full shadow-lg flex items-center justify-center"
+          style={{ background: "rgba(60,131,246,0.95)", boxShadow: "0 4px 16px rgba(60,131,246,0.4)" }}
+          onClick={() => setSidebarOpen(v => !v)}
+        >
+          <span className="material-symbols-outlined text-white" style={{ fontSize: 22 }}>
+            {sidebarOpen ? "close" : "menu"}
+          </span>
+        </button>
+
         {/* MapLibre 2D — toujours monté pour garder l'état, juste caché en mode 3D */}
         <div ref={mapContainer} className="w-full h-full" style={{ display: is3D ? "none" : "block", cursor: mapClickLoading ? "wait" : "crosshair" }} />
 
