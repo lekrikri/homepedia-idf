@@ -27,8 +27,6 @@ substitutions:
 
 options:
   logging: CLOUD_LOGGING_ONLY
-  # Utilise une machine n1-highcpu-8 pour les builds Docker (plus rapide)
-  machineType: E2_HIGHCPU_8
 
 steps:
 
