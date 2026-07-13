@@ -44,6 +44,15 @@ def _get_embedder():
 # Plus d'exemples = meilleure robustesse, même reformulation.
 
 INTENT_EXAMPLES: Dict[str, List[str]] = {
+    "salutation": [
+        "salut", "bonjour", "bonsoir", "hello", "coucou", "hey", "hi",
+        "bonne journée", "bonne soirée", "bonne nuit", "au revoir", "bye",
+        "merci", "merci beaucoup", "ok merci", "super merci", "merci bien", "c'est bon merci",
+        "tu fais quoi", "tu es qui", "qui es-tu", "comment tu t'appelles",
+        "c'est quoi homepedia", "qu'est-ce que tu sais faire",
+        "aide-moi", "comment ça marche", "je voudrais de l'aide", "c'est quoi ce chatbot",
+        "tu peux m'aider", "à bientôt", "cool", "ok", "super", "génial", "parfait",
+    ],
     "top_investissement": [
         "où investir en Île-de-France",
         "meilleur investissement locatif IDF",
@@ -90,12 +99,18 @@ INTENT_EXAMPLES: Dict[str, List[str]] = {
     ],
     "dpe": [
         "meilleur DPE en IDF",
+        "communes avec le meilleur DPE",
         "logements les moins énergivores",
         "bonne performance énergétique",
         "éviter les passoires thermiques",
         "communes écologiques",
         "bilan thermique des logements",
         "classe énergie A ou B",
+        "meilleures notes énergétiques",
+        "communes bien notées en énergie",
+        "faible consommation d'énergie",
+        "diagnostic de performance énergétique",
+        "quel est le meilleur bilan DPE",
     ],
     "securite": [
         "communes les plus sûres",
@@ -331,12 +346,24 @@ TEMPLATES: Dict[str, Dict] = {
         "params": {},
         "response_hint": "communes correspondant à plusieurs critères combinés",
     },
+
+    # Pas de SQL — réponse gérée directement dans chat_api.py
+    "salutation": {
+        "sql": None,
+        "params": {},
+        "response_hint": "salutation",
+    },
 }
 
 
 # ── Patterns regex (fallback si score sémantique < 0.45) ─────────────────────
 
 INTENT_PATTERNS = [
+    # Salutation en priorité absolue — évite les faux positifs (merci → commune_detail)
+    ("salutation", re.compile(
+        r"^(salut|bonjour|bonsoir|hello|coucou|hey|hi|ok|merci|super|g[eé]nial|"
+        r"parfait|cool|bravo|au revoir|bye|à bient[oô]t|bonne\s+\w+)[\s!.?]*$", re.I
+    )),
     ("comparaison", re.compile(
         r"compar|versus|vs\.?|diff[eé]rence|entre .+ et .+|.+ ou .+", re.I
     )),

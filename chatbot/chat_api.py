@@ -129,6 +129,28 @@ def chat():
     intent, params = detect_intent(question)
     logger.info(f"🎯 Intent: {intent} | params: {list(params.keys())}")
 
+    # Court-circuit salutation — pas de SQL, réponse fixe immédiate
+    if intent == "salutation":
+        greeting = (
+            "Bonjour ! Je suis HomePedia IA, votre assistant immobilier en Île-de-France.\n\n"
+            "Je peux vous aider à :\n"
+            "• Trouver les meilleures communes pour investir ou vivre\n"
+            "• Comparer deux communes (prix, rendement, DPE, sécurité...)\n"
+            "• Analyser prix au m², rendements locatifs, performance énergétique\n"
+            "• Rechercher selon plusieurs critères combinés\n\n"
+            "Posez-moi une question sur l'immobilier IDF !"
+        )
+        response = {
+            "answer": greeting,
+            "intent": intent,
+            "nb_results": 0,
+            "data": [],
+            "latency_ms": round((time.time() - start) * 1000),
+            "cached": False,
+        }
+        set_cached(question, response)
+        return jsonify(response)
+
     # 2. Exécution SQL
     if intent == "multi_criteria":
         # SQL construit dynamiquement par build_multi_criteria_sql()
@@ -187,6 +209,20 @@ def chat_stream():
     )
 
     intent, params = detect_intent(question)
+
+    if intent == "salutation":
+        greeting = (
+            "Bonjour ! Je suis HomePedia IA, votre assistant immobilier en Île-de-France.\n\n"
+            "Posez-moi une question sur les prix, investissements, DPE ou la sécurité en IDF !"
+        )
+        def generate_greeting():
+            meta = json.dumps({"intent": "salutation", "nb_results": 0, "data": []})
+            yield f"data: {meta}\n\n"
+            for word in greeting.split(" "):
+                yield f"data: {json.dumps({'chunk': word + ' '})}\n\n"
+            yield "data: [DONE]\n\n"
+        return Response(generate_greeting(), mimetype="text/event-stream",
+                        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     if intent == "multi_criteria":
         custom_sql = params.pop("_sql")
