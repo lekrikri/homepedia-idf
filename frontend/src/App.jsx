@@ -9,6 +9,7 @@ import Pipeline from "./components/Pipeline.jsx";
 import Comparer from "./components/Comparer.jsx";
 import NotFound from "./components/NotFound.jsx";
 import { CommunesProvider } from "./contexts/CommunesContext.jsx";
+import ChatWidget from "./components/ChatWidget.jsx";
 
 export default function App() {
   return (
@@ -26,6 +27,7 @@ export default function App() {
             <Route path="*"             element={<NotFound />} />
           </Routes>
         </main>
+        <ChatWidget />
       </div>
     </CommunesProvider>
   );
