@@ -21,88 +21,24 @@ const COMMUNE_COORDS = {
   "92026": [2.2874, 48.8936],
 };
 
-// Cache POI par commune — 1 requête Overpass groupée partagée entre les 6 couches
-// Niveau 1 : Map JS (session courante, accès immédiat)
-// Niveau 2 : localStorage avec TTL 24h (persisté entre rechargements)
+// Cache POI par commune — L1 : Map JS session (accès immédiat O(1))
+// L2 : cache HTTP navigateur (géré automatiquement via Cache-Control: public, max-age=86400)
+// Les données viennent du backend Go /api/v1/poi/:code (pré-ingérées via ingest_poi.py)
+// Plus d'appel direct à Overpass en production.
 const POI_CACHE   = new Map();
 const POI_PENDING = new Map();
-const POI_LS_KEY  = (code) => `hp_poi_v2_${code}`;
-const POI_TTL_MS  = 24 * 60 * 60 * 1000; // 24h
 
-function poiLsGet(code) {
-  try {
-    const raw = localStorage.getItem(POI_LS_KEY(code));
-    if (!raw) return null;
-    const { data, ts } = JSON.parse(raw);
-    if (Date.now() - ts > POI_TTL_MS) { localStorage.removeItem(POI_LS_KEY(code)); return null; }
-    return data;
-  } catch { return null; }
-}
-
-function poiLsSet(code, data) {
-  try {
-    localStorage.setItem(POI_LS_KEY(code), JSON.stringify({ data, ts: Date.now() }));
-  } catch {
-    // localStorage plein — supprimer la moitié des entrées POI les plus vieilles
-    try {
-      const keys = Object.keys(localStorage).filter(k => k.startsWith("hp_poi_v2_"));
-      keys.sort((a, b) => {
-        try { return JSON.parse(localStorage.getItem(a)).ts - JSON.parse(localStorage.getItem(b)).ts; }
-        catch { return 0; }
-      });
-      keys.slice(0, Math.ceil(keys.length / 2)).forEach(k => localStorage.removeItem(k));
-      localStorage.setItem(POI_LS_KEY(code), JSON.stringify({ data, ts: Date.now() }));
-    } catch { /* ignore */ }
-  }
-}
-
-async function fetchPOIBatch(code, lat, lon, signal) {
-  // Niveau 1 — mémoire session
+async function fetchPOIBatch(code, _lat, _lon, signal) {
+  // L1 — RAM session (hit immédiat si déjà chargé)
   if (POI_CACHE.has(code)) return POI_CACHE.get(code);
-  // Niveau 2 — localStorage 24h
-  const lsCached = poiLsGet(code);
-  if (lsCached) { POI_CACHE.set(code, lsCached); return lsCached; }
-  // Requête déjà en cours pour ce code
+  // Requête déjà en cours pour ce code — dédupliquer
   if (POI_PENDING.has(code)) return POI_PENDING.get(code);
 
-  const q = `[out:json][timeout:20];(
-node["public_transport"="station"](around:3000,${lat},${lon});
-node["railway"~"station|tram_stop"](around:2500,${lat},${lon});
-node["amenity"~"police|fire_station|hospital|pharmacy"](around:3500,${lat},${lon});
-way["amenity"~"police|fire_station|hospital"](around:3500,${lat},${lon});
-node["amenity"~"restaurant|cafe|bar|fast_food|brasserie"](around:2000,${lat},${lon});
-node["amenity"~"school|university|college|kindergarten"](around:3000,${lat},${lon});
-way["amenity"~"school|university|college"](around:3000,${lat},${lon});
-node["leisure"~"park|garden|nature_reserve|playground"](around:3000,${lat},${lon});
-way["leisure"~"park|garden|nature_reserve"](around:3000,${lat},${lon});
-node["shop"~"supermarket|convenience|bakery|butcher|mall|marketplace|florist"](around:2000,${lat},${lon});
-);out center body;`;
   const p = (async () => {
-    const res = await fetch(
-      `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`,
-      { signal }
-    );
-    const d = await res.json();
-    const b = { transports: [], security: [], restaurants: [], schools: [], parks: [], shops: [] };
-    for (const el of (d.elements || [])) {
-      const elLat = el.lat ?? el.center?.lat;
-      const elLon = el.lon ?? el.center?.lon;
-      if (!elLat || !elLon) continue;
-      const e = { ...el, lat: elLat, lon: elLon };
-      const am = el.tags?.amenity || "";
-      const pt = el.tags?.public_transport || "";
-      const ra = el.tags?.railway || "";
-      const le = el.tags?.leisure || "";
-      const sh = el.tags?.shop || "";
-      if (pt === "station" || /station|tram_stop/.test(ra)) b.transports.push(e);
-      else if (/police|fire_station|hospital|pharmacy/.test(am)) b.security.push(e);
-      else if (/restaurant|cafe|bar|fast_food|brasserie/.test(am)) b.restaurants.push(e);
-      else if (/school|university|college|kindergarten/.test(am)) b.schools.push(e);
-      else if (/park|garden|nature_reserve|playground/.test(le)) b.parks.push(e);
-      else if (sh) b.shops.push(e);
-    }
+    const res = await fetch(`/api/v1/poi/${code}`, { signal });
+    if (!res.ok) throw new Error(`POI fetch error ${res.status}`);
+    const b = await res.json();
     POI_CACHE.set(code, b);
-    poiLsSet(code, b);
     POI_PENDING.delete(code);
     return b;
   })();
@@ -222,7 +158,7 @@ function TransportsSection({ lat, lon, code }) {
       try {
         let elems = [];
         if (code) {
-          // Réutiliser le cache POI partagé (localStorage 24h) — 0 requête si déjà chargé
+          // Cache POI L1 RAM (hit immédiat) ou L2 HTTP navigateur (via /api/v1/poi/:code)
           const b = await fetchPOIBatch(code, lat, lon, ctrl.signal);
           elems = b.transports || [];
         } else {
@@ -1829,6 +1765,7 @@ export default function MapView() {
 
         let hoveredId = null;
 
+        let prefetchHoveredCode = null;
         map.current.on("mousemove", "communes-fill", (e) => {
           if (!e.features?.length) return;
           map.current.getCanvas().style.cursor = "pointer";
@@ -1841,6 +1778,12 @@ export default function MapView() {
             .setLngLat(e.lngLat)
             .setHTML(`<span style="font-size:12px;font-weight:700;color:#e2e8f0">${e.features[0].properties.nom}</span>`)
             .addTo(map.current);
+          // Prefetch POI silencieux — résultat mis en L1 RAM + cache HTTP navigateur
+          const hoverCode = e.features[0].properties.code;
+          if (hoverCode && hoverCode !== prefetchHoveredCode && !POI_CACHE.has(hoverCode)) {
+            prefetchHoveredCode = hoverCode;
+            fetch(`/api/v1/poi/${hoverCode}`).then(r => r.json()).then(b => POI_CACHE.set(hoverCode, b)).catch(() => {});
+          }
         });
 
         map.current.on("mouseleave", "communes-fill", () => {

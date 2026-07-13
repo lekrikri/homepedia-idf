@@ -62,21 +62,24 @@ func main() {
 			auth.GET("/me", middleware.Auth(), handlers.Me)
 		}
 
-		// Communes
-		v1.GET("/communes", handlers.ListCommunes)
-		v1.GET("/communes/list", handlers.GetCommunesList)       // Endpoint léger : 12 champs, cache 2h (MapView/Dashboard/Comparer)
-		v1.GET("/communes/gold", handlers.GetCommunesGold)       // Gold calculé à la volée depuis transactions
-		v1.GET("/communes/agregat", handlers.GetCommunesAgregat) // Gold importé depuis Databricks (population, POI OSM, DPE enrichi)
-		v1.GET("/communes/:code", handlers.GetCommune)
+		// Communes — données quasi-statiques : cache navigateur 24h
+		v1.GET("/communes", middleware.HTTPCache(86400, 604800), handlers.ListCommunes)
+		v1.GET("/communes/list", middleware.HTTPCache(86400, 604800), handlers.GetCommunesList)
+		v1.GET("/communes/gold", handlers.GetCommunesGold)
+		v1.GET("/communes/agregat", middleware.HTTPCache(3600, 86400), handlers.GetCommunesAgregat)
+		v1.GET("/communes/:code", middleware.HTTPCache(3600, 86400), handlers.GetCommune)
 		v1.GET("/communes/:code/gold", handlers.GetCommuneGold)
-		v1.GET("/communes/:code/agregat", handlers.GetCommuneAgregat)
+		v1.GET("/communes/:code/agregat", middleware.HTTPCache(3600, 86400), handlers.GetCommuneAgregat)
+
+		// POI pré-ingérés (ingest_poi.py) — cache 24h navigateur + ETag + L1 RAM Go
+		v1.GET("/poi/:code", middleware.HTTPCache(86400, 604800), handlers.GetPOI)
 
 		// Transactions (public read — heavy queries handled by Databricks gold layer)
 		v1.GET("/transactions", handlers.ListTransactions)
 		v1.GET("/transactions/:id", handlers.GetTransaction)
 
 		// Stats agrégées
-		v1.GET("/stats", handlers.GetStats)
+		v1.GET("/stats", middleware.HTTPCache(1800, 86400), handlers.GetStats)
 
 		// Pipeline monitoring
 		v1.GET("/pipeline/runs", handlers.ListPipelineRuns)
