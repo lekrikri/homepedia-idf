@@ -22,6 +22,13 @@ RUN mkdir -p models && \
       -O models/qwen2.5-0.5b.gguf && \
     echo "✅ Qwen2.5-0.5B téléchargé ($(du -sh models/qwen2.5-0.5b.gguf | cut -f1))"
 
+# Pré-télécharger MiniLM-L12-v2 (~120MB) → 0 cold start download
+# Stocké dans /root/.cache/huggingface/hub/ à l'intérieur de l'image
+RUN python -c "\
+from sentence_transformers import SentenceTransformer; \
+m = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2'); \
+print('✅ MiniLM-L12-v2 pré-chargé')"
+
 COPY . .
 
 ENV PORT=8080

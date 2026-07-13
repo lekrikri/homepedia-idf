@@ -1,16 +1,151 @@
 #!/usr/bin/env python3
 """
-Détecteur d'intent + SQL templates pour HomePedia Chat
-Pas de Text-to-SQL avec un petit modèle → SQL templates prédéfinis activés par regex/keywords
+Détecteur d'intent hybride pour HomePedia Chat.
+Ticket 1 : Embeddings MiniLM-L12-v2 (sémantique) + fallback regex + multi-critères.
 """
 
 import re
-from typing import Dict, Tuple, Any
+import logging
+from typing import Dict, Tuple, Any, List, Optional
 
-# ── SQL Templates ────────────────────────────────────────────────────────────
-# Chaque template a : sql, params par défaut, extracteurs regex pour les params
+logger = logging.getLogger(__name__)
 
-TEMPLATES = {
+# ── Chargement lazy MiniLM (singleton global) ─────────────────────────────────
+
+try:
+    from sentence_transformers import SentenceTransformer
+    import numpy as np
+    ST_AVAILABLE = True
+except ImportError:
+    ST_AVAILABLE = False
+    logger.warning("sentence-transformers absent — fallback regex uniquement")
+
+_embedder: Optional[Any] = None
+_intent_emb_cache: Optional[Dict[str, Any]] = None
+
+
+def _get_embedder():
+    global _embedder, _intent_emb_cache
+    if not ST_AVAILABLE:
+        return None
+    if _embedder is None:
+        logger.info("⏳ Chargement MiniLM-L12-v2...")
+        _embedder = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+        _intent_emb_cache = {
+            intent: np.mean(_embedder.encode(phrases, show_progress_bar=False), axis=0)
+            for intent, phrases in INTENT_EXAMPLES.items()
+        }
+        logger.info("✅ Embedder MiniLM prêt")
+    return _embedder
+
+
+# ── Exemples sémantiques par intent ──────────────────────────────────────────
+# Ces phrases sont encodées une seule fois au démarrage.
+# Plus d'exemples = meilleure robustesse, même reformulation.
+
+INTENT_EXAMPLES: Dict[str, List[str]] = {
+    "top_investissement": [
+        "où investir en Île-de-France",
+        "meilleur investissement locatif IDF",
+        "acheter pour louer en banlieue parisienne",
+        "placement immobilier rentable",
+        "je veux investir dans l'immobilier",
+        "quelle ville pour un bon investissement",
+        "commune avec fort potentiel locatif",
+    ],
+    "top_qualite_vie": [
+        "où vivre agréablement en IDF",
+        "meilleure qualité de vie",
+        "ville agréable pour s'installer",
+        "endroit sympa en banlieue",
+        "recommandation pour bien vivre",
+        "communes les plus plaisantes",
+        "un coin agréable pour habiter",
+    ],
+    "prix_max": [
+        "communes avec un prix abordable",
+        "moins de 5000 euros le m2",
+        "budget limité pour acheter",
+        "immobilier accessible en IDF",
+        "je cherche pas cher",
+        "prix raisonnable banlieue parisienne",
+        "trouver moins de 4000 euros le mètre carré",
+    ],
+    "comparaison": [
+        "compare Versailles et Vincennes",
+        "différence entre Montreuil et Pantin",
+        "quelle ville choisir entre les deux",
+        "Cergy ou Pontoise lequel est mieux",
+        "mettre en face deux villes",
+        "comparer deux communes d'IDF",
+    ],
+    "departement": [
+        "meilleures communes du 92",
+        "villes du Val de Marne",
+        "que valent les hauts de seine",
+        "Seine-Saint-Denis immobilier",
+        "investir dans le 91",
+        "prix en Essonne",
+        "communes de Seine-et-Marne",
+    ],
+    "dpe": [
+        "meilleur DPE en IDF",
+        "logements les moins énergivores",
+        "bonne performance énergétique",
+        "éviter les passoires thermiques",
+        "communes écologiques",
+        "bilan thermique des logements",
+        "classe énergie A ou B",
+    ],
+    "securite": [
+        "communes les plus sûres",
+        "peu de cambriolages en IDF",
+        "coin calme et tranquille",
+        "zone résidentielle sécurisée",
+        "faible criminalité en banlieue",
+        "ville où on se sent en sécurité",
+        "endroit calme pour famille",
+    ],
+    "rendement": [
+        "meilleur rendement locatif brut",
+        "loyer vs prix le plus avantageux",
+        "rentabilité locative en IDF",
+        "rapport loyer sur prix d'achat",
+        "investissement à forte rentabilité",
+        "cash flow positif immobilier",
+    ],
+    "commune_detail": [
+        "parle-moi de Versailles",
+        "fiche détaillée sur Montreuil",
+        "tout sur la commune de Créteil",
+        "informations sur Cergy",
+        "présente-moi cette ville",
+        "données sur cette commune",
+        "qu'est-ce que tu sais sur cette ville",
+    ],
+    "top_prix": [
+        "villes les plus chères d'IDF",
+        "classement par prix au m2",
+        "communes les plus accessibles en prix",
+        "top des prix immobiliers",
+        "où les prix sont les plus élevés",
+        "palmarès des prix IDF",
+    ],
+    "ecoles_ips": [
+        "meilleures écoles en IDF",
+        "communes avec bon IPS",
+        "éducation de qualité pour mes enfants",
+        "écoles favorisées en banlieue",
+        "bon niveau scolaire",
+        "communes avec de bonnes écoles primaires",
+        "pour les familles avec des enfants scolarisés",
+    ],
+}
+
+
+# ── SQL Templates ─────────────────────────────────────────────────────────────
+
+TEMPLATES: Dict[str, Dict] = {
 
     "top_investissement": {
         "sql": """
@@ -189,75 +324,62 @@ TEMPLATES = {
         "params": {"limit": 6},
         "response_hint": "communes avec meilleures écoles (IPS élevé)",
     },
+
+    # SQL construit dynamiquement par build_multi_criteria_sql()
+    "multi_criteria": {
+        "sql": None,
+        "params": {},
+        "response_hint": "communes correspondant à plusieurs critères combinés",
+    },
 }
 
-# ── Patterns d'intent ────────────────────────────────────────────────────────
+
+# ── Patterns regex (fallback si score sémantique < 0.45) ─────────────────────
 
 INTENT_PATTERNS = [
-    # Comparaison explicite entre communes
     ("comparaison", re.compile(
-        r"compar|versus|vs\.?|diff[eé]rence|entre .+ et .+|.+ ou .+",
-        re.I
+        r"compar|versus|vs\.?|diff[eé]rence|entre .+ et .+|.+ ou .+", re.I
     )),
-    # Détail d'une commune spécifique
     ("commune_detail", re.compile(
         r"(qu'est[- ]ce que|parle[- ]moi de|fiche|d[eé]tail|tout sur|"
-        r"inform.+ sur|c'est comment|comment est|portrait de)\s+\w+",
-        re.I
+        r"inform.+ sur|c'est comment|comment est|portrait de)\s+\w+", re.I
     )),
-    # Rendement locatif
     ("rendement", re.compile(
-        r"rendement|locatif|loyer|rentab|rapport locatif",
-        re.I
+        r"rendement|locatif|loyer|rentab|rapport locatif", re.I
     )),
-    # Prix max / budget
     ("prix_max", re.compile(
         r"moins de \d|moins cher|budget|pas cher|abordable|accessible|"
-        r"€/m²|euros?/m|inférieur",
-        re.I
+        r"€/m²|euros?/m|inférieur", re.I
     )),
-    # Département
     ("departement", re.compile(
         r"\b(75|77|78|91|92|93|94|95)\b|paris|seine.?et.?marne|yvelines|"
         r"essonne|hauts.?de.?seine|seine.?saint.?denis|val.?de.?marne|"
-        r"val.?d.?oise",
-        re.I
+        r"val.?d.?oise", re.I
     )),
-    # DPE / énergie
     ("dpe", re.compile(
-        r"dpe|[eé]nergie|[eé]cologique|[eé]co|passoire|thermique|consommation",
-        re.I
+        r"dpe|[eé]nergie|[eé]cologique|[eé]co|passoire|thermique|consommation", re.I
     )),
-    # Sécurité
     ("securite", re.compile(
-        r"s[eé]curit|cambriolage|crime|d[eé]linquance|s[uû]r|tranquille",
-        re.I
+        r"s[eé]curit|cambriolage|crime|d[eé]linquance|s[uû]r|tranquille", re.I
     )),
-    # Écoles / familles
     ("ecoles_ips", re.compile(
-        r"[eé]cole|famille|enfant|ips|[eé]ducation|scolaire|primaire|coll[eè]ge",
-        re.I
+        r"[eé]cole|famille|enfant|ips|[eé]ducation|scolaire|primaire|coll[eè]ge", re.I
     )),
-    # Investissement
     ("top_investissement", re.compile(
-        r"investir|investissement|investisseur|placer|placement|acheter pour louer",
-        re.I
+        r"investir|investissement|investisseur|placer|placement|acheter pour louer", re.I
     )),
-    # Prix les plus chers / moins chers
     ("top_prix", re.compile(
         r"plus cher|plus [eé]lev[eé]|le moins cher|les moins cher|top prix|"
-        r"classement prix|rang.*prix|cher.*idf|idf.*cher",
-        re.I
+        r"classement prix|rang.*prix|cher.*idf|idf.*cher", re.I
     )),
-    # Qualité de vie (fallback)
     ("top_qualite_vie", re.compile(
         r"qualit[eé] de vie|vivre|habiter|meilleur endroit|o[uù] vivre|"
-        r"recommand|bien vivre|agr[eé]able",
-        re.I
+        r"recommand|bien vivre|agr[eé]able", re.I
     )),
 ]
 
-# Communes connues pour la détection dans la question
+# ── Entités connues ───────────────────────────────────────────────────────────
+
 KNOWN_COMMUNES = [
     "paris", "versailles", "vincennes", "montreuil", "nanterre", "boulogne",
     "saint-denis", "saint denis", "argenteuil", "créteil", "creteil",
@@ -267,7 +389,7 @@ KNOWN_COMMUNES = [
     "ivry", "vitry", "clamart", "issy", "levallois", "neuilly", "puteaux",
     "courbevoie", "asnières", "asnieres", "colombes", "rueil", "suresnes",
     "montrouge", "vanves", "malakoff", "châtillon", "chatillon", "fontenay",
-    "vincennes", "charenton", "maisons-alfort", "alfortville", "choisy",
+    "charenton", "maisons-alfort", "alfortville", "choisy",
     "rungis", "orly", "villejuif", "arcueil", "cachan", "l'haÿ", "hay",
     "gif-sur-yvette", "gif", "orsay", "savigny", "juvisy", "viry",
     "corbeil", "etampes", "étampes", "dourdan", "rambouillet", "trappes",
@@ -283,25 +405,25 @@ DEPT_MAP = {
 }
 
 
+# ── Extracteurs d'entités ─────────────────────────────────────────────────────
+
 def extract_price(text: str) -> int:
-    """Extrait un prix max depuis la question"""
     m = re.search(r"(\d[\d\s]*)\s*(?:€|euros?|k€?|000)?\s*/?\s*m[²2]?", text, re.I)
     if m:
         val = int(re.sub(r'\s', '', m.group(1)))
         if val < 100:
-            val *= 1000  # "5k€" → 5000
+            val *= 1000
         return val
     m = re.search(r"moins de\s+(\d[\d\s]+)", text, re.I)
     if m:
         val = int(re.sub(r'\s', '', m.group(1)))
-        if val > 100000:  # budget total → estimer surface 50m²
+        if val > 100000:
             val = val // 50
         return val
-    return 5000  # défaut
+    return 5000
 
 
 def extract_communes(text: str) -> list:
-    """Extrait les noms de communes depuis la question"""
     found = []
     text_low = text.lower()
     for c in KNOWN_COMMUNES:
@@ -310,8 +432,7 @@ def extract_communes(text: str) -> list:
     return found[:4]
 
 
-def extract_departement(text: str) -> str:
-    """Extrait le numéro de département"""
+def extract_departement(text: str) -> Optional[str]:
     m = re.search(r'\b(75|77|78|91|92|93|94|95)\b', text)
     if m:
         return m.group(1)
@@ -321,44 +442,170 @@ def extract_departement(text: str) -> str:
     return None
 
 
+def extract_criteria(text: str) -> Dict[str, Any]:
+    """
+    Extrait les critères multi-dimensionnels d'une question.
+    Retourne un dict avec les flags actifs.
+    """
+    q = text.lower()
+    criteria: Dict[str, Any] = {}
+
+    if re.search(r'moins de|sous les|budget|€|euro|pas cher|abordable|inférieur', q):
+        criteria["prix_max"] = extract_price(text)
+
+    if re.search(r'dpe|[eé]nerg|[eé]colog|passoire|thermique|classe [abc]', q):
+        criteria["need_dpe"] = True
+
+    if re.search(r's[eé]curit|calme|tranquille|cambriolage|s[uû]r(?!\w)', q):
+        criteria["need_securite"] = True
+
+    if re.search(r'famille|enfant|[eé]cole|ips|scolaire', q):
+        criteria["need_famille"] = True
+
+    return criteria
+
+
+def build_multi_criteria_sql(criteria: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
+    """
+    Construit le SQL dynamique pour les requêtes multi-critères.
+    Les conditions injectées dans le f-string sont des constantes statiques
+    (noms de colonnes fixes + placeholders psycopg2) — pas d'injection possible.
+    """
+    conditions = ["prix_median_m2 IS NOT NULL"]
+    params: Dict[str, Any] = {"limit": 6}
+
+    if "prix_max" in criteria:
+        conditions.append("prix_median_m2 <= %(max_price)s")
+        params["max_price"] = criteria["prix_max"]
+
+    if criteria.get("need_dpe"):
+        # score_dpe_moyen : 1=A (meilleur) → 7=G (pire)
+        conditions.append("score_dpe_moyen <= 3.0")
+
+    if criteria.get("need_securite"):
+        # taux_cambriolages en ‰ — seuil bas = commune sûre
+        conditions.append("taux_cambriolages <= 4.0")
+
+    if criteria.get("need_famille"):
+        # IPS médian IDF ≈ 95 ; on filtre au-dessus
+        conditions.append("ips_moyen >= 95")
+
+    where = " AND ".join(conditions)
+    sql = f"""
+        SELECT city AS commune, TRIM(code_departement) AS dept,
+               ROUND(prix_median_m2::numeric, 0) AS prix_m2,
+               ROUND(score_global::numeric, 1) AS score_global,
+               ROUND(score_dpe_moyen::numeric, 2) AS dpe_score,
+               ROUND(taux_cambriolages::numeric, 3) AS cambriolages_pour_mille,
+               ROUND(rendement_locatif_brut::numeric, 2) AS rendement_pct,
+               ROUND(ips_moyen::numeric, 1) AS ips_ecoles
+        FROM communes_agregat
+        WHERE {where}
+        ORDER BY score_global DESC NULLS LAST
+        LIMIT %(limit)s
+    """
+    return sql, params
+
+
+# ── Détection sémantique et regex ─────────────────────────────────────────────
+
+def _cosine(a, b) -> float:
+    import numpy as np
+    na, nb = np.linalg.norm(a), np.linalg.norm(b)
+    if na == 0 or nb == 0:
+        return 0.0
+    return float(np.dot(a, b) / (na * nb))
+
+
+def _semantic_intent(question: str) -> Tuple[str, float]:
+    embedder = _get_embedder()
+    if embedder is None or _intent_emb_cache is None:
+        return "unknown", 0.0
+    q_emb = embedder.encode([question], show_progress_bar=False)[0]
+    best, best_score = "unknown", -1.0
+    for intent, emb in _intent_emb_cache.items():
+        s = _cosine(q_emb, emb)
+        if s > best_score:
+            best_score = s
+            best = intent
+    return best, best_score
+
+
+def _regex_intent(question: str) -> Optional[str]:
+    for intent_name, pattern in INTENT_PATTERNS:
+        if pattern.search(question):
+            return intent_name
+    return None
+
+
+def _build_params(intent: str, q: str) -> Dict[str, Any]:
+    params = dict(TEMPLATES[intent]["params"])
+    if intent == "prix_max":
+        params["max_price"] = extract_price(q)
+    elif intent == "departement":
+        dept = extract_departement(q)
+        if dept:
+            params["dept"] = dept
+    elif intent == "top_prix":
+        if re.search(r"moins cher|moins [eé]lev[eé]|pas cher|abordable", q, re.I):
+            params["order"] = "ASC"
+    return params
+
+
+# ── API publique ──────────────────────────────────────────────────────────────
+
 def detect_intent(question: str) -> Tuple[str, Dict[str, Any]]:
     """
-    Retourne (intent_name, params) pour une question donnée.
-    Priorité : comparaison > commune_detail > patterns spécifiques > fallback
+    Détection hybride :
+    1. Comparaison multi-communes (heuristique)
+    2. Commune unique nommée → fiche détail
+    3. Multi-critères (≥ 2 dimensions actives)
+    4. Sémantique MiniLM (score ≥ 0.45)
+    5. Fallback regex
+    6. Fallback final top_qualite_vie
     """
     q = question.strip()
 
-    # 1. Comparaison entre communes nommées
+    # 1. Comparaison explicite entre communes nommées
     communes = extract_communes(q)
     if len(communes) >= 2:
         return "comparaison", {"cities": communes}
 
-    # 2. Commune spécifique nommée sans comparaison
+    # 2. Commune unique → fiche détaillée
     if len(communes) == 1:
         return "commune_detail", {"city": communes[0]}
 
-    # 3. Patterns ordonnés
-    for intent_name, pattern in INTENT_PATTERNS:
-        if pattern.search(q):
-            params = dict(TEMPLATES[intent_name]["params"])
+    # 3. Multi-critères (ex: "sûre ET bon DPE ET moins de 4000€")
+    criteria = extract_criteria(q)
+    n_active = sum([
+        "prix_max" in criteria,
+        criteria.get("need_dpe", False),
+        criteria.get("need_securite", False),
+        criteria.get("need_famille", False),
+    ])
+    if n_active >= 2:
+        sql, params = build_multi_criteria_sql(criteria)
+        logger.info(f"🔀 Multi-critères ({n_active} actifs) : {list(criteria.keys())}")
+        return "multi_criteria", {"_sql": sql, **params}
 
-            if intent_name == "prix_max":
-                params["max_price"] = extract_price(q)
+    # 4. Détection sémantique
+    sem_intent, sem_score = _semantic_intent(q)
+    if sem_score >= 0.45 and sem_intent in TEMPLATES:
+        logger.info(f"🧠 Semantic intent={sem_intent} score={sem_score:.2f}")
+        params = _build_params(sem_intent, q)
+        # Si l'intent sémantique est prix_max, vérifier qu'on a un prix
+        if sem_intent == "prix_max" and "max_price" not in params:
+            params["max_price"] = extract_price(q)
+        return sem_intent, params
 
-            elif intent_name == "departement":
-                dept = extract_departement(q)
-                if dept:
-                    params["dept"] = dept
+    # 5. Fallback regex
+    regex_intent = _regex_intent(q)
+    if regex_intent:
+        logger.info(f"🔤 Regex intent={regex_intent}")
+        return regex_intent, _build_params(regex_intent, q)
 
-            elif intent_name == "top_prix":
-                if re.search(r"moins cher|moins [eé]lev[eé]|pas cher|abordable", q, re.I):
-                    params["order"] = "ASC"
-                else:
-                    params["order"] = "DESC"
-
-            return intent_name, params
-
-    # 4. Fallback
+    # 6. Fallback final
+    logger.info("⚠️ Fallback top_qualite_vie")
     return "top_qualite_vie", dict(TEMPLATES["top_qualite_vie"]["params"])
 
 

@@ -112,34 +112,44 @@ def chat():
 
     logger.info(f"💬 Question: {question[:80]}")
 
+    # Ticket 3 — historique conversationnel (3 derniers messages user)
+    history = data.get("history", [])
+    context_summary = " | ".join(
+        h["content"][:120] for h in history[-3:]
+        if isinstance(h, dict) and h.get("role") == "user"
+    )
+
     # Cache hit
     cached = get_cached(question)
     if cached:
         logger.info("⚡ Cache hit")
         return jsonify({**cached, "cached": True})
 
-    # 1. Détection d'intent
+    # 1. Détection d'intent (hybride MiniLM + regex)
     intent, params = detect_intent(question)
-    logger.info(f"🎯 Intent: {intent} | params: {params}")
+    logger.info(f"🎯 Intent: {intent} | params: {list(params.keys())}")
 
-    # 2. Exécution SQL template
-    template = get_template(intent)
-    merged_params = {**template["params"], **params}
+    # 2. Exécution SQL
+    if intent == "multi_criteria":
+        # SQL construit dynamiquement par build_multi_criteria_sql()
+        custom_sql = params.pop("_sql")
+        rows = execute_template(custom_sql, params)
+    else:
+        template = get_template(intent)
+        merged_params = {**template["params"], **params}
+        if "cities" in merged_params and isinstance(merged_params["cities"], list):
+            merged_params["cities"] = [c.lower() for c in merged_params["cities"]]
+        rows = execute_template(template["sql"], merged_params)
 
-    # Adapter les listes pour psycopg2 ANY()
-    if "cities" in merged_params and isinstance(merged_params["cities"], list):
-        merged_params["cities"] = [c.lower() for c in merged_params["cities"]]
-
-    rows = execute_template(template["sql"], merged_params)
     logger.info(f"📊 SQL retourné {len(rows)} ligne(s)")
 
-    # 3. Génération réponse
+    # 3. Génération réponse — on passe rows directement (pas format_for_display)
     if not DISABLE_LLM and qwen_manager.initialized:
-        data_text = format_for_display(rows)
         llm_response = qwen_manager.generate_response(
-            [{"content": data_text, "score": 1.0}],
+            rows,
             question,
-            intent
+            intent,
+            context=context_summary,  # Ticket 3
         )
     else:
         llm_response = None
@@ -170,26 +180,33 @@ def chat_stream():
         return jsonify({"error": "Champ 'question' requis"}), 400
 
     question = str(data["question"]).strip()[:500]
+    history = data.get("history", [])
+    context_summary = " | ".join(
+        h["content"][:120] for h in history[-3:]
+        if isinstance(h, dict) and h.get("role") == "user"
+    )
+
     intent, params = detect_intent(question)
-    template = get_template(intent)
-    merged_params = {**template["params"], **params}
 
-    if "cities" in merged_params and isinstance(merged_params["cities"], list):
-        merged_params["cities"] = [c.lower() for c in merged_params["cities"]]
-
-    rows = execute_template(template["sql"], merged_params)
+    if intent == "multi_criteria":
+        custom_sql = params.pop("_sql")
+        rows = execute_template(custom_sql, params)
+    else:
+        template = get_template(intent)
+        merged_params = {**template["params"], **params}
+        if "cities" in merged_params and isinstance(merged_params["cities"], list):
+            merged_params["cities"] = [c.lower() for c in merged_params["cities"]]
+        rows = execute_template(template["sql"], merged_params)
 
     def generate():
-        # Envoyer d'abord les metadata
+        # Envoyer d'abord les metadata (tableau affiché avant les tokens)
         meta = json.dumps({"intent": intent, "nb_results": len(rows), "data": rows[:8]})
         yield f"data: {meta}\n\n"
 
-        # Générer la réponse
+        # Générer la réponse avec rows directs + context Ticket 3
         if not DISABLE_LLM and qwen_manager.initialized:
-            data_text = format_for_display(rows)
             answer = qwen_manager.generate_response(
-                [{"content": data_text, "score": 1.0}],
-                question, intent
+                rows, question, intent, context=context_summary
             )
         else:
             answer = None
