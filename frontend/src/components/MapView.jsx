@@ -255,6 +255,25 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock, sheetS
   useEffect(() => { setFav(codeCommune ? isFavorite(codeCommune) : false); }, [codeCommune]);
   const expanded = sheetState === 'expanded';
 
+  // #27 Insights commune vs IDF
+  const [insights, setInsights] = useState(null);
+  useEffect(() => {
+    if (!codeCommune) { setInsights(null); return; }
+    fetch(`/api/v1/communes/${codeCommune}/insights`)
+      .then(r => r.ok ? r.json() : null).then(d => setInsights(d)).catch(() => {});
+  }, [codeCommune]);
+
+  // #5 Prix historique par année
+  const [prixHisto, setPrixHisto] = useState([]);
+  useEffect(() => {
+    if (!codeCommune) { setPrixHisto([]); return; }
+    fetch(`/api/v1/communes/${codeCommune}/prix-historique`)
+      .then(r => r.ok ? r.json() : { data: [] }).then(d => setPrixHisto(d.data || [])).catch(() => {});
+  }, [codeCommune]);
+
+  // #25 Accordéon score expliqué
+  const [showScoreDetail, setShowScoreDetail] = useState(false);
+
   const toggleFav = () => {
     if (!codeCommune) return;
     if (fav) {
@@ -429,6 +448,13 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock, sheetS
                 </button>
               )}
               <button
+                onClick={() => window.print()}
+                title="Télécharger fiche PDF"
+                className="size-9 rounded-xl flex items-center justify-center transition-all bg-slate-800/60 border border-slate-700 text-slate-500 hover:text-primary hover:border-primary/40 hover:bg-primary/10"
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>download</span>
+              </button>
+              <button
                 onClick={toggleFav}
                 title={fav ? "Retirer des favoris" : "Ajouter aux favoris"}
                 className={`size-9 rounded-xl flex items-center justify-center transition-all ${
@@ -495,6 +521,58 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock, sheetS
           </div>
         )}
 
+        {/* ── #25 SCORE EXPLIQUÉ (contributions par axe) ─────────────── */}
+        {(scoreQV != null || scoreInv != null || scoreStab != null) && agregat && (
+          <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(60,131,246,0.12)" }}>
+            <button
+              onClick={() => setShowScoreDetail(s => !s)}
+              className="w-full flex items-center justify-between px-4 py-3"
+              style={{ background: "rgba(22,32,48,0.8)" }}
+            >
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary" style={{ fontSize: 13 }}>analytics</span>
+                <p className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold">Détail du score</p>
+              </div>
+              <span className="material-symbols-outlined text-slate-600" style={{ fontSize: 14 }}>
+                {showScoreDetail ? "expand_less" : "expand_more"}
+              </span>
+            </button>
+            {showScoreDetail && (() => {
+              const axes = [
+                { label: "Prix / CAGR", pct: 35, val: scoreInv, color: "#3c83f6" },
+                { label: "Énergie DPE", pct: 20, val: scoreStab, color: "#f59e0b" },
+                { label: "Social IPS", pct: 20, val: scoreQV, color: "#10b981" },
+                { label: "Transports", pct: 15, val: agregat.score_accessibilite != null ? Math.round(agregat.score_accessibilite) : null, color: "#8b5cf6" },
+                { label: "Sécurité", pct: 10, val: agregat.score_securite != null ? Math.round(agregat.score_securite) : null, color: "#ef4444" },
+              ];
+              return (
+                <div className="px-4 pb-4 space-y-2.5" style={{ background: "rgba(22,32,48,0.8)" }}>
+                  {axes.map(({ label, pct, val, color }) => (
+                    <div key={label}>
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-[9px] text-slate-400">{label}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[8px] text-slate-600">{pct}%</span>
+                          <span className="text-[10px] font-bold mono-nums" style={{ color: val != null ? color : "#475569" }}>
+                            {val ?? "—"}<span className="text-[8px] text-slate-600">/100</span>
+                          </span>
+                        </div>
+                      </div>
+                      <div className="h-1.5 rounded-full" style={{ background: "rgba(30,41,59,0.8)" }}>
+                        {val != null && (
+                          <div className="h-full rounded-full transition-all duration-500"
+                            style={{ width: `${val}%`, background: `linear-gradient(90deg, ${color}88, ${color})` }} />
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  <p className="text-[8px] text-slate-600 pt-1">Pondération du score investissement global</p>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
         {/* ── MARCHÉ IMMOBILIER ─────────────────────────────────────────── */}
         <div className="rounded-xl p-4" style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(60,131,246,0.12)" }}>
           <div className="flex items-center gap-2 mb-3">
@@ -520,6 +598,88 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock, sheetS
             </div>
           )}
         </div>
+
+        {/* ── #5 ÉVOLUTION DES PRIX (sparkline) ────────────────────────── */}
+        {prixHisto.length >= 2 && (() => {
+          const maxP = Math.max(...prixHisto.map(p => p.prix_m2));
+          const minP = Math.min(...prixHisto.map(p => p.prix_m2));
+          const W = 220, H = 44, pad = 8;
+          const xScale = i => pad + (i / (prixHisto.length - 1)) * (W - pad * 2);
+          const yScale = v => H - pad - ((v - minP) / (maxP - minP + 1)) * (H - pad * 2);
+          const pts = prixHisto.map((p, i) => `${xScale(i)},${yScale(p.prix_m2)}`).join(" ");
+          const first = prixHisto[0], last = prixHisto[prixHisto.length - 1];
+          const cagr = ((last.prix_m2 / first.prix_m2) ** (1 / (last.year - first.year)) - 1) * 100;
+          return (
+            <div className="rounded-xl p-4" style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(60,131,246,0.12)" }}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-primary" style={{ fontSize: 13 }}>show_chart</span>
+                  <p className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold">Évolution des prix</p>
+                </div>
+                <span className={`text-[10px] font-bold mono-nums px-2 py-0.5 rounded-full ${cagr >= 0 ? "text-emerald-400" : "text-red-400"}`}
+                  style={{ background: cagr >= 0 ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)" }}>
+                  {cagr >= 0 ? "+" : ""}{cagr.toFixed(1)}% /an
+                </span>
+              </div>
+              <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 44 }}>
+                <defs>
+                  <linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#3c83f6" stopOpacity="0.3"/>
+                    <stop offset="100%" stopColor="#3c83f6" stopOpacity="0"/>
+                  </linearGradient>
+                </defs>
+                <polygon points={`${xScale(0)},${H} ${pts} ${xScale(prixHisto.length-1)},${H}`} fill="url(#priceGrad)" />
+                <polyline points={pts} fill="none" stroke="#3c83f6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                {prixHisto.map((p, i) => (
+                  <circle key={p.year} cx={xScale(i)} cy={yScale(p.prix_m2)} r="2.5" fill="#3c83f6"/>
+                ))}
+              </svg>
+              <div className="flex justify-between mt-1">
+                {prixHisto.map(p => (
+                  <div key={p.year} className="flex flex-col items-center">
+                    <span className="text-[7px] text-slate-600 mono-nums">{p.year}</span>
+                    <span className="text-[7px] text-slate-500 mono-nums">{Math.round(p.prix_m2/100)/10}k</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── #27 POURQUOI CETTE COMMUNE ? ─────────────────────────────── */}
+        {insights?.insights?.length > 0 && (
+          <div className="rounded-xl p-4" style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.18)" }}>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="material-symbols-outlined text-emerald-400" style={{ fontSize: 13 }}>lightbulb</span>
+              <p className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold">Pourquoi cette commune ?</p>
+              {insights.rang && insights.total && (
+                <span className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                  style={{ background: "rgba(16,185,129,0.12)", color: "#10b981", border: "1px solid rgba(16,185,129,0.25)" }}>
+                  #{insights.rang}/{insights.total}
+                </span>
+              )}
+            </div>
+            <div className="space-y-2 mb-3">
+              {insights.insights.map((txt, i) => (
+                <div key={i} className="flex items-start gap-2">
+                  <span className="material-symbols-outlined text-emerald-400 shrink-0 mt-0.5" style={{ fontSize: 11 }}>arrow_right</span>
+                  <p className="text-[10px] text-slate-300 leading-relaxed">{txt}</p>
+                </div>
+              ))}
+            </div>
+            {insights.comparisons?.slice(0, 3).map(comp => (
+              <div key={comp.label} className="flex items-center justify-between py-1 border-t border-slate-800/40">
+                <span className="text-[9px] text-slate-500">{comp.label}</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[9px] font-bold mono-nums text-slate-300">{comp.value}{comp.unit}</span>
+                  <span className={`text-[8px] mono-nums font-semibold ${comp.better ? "text-emerald-400" : "text-red-400"}`}>
+                    {comp.delta_pct > 0 ? "+" : ""}{comp.delta_pct}%
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* ── RENDEMENT LOCATIF ────────────────────────────────────────── */}
         {agregat?.loyer_median_m2 != null && (

@@ -56,6 +56,7 @@ func main() {
 
 		// Auth
 		auth := v1.Group("/auth")
+		auth.Use(middleware.Audit())
 		{
 			auth.POST("/register", handlers.Register)
 			auth.POST("/login", handlers.Login)
@@ -70,6 +71,8 @@ func main() {
 		v1.GET("/communes/:code", middleware.HTTPCache(3600, 86400), handlers.GetCommune)
 		v1.GET("/communes/:code/gold", handlers.GetCommuneGold)
 		v1.GET("/communes/:code/agregat", middleware.HTTPCache(3600, 86400), handlers.GetCommuneAgregat)
+		v1.GET("/communes/:code/insights", middleware.HTTPCache(3600, 86400), handlers.GetCommuneInsights)
+		v1.GET("/communes/:code/prix-historique", middleware.HTTPCache(3600, 86400), handlers.GetCommunePrixHistorique)
 
 		// POI pré-ingérés (ingest_poi.py) — cache 24h navigateur + ETag + L1 RAM Go
 		v1.GET("/poi/:code", middleware.HTTPCache(86400, 604800), handlers.GetPOI)
@@ -83,6 +86,14 @@ func main() {
 
 		// Pipeline monitoring
 		v1.GET("/pipeline/runs", handlers.ListPipelineRuns)
+
+		// Chatbot RAG (proxy vers le service Python FastAPI sur le port 8002)
+		rag := v1.Group("/rag")
+		rag.Use(middleware.Audit())
+		{
+			rag.POST("/query", handlers.RAGQuery)
+			rag.POST("/query/stream", handlers.RAGQueryStream)
+		}
 	}
 
 	port := os.Getenv("PORT")

@@ -185,6 +185,166 @@
 
 ---
 
+---
+
+## Tier 1 (suite) — Quick Wins supplémentaires
+
+### 25. Explainable AI (XAI) — Score XGBoost transparent avec SHAP
+> Le score investissement est actuellement une boîte noire. Ajouter des explications locales SHAP affiche pour chaque commune les facteurs qui tirent le score vers le haut ou vers le bas ("CAGR +12 pts, DPE −5 pts"). Indispensable pour la crédibilité et la démonstration ML en soutenance.
+
+- ⚡ Complexité : Faible
+- 🎯 Impact : Très fort — transparence, confiance utilisateur, démonstration maîtrise ML
+- 🎓 Faisabilité Epitech : Excellente — `shap.TreeExplainer` sur le modèle XGBoost exporté, 2 lignes Python
+- ⏱ Délai : 3–5 jours
+- **Techno :** `shap` (Python) dans le notebook Databricks Gold + endpoint Go qui sert les valeurs SHAP par commune
+
+---
+
+### 26. Tuiles Vectorielles MVT (PostGIS → MapLibre)
+> Remplacer les GeoJSON lourds par des tuiles vectorielles générées à la volée par PostGIS (`ST_AsMVT`). Divise le payload réseau par ~10 et rend le rendu choroplèthe ultra-fluide sur mobile.
+
+- ⚡ Complexité : Faible
+- 🎯 Impact : Temps de chargement carte divisé par 4, RAM navigateur réduite drastiquement
+- 🎓 Faisabilité Epitech : Excellente — PostGIS déjà actif sur Supabase, route Gin simple `/api/v1/tiles/{z}/{x}/{y}`
+- ⏱ Délai : 3–5 jours
+- **Techno :** `ST_AsMVT` + `ST_AsMVTGeom` (PostGIS), source `vector` MapLibre GL JS
+
+---
+
+### 27. Panel "Pourquoi cette commune ?" — Comparaison auto vs moyenne régionale
+> Un panneau dans la fiche commune compare automatiquement ses métriques clés à la moyenne IDF et aux communes du même département. Affiche en langage naturel : "Montreuil a un rendement +12% vs moyenne petite couronne, mais une criminalité 1.4× supérieure." Aucune expertise immobilière requise.
+
+- ⚡ Complexité : Faible
+- 🎯 Impact : Très fort pour la compréhension utilisateur — transforme des chiffres en décision
+- 🎓 Faisabilité Epitech : Excellente — calcul Go + template JSON prêt côté React
+- ⏱ Délai : 3–5 jours
+- **Techno :** Agrégats IDF pré-calculés en Gold, composant React `InsightPanel`
+
+---
+
+### 28. Auto-évaluation de confiance des réponses chatbot (RAGAS)
+> Après génération, le chatbot attribue un score de confiance visible (ex: "85% — basé sur 3 sources DVF vérifiées"). Les réponses sous 60% affichent un avertissement. Démontre une approche responsable de l'IA.
+
+- ⚡ Complexité : Faible/Moyenne
+- 🎯 Impact : Fort — différenciant sur la fiabilité perçue, sujet très actuel IA responsable
+- 🎓 Faisabilité Epitech : Bonne — `ragas` s'intègre comme middleware FastAPI post-génération
+- ⏱ Délai : 5–7 jours
+- **Techno :** `ragas` (Python) — métriques *Answer Relevance* + *Faithfulness* + *Context Precision*
+
+---
+
+### 29. Journal d'audit + RGPD rétention conversations chatbot
+> Les requêtes chatbot (potentiellement avec données personnelles) ne sont actuellement pas tracées ni expirées. Ajouter un journal d'audit des actions sensibles (login, favoris, requêtes IA) + politique de suppression automatique des conversations à 30 jours.
+
+- ⚡ Complexité : Faible
+- 🎯 Impact : Conformité RGPD "Privacy by Design" — indispensable avant tout déploiement sérieux
+- 🎓 Faisabilité Epitech : Excellente — table `audit_logs` Supabase + middleware Gin + cron de purge
+- ⏱ Délai : 4–6 jours
+- **Techno :** PostgreSQL `audit_logs` + middleware Go + `pg_cron` ou Cloud Scheduler
+
+---
+
+## Tier 2 (suite) — Moyen terme supplémentaire
+
+### 30. Filtre par Isochrones — Temps de trajet réel GTFS
+> Remplacer la distance géographique par le temps de trajet : "communes à moins de 40 minutes de La Défense en transports." L'attractivité locative dépend du maillage RER/Métro, pas du rayon kilométrique.
+
+- ⚡ Complexité : Moyenne
+- 🎯 Impact : Très fort métier — fonctionnalité que les comparateurs (SeLoger, MeilleursAgents) n'offrent pas directement
+- 🎓 Faisabilité Epitech : Bonne — GTFS IDFM déjà ingéré, polygones isochrones pré-calculés Databricks ou API tierce
+- ⏱ Délai : 1–2 semaines
+- **Techno :** API Navitia.io (SNCF, gratuite) ou OpenTripPlanner + `ST_Intersects` PostGIS pour filtre côté Go
+
+---
+
+### 31. Fine-tuning Qwen2.5 avec LoRA — Corpus immobilier français
+> Qwen2.5-0.5B généraliste hallucine sur le jargon notarial, la fiscalité LMNP/SCI et les nuances DPE. Un fine-tuning LoRA léger sur un corpus synthétique + documents métier améliore la précision et réduit les formulations approximatives.
+
+- ⚡ Complexité : Moyenne
+- 🎯 Impact : Très fort sur la qualité perçue — les réponses deviennent expertes en immobilier français
+- 🎓 Faisabilité Epitech : Bonne — Unsloth + PEFT sur Colab A100 gratuit ou Databricks GPU
+- ⏱ Délai : 2–3 semaines
+- **Techno :** `unsloth` + `peft` (LoRA) + dataset synthétique généré depuis HomePedia + corpus notarial open source
+
+---
+
+### 32. RAG Adaptatif — Routing dynamique SQL / BM25 / ChromaDB
+> Toutes les questions ne nécessitent pas le même pipeline. Router automatiquement : questions chiffrées → SQL direct (rapide), questions conceptuelles → ChromaDB, questions comparatives multi-critères → hybride BM25+SQL. Réduit la latence de 40% sur les cas simples.
+
+- ⚡ Complexité : Moyenne
+- 🎯 Impact : Très fort — précision + vitesse — valorise l'architecture IA existante
+- 🎓 Faisabilité Epitech : Bonne — le classifieur d'intent MiniLM est déjà là, il suffit d'ajouter des routes de dispatch
+- ⏱ Délai : 1 semaine
+- **Techno :** Extension du classifieur `intent_detection.py` avec 4 catégories de routing + A/B test sur benchmark
+
+---
+
+### 33. Villes Jumelles — Clustering HDBSCAN "similaire mais moins chère"
+> "Trouvez une commune avec la même qualité de vie que Vincennes mais 20% moins chère." Clustering offline Gold (HDBSCAN sur DPE+IPS+Crime+Transport) — chaque commune reçoit sa liste de jumelles dans le même cluster avec décote de prix.
+
+- ⚡ Complexité : Moyenne
+- 🎯 Impact : Fort pour les primo-accédants qui cherchent un "marché de report"
+- 🎓 Faisabilité Epitech : Bonne — traitement Databricks offline, frontend lit juste `similar_cities[]` de la Gold
+- ⏱ Délai : 1 semaine
+- **Techno :** PySpark MLlib HDBSCAN (ou sklearn) + ACP pour réduction dimensionnelle + colonne `similar_cities JSONB`
+
+---
+
+### 34. Portfolio Investisseur — Cash-flow net & Yield dynamique
+> L'utilisateur ajoute des communes à son portfolio (favoris enrichis) et renseigne ses paramètres de prêt (apport, taux, durée). Le frontend calcule en temps réel le cash-flow mensuel net estimé et la rentabilité brute/nette du portefeuille consolidé.
+
+- ⚡ Complexité : Moyenne
+- 🎯 Impact : Très fort pour la rétention — passage d'outil d'exploration à tableau de bord financier
+- 🎓 Faisabilité Epitech : Excellente — majoritairement logique React + formules d'amortissement, sauvegarde Supabase
+- ⏱ Délai : 1–2 semaines
+- **Techno :** React Context + formule `PMT` d'amortissement + table `portfolio` Supabase Auth
+
+---
+
+### 35. Pare-feu RAG — Désidentification PII & Anti-Prompt Injection
+> Les utilisateurs communiquent parfois des données personnelles au chatbot. Intercepter la requête, masquer les PII (adresses, revenus, noms) avant envoi au LLM, et bloquer les tentatives de jailbreak avec heuristiques légères.
+
+- ⚡ Complexité : Moyenne
+- 🎯 Impact : Conformité RGPD stricte — indispensable en contexte professionnel / production
+- 🎓 Faisabilité Epitech : Bonne — middleware FastAPI, librairie locale sans coût cloud
+- ⏱ Délai : 1 semaine
+- **Techno :** `presidio-analyzer` (Microsoft, Python local) pour PII + liste noire de patterns injection
+
+---
+
+### 36. Alertes Intelligentes sur Critères Immobiliers
+> L'utilisateur configure des règles métier : "Préviens-moi quand une commune passe dans le Top 10 avec DPE ≤ C et rendement > 5%." Cron quotidien qui évalue les règles et envoie une notification e-mail.
+
+- ⚡ Complexité : Moyenne
+- 🎯 Impact : Fort — fidélisation utilisateur, ouvre la porte à des fonctionnalités premium
+- 🎓 Faisabilité Epitech : Bonne
+- ⏱ Délai : 1–2 semaines
+- **Techno :** Table `alert_rules` Supabase + Cloud Scheduler (GCP) + SendGrid ou Resend pour les e-mails
+
+---
+
+### 37. Exploration Multicritère — Visualisation Pareto Front
+> Plutôt qu'un score unique, visualiser les communes sur un plan 2D (ex: Rentabilité vs Risque) et surligner le front de Pareto — les communes optimales sur plusieurs critères simultanément. L'utilisateur clique sur un point et explore le compromis sans qu'un algorithme décide à sa place.
+
+- ⚡ Complexité : Moyenne
+- 🎯 Impact : Fort — aide à la décision réelle, évite d'écraser les préférences de l'utilisateur dans un score opaque
+- 🎓 Faisabilité Epitech : Bonne
+- ⏱ Délai : 1–2 semaines
+- **Techno :** D3.js scatter plot + calcul Pareto Go ou Python offline + axes configurables côté React
+
+---
+
+### 38. Moteur de Scénarios "What-If" XGBoost
+> L'utilisateur ajuste virtuellement des paramètres (hausse des taux +1%, amélioration DPE C→B, nouveau métro) et observe l'impact sur le score investissement en temps réel. Transforme HomePedia d'outil descriptif en outil prospectif.
+
+- ⚡ Complexité : Élevée
+- 🎯 Impact : Très fort — différenciation produit nette, aucun concurrent n'offre ça
+- 🎓 Faisabilité Epitech : Correcte — le modèle XGBoost est déjà exporté, l'inférence est rapide
+- ⏱ Délai : 2–3 semaines
+- **Techno :** Endpoint Go `/api/v1/simulate` + XGBoost inference Python (sidecar FastAPI) + sliders React
+
+---
+
 ## Tier 3 — Ambitieux : fort impact commercial, complexité élevée
 
 ### 16. Graph Neural Networks (GNN) sur les communes
@@ -278,6 +438,52 @@
 
 ---
 
+---
+
+### 39. Pipeline MLOps — RAG Évaluateur (LLM-as-a-Judge en CI/CD)
+> À chaque PR modifiant le code RAG ou les chunks ChromaDB, un job Cloud Build lance un benchmark de 100 questions et utilise un modèle évaluateur (Gemini Flash ou GPT-4o-mini) pour scorer automatiquement la précision. Le build échoue si le score régressse sous le seuil.
+
+- ⚡ Complexité : Élevée
+- 🎯 Impact : Garantie qualité continue — zéro régression RAG non détectée
+- 🎓 Faisabilité Epitech : Bonne — démontre des compétences MLOps pointues très recherchées
+- ⏱ Délai : 2 semaines
+- **Techno :** `ragas` + Cloud Build `cloudbuild-rag-eval.yaml` + seuil configurable (ex: faithfulness > 0.80)
+
+---
+
+### 40. Agent IA Multi-étapes — Parcours Investissement Complet (LangGraph)
+> Le chatbot répond à des questions isolées mais ne guide pas un parcours complet. Un agent avec mémoire d'état guide l'utilisateur de "je cherche à investir" à "voici votre simulation crédit + cash-flow sur Montreuil vs Noisy-le-Grand", en enchaînant autonomement les appels SQL, ChromaDB et calculs financiers.
+
+- ⚡ Complexité : Élevée
+- 🎯 Impact : Très fort — outil de conversion décisionnelle, passage d'une interface à un conseiller
+- 🎓 Faisabilité Epitech : Correcte
+- ⏱ Délai : 4–5 semaines
+- **Techno :** `langgraph` (Python) + tools (SQL executor, calcul PMT, RAG retriever) + état persisté Supabase
+
+---
+
+### 41. DuckDB-WASM — Filtrage OLAP Zéro-Latence Côté Client
+> Exporter la table `communes_agregat` (~3 Mo compressés) en Parquet sur Cloud Storage. Le navigateur charge ce fichier et filtre via un moteur SQL local (DuckDB-WASM dans un Web Worker). Les sliders de prix, DPE, IPS deviennent instantanés à 60fps — sans aucune requête réseau.
+
+- ⚡ Complexité : Élevée
+- 🎯 Impact : Architecture avant-garde — UX instantanée, coûts API effondrés, preuve de concept impressionnante
+- 🎓 Faisabilité Epitech : Difficile mais très valorisante
+- ⏱ Délai : 3–4 semaines
+- **Techno :** `@duckdb/duckdb-wasm` dans Web Worker React + Parquet généré Databricks + `@apache-arrow/es2015-esm`
+
+---
+
+### 42. Analyse de Sentiment NLP — e-Réputation des Communes (CamemBERT)
+> Scraper les avis textuels publics des habitants (forums, Google Maps, données open data citoyens) et appliquer CamemBERT pour extraire un "Score de sentiment" et des tags qualitatifs ("Bouchons", "Verdure", "Ambiance village"). Données qualitatives absentes de tous les agrégateurs.
+
+- ⚡ Complexité : Élevée (ingestion non structurée + ML)
+- 🎯 Impact : Différenciation forte — aucun concurrent grand public ne croise avis citoyens et prix
+- 🎓 Faisabilité Epitech : Correcte — Scrapy/BeautifulSoup + CamemBERT HuggingFace inféré sur Databricks
+- ⏱ Délai : 3 semaines
+- **Techno :** `scrapy` + `transformers` (CamemBERT sentiment) + colonne `sentiment_score FLOAT` + tags `JSONB` Gold
+
+---
+
 ## Récapitulatif
 
 | # | Axe | Tier | Complexité | Délai |
@@ -306,7 +512,25 @@
 | 22 | Feature Store | Post-startup | Élevée | — |
 | 23 | Graph DB Neo4j propriétaires | Post-startup | Très élevée | — |
 | 24 | Expansion européenne | Post-startup | Très élevée | — |
+| 25 | Explainable AI SHAP (score XGBoost) | Quick Win | Faible | 3–5j |
+| 26 | Tuiles Vectorielles MVT (PostGIS) | Quick Win | Faible | 3–5j |
+| 27 | "Pourquoi cette commune ?" (comparaison auto) | Quick Win | Faible | 3–5j |
+| 28 | Auto-évaluation confiance chatbot (RAGAS) | Quick Win | Faible/Moyenne | 5–7j |
+| 29 | Journal d'audit + RGPD rétention chatbot | Quick Win | Faible | 4–6j |
+| 30 | Filtre par isochrones (temps de trajet GTFS) | Moyen terme | Moyenne | 1–2sem |
+| 31 | Fine-tuning Qwen2.5 LoRA (immobilier FR) | Moyen terme | Moyenne | 2–3sem |
+| 32 | RAG adaptatif (routing SQL/BM25/ChromaDB) | Moyen terme | Moyenne | 1sem |
+| 33 | Villes Jumelles HDBSCAN (similaire −20%) | Moyen terme | Moyenne | 1sem |
+| 34 | Portfolio Investisseur (cash-flow + yield) | Moyen terme | Moyenne | 1–2sem |
+| 35 | Pare-feu RAG PII (Presidio) + anti-injection | Moyen terme | Moyenne | 1sem |
+| 36 | Alertes intelligentes critères immobiliers | Moyen terme | Moyenne | 1–2sem |
+| 37 | Exploration multicritère Pareto Front | Moyen terme | Moyenne | 1–2sem |
+| 38 | Moteur scénarios "What-If" XGBoost | Ambitieux | Élevée | 2–3sem |
+| 39 | Pipeline MLOps RAG Évaluateur LLM-as-a-Judge | Ambitieux | Élevée | 2sem |
+| 40 | Agent IA multi-étapes LangGraph | Ambitieux | Élevée | 4–5sem |
+| 41 | DuckDB-WASM filtrage OLAP zéro-latence | Ambitieux | Élevée | 3–4sem |
+| 42 | Sentiment NLP avis citoyens (CamemBERT) | Ambitieux | Élevée | 3sem |
 
 ---
 
-> *Document généré à partir de l'analyse interne + réponse Gemini — Mars 2026*
+> *Document mis à jour — analyse interne + Gemini + ChatGPT + Claude — Juillet 2026*

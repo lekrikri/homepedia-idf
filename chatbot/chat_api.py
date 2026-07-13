@@ -20,18 +20,18 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-from intent_detector import detect_intent, get_template, TEMPLATES
+from intent_detector import detect_intent, get_template, TEMPLATES, _get_embedder
 from sql_executor import execute_template, format_for_display, health_check
 from qwen_manager import qwen_manager
 
 app = Flask(__name__)
 CORS(app, origins=["*"])
 
-# ── Cache simple en mémoire (questions fréquentes) ───────────────────────────
+DISABLE_LLM = os.getenv("DISABLE_LLM", "false").lower() == "true"
+
+# ── Cache exact en mémoire (questions identiques) ────────────────────────────
 _cache: dict = {}
 CACHE_TTL = int(os.getenv("CACHE_TTL", "600"))  # 10 min
-
-DISABLE_LLM = os.getenv("DISABLE_LLM", "false").lower() == "true"
 
 
 def cache_key(question: str) -> str:
@@ -48,11 +48,68 @@ def get_cached(question: str):
 
 def set_cached(question: str, response: dict):
     _cache[cache_key(question)] = {"response": response, "ts": time.time()}
-    # Nettoyer le cache si > 200 entrées
     if len(_cache) > 200:
         oldest = sorted(_cache.items(), key=lambda x: x[1]["ts"])[:50]
         for k, _ in oldest:
             del _cache[k]
+
+
+# ── Cache sémantique (MiniLM partagé avec intent_detector) ───────────────────
+try:
+    import numpy as np
+    _NP_OK = True
+except ImportError:
+    _NP_OK = False
+
+_sem_cache: list = []  # liste de (embedding, response_dict)
+_SEM_THRESHOLD = float(os.getenv("SEM_CACHE_THRESHOLD", "0.92"))
+_SEM_MAX = 100
+
+
+def _sem_get(question: str):
+    if not _NP_OK or not _sem_cache:
+        return None
+    embedder = _get_embedder()
+    if embedder is None:
+        return None
+    q_vec = embedder.encode([question], show_progress_bar=False)[0]
+    best_sim, best_resp = 0.0, None
+    for entry_vec, entry_resp in _sem_cache[-60:]:
+        sim = float(np.dot(q_vec, entry_vec) /
+                    (np.linalg.norm(q_vec) * np.linalg.norm(entry_vec) + 1e-9))
+        if sim > best_sim:
+            best_sim, best_resp = sim, entry_resp
+    if best_sim >= _SEM_THRESHOLD:
+        logger.info(f"🧠 Semantic cache hit (sim={best_sim:.3f})")
+        return best_resp
+    return None
+
+
+def _sem_set(question: str, response: dict):
+    if not _NP_OK:
+        return
+    embedder = _get_embedder()
+    if embedder is None:
+        return
+    q_vec = embedder.encode([question], show_progress_bar=False)[0]
+    _sem_cache.append((q_vec, response))
+    if len(_sem_cache) > _SEM_MAX:
+        _sem_cache.pop(0)
+
+
+# ── Score de confiance de la réponse ─────────────────────────────────────────
+
+def _confidence(intent: str, nb_results: int, llm_used: bool) -> int:
+    score = 0
+    if intent not in ("unknown", "general", "salutation"):
+        score += 30
+    if nb_results > 0:
+        score += 35
+    if nb_results >= 3:
+        score += 15
+    if llm_used:
+        score += 20
+    return min(score, 100)
 
 
 # ── Fallback textuel sans LLM ────────────────────────────────────────────────
@@ -94,6 +151,7 @@ def health():
         "db": db_ok,
         "llm": qwen_manager.get_stats(),
         "cache_size": len(_cache),
+        "sem_cache_size": len(_sem_cache),
         "timestamp": datetime.utcnow().isoformat(),
     })
 
@@ -119,11 +177,16 @@ def chat():
         if isinstance(h, dict) and h.get("role") == "user"
     )
 
-    # Cache hit
+    # Cache exact hit
     cached = get_cached(question)
     if cached:
         logger.info("⚡ Cache hit")
         return jsonify({**cached, "cached": True})
+
+    # Cache sémantique
+    sem = _sem_get(question)
+    if sem:
+        return jsonify({**sem, "cached": True, "semantic_cache": True})
 
     # 1. Détection d'intent (hybride MiniLM + regex)
     intent, params = detect_intent(question)
@@ -180,6 +243,7 @@ def chat():
     if not llm_response:
         llm_response = fallback_response(rows, intent, question)
 
+    llm_used = bool(not DISABLE_LLM and qwen_manager.initialized and llm_response and llm_response != fallback_response(rows, intent, question))
     response = {
         "answer": llm_response,
         "intent": intent,
@@ -187,10 +251,12 @@ def chat():
         "data": rows[:8],
         "latency_ms": round((time.time() - start) * 1000),
         "cached": False,
+        "confidence_score": _confidence(intent, len(rows), llm_used),
     }
 
     set_cached(question, response)
-    logger.info(f"✅ Réponse en {response['latency_ms']}ms")
+    _sem_set(question, response)
+    logger.info(f"✅ Réponse en {response['latency_ms']}ms (confiance {response['confidence_score']}%)")
     return jsonify(response)
 
 

@@ -126,3 +126,16 @@
   border-radius: 8px;
 }
 .maplibregl-popup-tip { display: none; }
+
+/* ── #4 Print / Export PDF ────────────────────────────────────────────────── */
+@media print {
+  body { background: #fff !important; color: #111 !important; }
+  header, nav, .maplibregl-map, [class*="md:hidden"], button, .DragHandle { display: none !important; }
+  aside { position: static !important; width: 100% !important; max-height: none !important;
+          transform: none !important; border: none !important; background: #fff !important; color: #111 !important; }
+  .text-primary { color: #1d4ed8 !important; }
+  .text-slate-300, .text-slate-400, .text-slate-500 { color: #374151 !important; }
+  .bg-slate-800\/60, [style*="background: rgba(22,32,48"] { background: #f9fafb !important; border-color: #e5e7eb !important; }
+  polygon, polyline { stroke: #1d4ed8 !important; }
+  circle[fill="#3c83f6"] { fill: #1d4ed8 !important; }
+}
