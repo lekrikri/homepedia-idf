@@ -248,14 +248,11 @@ function TransportsSection({ lat, lon, code }) {
   );
 }
 
-function RightPanel({ commune, transactions, agregat, isLocked, onUnlock }) {
+function RightPanel({ commune, transactions, agregat, isLocked, onUnlock, sheetState, setSheetState }) {
   const [activeScoreTip, setActiveScoreTip] = useState(null);
-  // 'peek' | 'expanded' | 'hidden'
-  const [sheetState, setSheetState] = useState('peek');
   const codeCommune = agregat?.code_commune || commune?.code_insee;
   const [fav, setFav] = useState(() => codeCommune ? isFavorite(codeCommune) : false);
   useEffect(() => { setFav(codeCommune ? isFavorite(codeCommune) : false); }, [codeCommune]);
-  useEffect(() => { setSheetState('peek'); }, [codeCommune]);
   const expanded = sheetState === 'expanded';
 
   const toggleFav = () => {
@@ -1189,6 +1186,9 @@ export default function MapView() {
   const hoverTipRef = useRef(null);
   const txHoverDivRef = useRef(null);
   const [txHover, setTxHover] = useState(null); // { x, y, html }
+  // Bottom sheet mobile — état partagé avec RightPanel
+  const [sheetState, setSheetState] = useState('peek');
+  useEffect(() => { setSheetState('peek'); }, [selectedCommune]);
   const setTxHoverRef = useRef(null);
   useEffect(() => { setTxHoverRef.current = setTxHover; }, []);
   const setHoveredTxIdRef = useRef(null);
@@ -2373,7 +2373,7 @@ export default function MapView() {
         </div>
       </div>
 
-      <RightPanel commune={selectedCommune} transactions={transactions} agregat={agregat} isLocked={!!lockedCommune} onUnlock={handleUnlock} />
+      <RightPanel commune={selectedCommune} transactions={transactions} agregat={agregat} isLocked={!!lockedCommune} onUnlock={handleUnlock} sheetState={sheetState} setSheetState={setSheetState} />
     </div>
   );
 }
