@@ -2,6 +2,22 @@ import { useState, useRef, useEffect } from "react";
 
 const CHAT_API = import.meta.env.VITE_CHAT_API_URL || "http://localhost:5001";
 
+// Couleurs du site (dark theme)
+const C = {
+  bg:         "rgba(10,16,28,0.98)",
+  bgMessage:  "rgba(255,255,255,0.06)",
+  border:     "rgba(60,131,246,0.25)",
+  borderFocus:"rgba(60,131,246,0.7)",
+  accent:     "#3C83F6",
+  accentHover:"#2563EB",
+  text:       "#E2E8F0",
+  textMuted:  "rgba(226,232,240,0.5)",
+  inputBg:    "rgba(255,255,255,0.07)",
+  headerBg:   "rgba(7,11,20,0.99)",
+  shadow:     "0 24px 64px rgba(0,0,0,0.8), 0 0 0 1px rgba(60,131,246,0.2)",
+  fabShadow:  "0 0 20px rgba(60,131,246,0.5), 0 4px 16px rgba(0,0,0,0.6)",
+};
+
 const SUGGESTIONS = [
   "Où investir avec un bon rendement ?",
   "Communes les plus sûres d'IDF ?",
@@ -9,9 +25,19 @@ const SUGGESTIONS = [
   "Compare Versailles et Vincennes",
 ];
 
+// Rendu markdown minimaliste (**bold** uniquement)
+function renderText(text) {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((p, i) =>
+    p.startsWith("**") && p.endsWith("**")
+      ? <strong key={i} style={{ color: "#93C5FD", fontWeight: 600 }}>{p.slice(2, -2)}</strong>
+      : p
+  );
+}
+
 function BotIcon() {
   return (
-    <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
+    <div style={{ background: C.accent }} className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0">
       HP
     </div>
   );
@@ -23,18 +49,20 @@ function Message({ msg }) {
     <div className={`flex gap-2 ${isUser ? "justify-end" : "justify-start"}`}>
       {!isUser && <BotIcon />}
       <div
+        style={isUser
+          ? { background: C.accent, color: "#fff" }
+          : { background: C.bgMessage, color: C.text, border: `1px solid ${C.border}` }
+        }
         className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap leading-relaxed ${
-          isUser
-            ? "bg-blue-600 text-white rounded-tr-sm"
-            : "bg-gray-100 text-gray-800 rounded-tl-sm"
+          isUser ? "rounded-tr-sm" : "rounded-tl-sm"
         }`}
       >
-        {msg.content}
+        {renderText(msg.content)}
         {msg.data && msg.data.length > 0 && (
-          <div className="mt-2 border-t border-gray-200 pt-2 space-y-1">
+          <div style={{ borderTop: `1px solid ${C.border}` }} className="mt-2 pt-2 space-y-1">
             {msg.data.slice(0, 5).map((row, i) => (
-              <div key={i} className="text-xs text-gray-500 flex gap-1 flex-wrap">
-                <span className="font-medium text-gray-700">{row.commune}</span>
+              <div key={i} className="text-xs flex gap-1 flex-wrap" style={{ color: C.textMuted }}>
+                <span style={{ color: "#93C5FD", fontWeight: 500 }}>{row.commune}</span>
                 {row.prix_m2 && <span>· {Number(row.prix_m2).toLocaleString("fr-FR")} €/m²</span>}
                 {row.rendement_pct && <span>· {row.rendement_pct}% rdt</span>}
                 {row.score_global && <span>· score {row.score_global}</span>}
@@ -57,6 +85,7 @@ export default function ChatWidget() {
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [inputFocused, setInputFocused] = useState(false);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -82,27 +111,16 @@ export default function ChatWidget() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: q }),
       });
-
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-
       setMessages((prev) => [
         ...prev,
-        {
-          role: "assistant",
-          content: data.answer,
-          data: data.data,
-          intent: data.intent,
-          latency: data.latency_ms,
-        },
+        { role: "assistant", content: data.answer, data: data.data, intent: data.intent },
       ]);
-    } catch (e) {
+    } catch {
       setMessages((prev) => [
         ...prev,
-        {
-          role: "assistant",
-          content: "Désolé, une erreur est survenue. Veuillez réessayer.",
-        },
+        { role: "assistant", content: "Désolé, une erreur est survenue. Veuillez réessayer." },
       ]);
     } finally {
       setLoading(false);
@@ -111,10 +129,11 @@ export default function ChatWidget() {
 
   return (
     <>
-      {/* Bouton flottant */}
+      {/* Bouton FAB */}
       <button
         onClick={() => setOpen((o) => !o)}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-xl flex items-center justify-center transition-all"
+        style={{ background: C.accent, boxShadow: C.fabShadow }}
+        className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full text-white flex items-center justify-center transition-all hover:scale-105 active:scale-95"
         title="HomePedia IA"
       >
         {open ? (
@@ -131,32 +150,38 @@ export default function ChatWidget() {
 
       {/* Fenêtre chat */}
       {open && (
-        <div className="fixed bottom-24 right-6 z-50 w-80 sm:w-96 h-[520px] bg-white rounded-2xl shadow-2xl flex flex-col border border-gray-200 overflow-hidden">
+        <div
+          style={{ background: C.bg, boxShadow: C.shadow, border: `1px solid ${C.border}` }}
+          className="fixed bottom-24 right-6 z-50 w-80 sm:w-96 h-[520px] rounded-2xl flex flex-col overflow-hidden"
+        >
           {/* Header */}
-          <div className="bg-blue-600 text-white px-4 py-3 flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-xs font-bold">
-              HP
+          <div style={{ background: C.headerBg, borderBottom: `1px solid ${C.border}` }} className="px-4 py-3 flex items-center gap-2 shrink-0">
+            <div style={{ background: "rgba(60,131,246,0.2)", border: `1px solid ${C.border}` }} className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold" >
+              <span style={{ color: "#93C5FD" }}>HP</span>
             </div>
             <div>
-              <div className="text-sm font-semibold">HomePedia IA</div>
-              <div className="text-xs text-blue-100">Immobilier Île-de-France</div>
+              <div className="text-sm font-semibold" style={{ color: C.text }}>HomePedia IA</div>
+              <div className="text-xs flex items-center gap-1" style={{ color: C.textMuted }}>
+                <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
+                Immobilier Île-de-France
+              </div>
             </div>
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          <div className="flex-1 overflow-y-auto p-3 space-y-3" style={{ scrollbarWidth: "thin", scrollbarColor: `${C.border} transparent` }}>
             {messages.map((msg, i) => (
               <Message key={i} msg={msg} />
             ))}
             {loading && (
               <div className="flex gap-2 items-center">
                 <BotIcon />
-                <div className="bg-gray-100 rounded-2xl rounded-tl-sm px-3 py-2 flex gap-1">
+                <div style={{ background: C.bgMessage, border: `1px solid ${C.border}` }} className="rounded-2xl rounded-tl-sm px-3 py-2 flex gap-1">
                   {[0, 1, 2].map((i) => (
                     <div
                       key={i}
-                      className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"
-                      style={{ animationDelay: `${i * 0.15}s` }}
+                      className="w-1.5 h-1.5 rounded-full animate-bounce"
+                      style={{ background: C.accent, animationDelay: `${i * 0.15}s` }}
                     />
                   ))}
                 </div>
@@ -165,14 +190,19 @@ export default function ChatWidget() {
             <div ref={bottomRef} />
           </div>
 
-          {/* Suggestions (si peu de messages) */}
+          {/* Suggestions */}
           {messages.length <= 1 && (
-            <div className="px-3 pb-2 flex flex-wrap gap-1">
+            <div className="px-3 pb-2 flex flex-wrap gap-1 shrink-0">
               {SUGGESTIONS.map((s) => (
                 <button
                   key={s}
                   onClick={() => sendMessage(s)}
-                  className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-full px-2 py-1 transition-colors"
+                  style={{
+                    background: "rgba(60,131,246,0.12)",
+                    color: "#93C5FD",
+                    border: `1px solid rgba(60,131,246,0.25)`,
+                  }}
+                  className="text-xs rounded-full px-2 py-1 transition-all hover:bg-blue-600 hover:text-white"
                 >
                   {s}
                 </button>
@@ -181,20 +211,30 @@ export default function ChatWidget() {
           )}
 
           {/* Input */}
-          <div className="border-t border-gray-100 p-3 flex gap-2">
+          <div style={{ borderTop: `1px solid ${C.border}`, background: C.headerBg }} className="p-3 flex gap-2 shrink-0">
             <input
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
+              onFocus={() => setInputFocused(true)}
+              onBlur={() => setInputFocused(false)}
               placeholder="Posez votre question..."
               disabled={loading}
-              className="flex-1 text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-blue-400 disabled:opacity-50"
+              style={{
+                background: C.inputBg,
+                color: "#F1F5F9",
+                border: `1px solid ${inputFocused ? C.borderFocus : C.border}`,
+                outline: "none",
+                caretColor: C.accent,
+              }}
+              className="flex-1 text-sm rounded-xl px-3 py-2 disabled:opacity-50 transition-colors placeholder:text-slate-500"
             />
             <button
               onClick={() => sendMessage()}
               disabled={loading || !input.trim()}
-              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-xl px-3 py-2 transition-colors"
+              style={{ background: input.trim() && !loading ? C.accent : "rgba(60,131,246,0.3)" }}
+              className="text-white rounded-xl px-3 py-2 transition-all hover:scale-105 active:scale-95 disabled:cursor-not-allowed"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
