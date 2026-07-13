@@ -250,11 +250,13 @@ function TransportsSection({ lat, lon, code }) {
 
 function RightPanel({ commune, transactions, agregat, isLocked, onUnlock }) {
   const [activeScoreTip, setActiveScoreTip] = useState(null);
-  const [expanded, setExpanded] = useState(false);
+  // 'peek' | 'expanded' | 'hidden'
+  const [sheetState, setSheetState] = useState('peek');
   const codeCommune = agregat?.code_commune || commune?.code_insee;
   const [fav, setFav] = useState(() => codeCommune ? isFavorite(codeCommune) : false);
   useEffect(() => { setFav(codeCommune ? isFavorite(codeCommune) : false); }, [codeCommune]);
-  useEffect(() => { setExpanded(false); }, [codeCommune]);
+  useEffect(() => { setSheetState('peek'); }, [codeCommune]);
+  const expanded = sheetState === 'expanded';
 
   const toggleFav = () => {
     if (!codeCommune) return;
@@ -309,8 +311,25 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock }) {
     ? DPE_LETTERS[Math.min(6, Math.max(0, Math.round(agregat.score_dpe_moyen) - 1))]
     : null;
 
-  const panelBase = "fixed md:relative bottom-0 left-0 right-0 md:inset-auto w-full md:w-80 md:h-full flex-shrink-0 z-30 md:z-20 transition-transform duration-300 rounded-t-2xl md:rounded-none overflow-y-auto";
+  const panelBase = "fixed md:relative bottom-0 left-0 right-0 md:inset-auto w-full md:w-80 md:h-full flex-shrink-0 z-30 md:z-20 rounded-t-2xl md:rounded-none overflow-y-auto";
   const panelStyle = { background: "rgba(11,17,27,0.97)", backdropFilter: "blur(16px)", borderTop: "1px solid rgba(60,131,246,0.2)", borderLeft: "1px solid rgba(60,131,246,0.12)" };
+  const mobileH = sheetState === 'hidden' ? "translate-y-full" : sheetState === 'expanded' ? "translate-y-0" : "translate-y-0";
+  const mobileMax = sheetState === 'expanded' ? "82vh" : sheetState === 'hidden' ? "0" : "34vh";
+
+  const DragHandle = () => (
+    <div className="md:hidden w-full flex flex-col items-center pt-3 pb-2 cursor-pointer select-none"
+      onClick={() => setSheetState(s => s === 'expanded' ? 'peek' : s === 'peek' ? 'hidden' : 'peek')}>
+      <div className="w-10 h-1.5 rounded-full mb-2" style={{ background: "rgba(100,116,139,0.6)" }} />
+      <div className="flex items-center gap-1.5">
+        <span className="material-symbols-outlined" style={{ fontSize: 14, color: "#475569" }}>
+          {sheetState === 'expanded' ? "keyboard_arrow_down" : sheetState === 'hidden' ? "keyboard_arrow_up" : "keyboard_arrow_up"}
+        </span>
+        <span className="text-[10px] font-medium" style={{ color: "#475569" }}>
+          {sheetState === 'expanded' ? "Réduire" : sheetState === 'peek' ? "Voir tout · Glisser bas pour fermer" : ""}
+        </span>
+      </div>
+    </div>
+  );
 
   if (!commune) return (
     <aside className={`${panelBase} hidden md:flex items-center justify-center`} style={panelStyle}>
@@ -322,15 +341,12 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock }) {
   );
 
   if (!agregat) return (
-    <aside className={`${panelBase} translate-y-0`} style={{ ...panelStyle, maxHeight: expanded ? "82vh" : "45vh" }}>
-      <button className="w-full flex flex-col items-center pt-2 pb-1 md:hidden" onClick={() => setExpanded(v => !v)} aria-label="Agrandir le panneau">
-        <div className="w-10 h-1 bg-slate-600 rounded-full mb-1" />
-        <span className="material-symbols-outlined text-slate-600" style={{ fontSize: 16 }}>{expanded ? "expand_more" : "expand_less"}</span>
-      </button>
+    <aside className={`${panelBase} ${mobileH} transition-all duration-300`} style={{ ...panelStyle, maxHeight: mobileMax }}>
+      <DragHandle />
       <div className="p-5 space-y-3 animate-pulse">
         <div className="h-6 bg-slate-700/60 rounded w-3/4" />
         <div className="h-4 bg-slate-700/40 rounded w-1/2" />
-        {[...Array(6)].map((_, i) => (
+        {[...Array(4)].map((_, i) => (
           <div key={i} className="h-16 bg-slate-800/60 rounded-lg" />
         ))}
       </div>
@@ -345,16 +361,50 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock }) {
     : null;
   const ipsDelta = agregat?.ips_moyen != null ? (agregat.ips_moyen - IPS_NATIONAL_AVG) : null;
 
-  return (
-    <aside className={`${panelBase} translate-y-0`} style={{ ...panelStyle, maxHeight: expanded ? "82vh" : "45vh" }}>
-      {/* Drag handle mobile — cliquable pour agrandir/réduire */}
-      <button className="w-full flex flex-col items-center pt-2 pb-1 md:hidden" onClick={() => setExpanded(v => !v)} aria-label="Agrandir le panneau">
-        <div className="w-10 h-1 bg-slate-600 rounded-full mb-1" />
-        <span className="material-symbols-outlined text-slate-600" style={{ fontSize: 16 }}>{expanded ? "expand_more" : "expand_less"}</span>
-      </button>
-      <div className="p-5 space-y-3">
+  const deptLabel = agregat?.code_departement?.trim() === "75" ? "PARIS" : commune.departement?.trim() === "92" ? "HAUTS-DE-SEINE" : commune.departement?.trim() === "93" ? "SEINE-ST-DENIS" : commune.departement?.trim() === "94" ? "VAL-DE-MARNE" : "IDF";
+  const prix = agregat?.prix_m2_median ?? agregat?.prix_moyen_m2;
 
-        {/* ── HEADER ────────────────────────────────────────────────────── */}
+  return (
+    <aside className={`${panelBase} ${mobileH} transition-all duration-300`} style={{ ...panelStyle, maxHeight: mobileMax }}>
+      <DragHandle />
+
+      {/* ── PEEK COMPACT — mobile uniquement, visible quand pas expanded ── */}
+      {sheetState !== 'expanded' && (
+        <button className="md:hidden w-full px-4 pb-3 text-left" onClick={() => setSheetState('expanded')}>
+          <div className="flex items-center justify-between">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-slate-100 truncate">{commune.nom}</h3>
+                <span className="text-[9px] px-1.5 py-0.5 rounded-full shrink-0 font-semibold"
+                  style={{ background: "rgba(60,131,246,0.15)", color: "#3c83f6", border: "1px solid rgba(60,131,246,0.25)" }}>
+                  {agregat?.code_departement?.trim() || commune.departement?.trim()}
+                </span>
+              </div>
+              {/* Mini scores + prix en ligne */}
+              <div className="flex items-center gap-3 mt-1.5">
+                {[
+                  { val: scoreQV,   icon: "favorite", color: "#10b981", label: "QV" },
+                  { val: scoreInv,  icon: "trending_up", color: "#3c83f6", label: "Inv" },
+                  { val: scoreStab, icon: "bolt", color: "#f59e0b", label: "DPE" },
+                ].filter(s => s.val != null).map(s => (
+                  <div key={s.label} className="flex items-center gap-1">
+                    <span className="material-symbols-outlined" style={{ fontSize: 11, color: s.color }}>{ s.icon}</span>
+                    <span className="text-xs font-bold" style={{ color: s.color }}>{Math.round(s.val)}</span>
+                  </div>
+                ))}
+                {prix && (
+                  <span className="text-xs text-slate-400 mono-nums ml-auto">{Math.round(prix / 100) / 10}k €/m²</span>
+                )}
+              </div>
+            </div>
+            <span className="material-symbols-outlined text-primary ml-3 shrink-0" style={{ fontSize: 20 }}>expand_less</span>
+          </div>
+        </button>
+      )}
+
+      <div className={`p-5 space-y-3 ${sheetState !== 'expanded' ? 'hidden md:block' : ''}`}>
+
+        {/* ── HEADER desktop + mobile expanded ──────────────────────────── */}
         <header className="pt-1">
           <div className="flex items-start justify-between mb-1">
             <div className="flex-1 min-w-0">
@@ -362,7 +412,7 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock }) {
               <div className="flex items-center gap-2 mt-1 flex-wrap">
                 <span className="text-[10px] px-2 py-0.5 rounded-full font-medium"
                   style={{ background: "rgba(60,131,246,0.15)", color: "#3c83f6", border: "1px solid rgba(60,131,246,0.3)" }}>
-                  {commune.departement?.trim()} — {agregat?.code_departement?.trim() === "75" ? "PARIS" : commune.departement?.trim() === "92" ? "HAUTS-DE-SEINE" : commune.departement?.trim() === "93" ? "SEINE-ST-DENIS" : commune.departement?.trim() === "94" ? "VAL-DE-MARNE" : "IDF"}
+                  {commune.departement?.trim()} — {deptLabel}
                 </span>
                 {agregat?.population_totale && (
                   <span className="text-[10px] text-slate-500 mono-nums">
@@ -375,7 +425,7 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock }) {
               {isLocked && (
                 <button
                   onClick={onUnlock}
-                  title="Déverrouiller la commune — permet de sélectionner une autre commune"
+                  title="Déverrouiller la commune"
                   className="size-9 rounded-xl flex items-center justify-center transition-all bg-amber-500/15 border border-amber-500/30 text-amber-400 hover:bg-amber-500/25"
                 >
                   <span className="material-symbols-outlined" style={{ fontSize: 16 }}>lock_open</span>
@@ -1935,16 +1985,33 @@ export default function MapView() {
       />
 
       <div className="relative flex-1">
-        {/* Bouton hamburger — mobile uniquement */}
+        {/* Bouton hamburger — mobile : en haut à gauche sous le breadcrumb */}
         <button
-          className="md:hidden absolute bottom-24 left-4 z-20 size-12 rounded-full shadow-lg flex items-center justify-center"
-          style={{ background: "rgba(60,131,246,0.95)", boxShadow: "0 4px 16px rgba(60,131,246,0.4)" }}
+          className="md:hidden absolute top-14 left-3 z-20 size-10 rounded-xl shadow-lg flex items-center justify-center"
+          style={{ background: "rgba(16,23,34,0.92)", border: "1px solid rgba(60,131,246,0.3)", backdropFilter: "blur(8px)" }}
           onClick={() => setSidebarOpen(v => !v)}
         >
-          <span className="material-symbols-outlined text-white" style={{ fontSize: 22 }}>
+          <span className="material-symbols-outlined text-primary" style={{ fontSize: 20 }}>
             {sidebarOpen ? "close" : "menu"}
           </span>
         </button>
+
+        {/* Bouton rappel commune — visible quand bottom sheet fermé */}
+        {selectedCommune && (
+          <button
+            className="md:hidden absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 px-4 py-2.5 rounded-full shadow-xl"
+            style={{
+              background: "rgba(16,23,34,0.95)", border: "1px solid rgba(60,131,246,0.4)",
+              backdropFilter: "blur(12px)",
+              display: sheetState === 'hidden' ? 'flex' : 'none'
+            }}
+            onClick={() => setSheetState('peek')}
+          >
+            <span className="material-symbols-outlined text-primary" style={{ fontSize: 16 }}>location_city</span>
+            <span className="text-sm font-semibold text-slate-100">{selectedCommune.nom}</span>
+            <span className="material-symbols-outlined text-slate-400" style={{ fontSize: 16 }}>expand_less</span>
+          </button>
+        )}
 
         {/* MapLibre 2D — toujours monté pour garder l'état, juste caché en mode 3D */}
         <div ref={mapContainer} className="w-full h-full" style={{ display: is3D ? "none" : "block", cursor: mapClickLoading ? "wait" : "crosshair" }} />
@@ -2006,11 +2073,11 @@ export default function MapView() {
 
         {/* Hint clic carte — visible seulement quand pas de commune sélectionnée */}
         {!selectedCommune && !mapClickLoading && (
-          <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-10 pointer-events-none"
-            style={{ background: "rgba(16,23,34,0.85)", border: "1px solid rgba(60,131,246,0.25)", borderRadius: 24, padding: "6px 14px" }}>
-            <span className="text-[11px] text-slate-400 flex items-center gap-1.5">
-              <span className="material-symbols-outlined text-primary" style={{ fontSize: 14 }}>touch_app</span>
-              Cliquez sur la carte pour sélectionner une commune
+          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 pointer-events-none"
+            style={{ background: "rgba(16,23,34,0.9)", border: "1px solid rgba(60,131,246,0.3)", borderRadius: 24, padding: "8px 18px", boxShadow: "0 4px 20px rgba(0,0,0,0.4)" }}>
+            <span className="text-xs text-slate-300 flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary" style={{ fontSize: 16 }}>touch_app</span>
+              Touchez une commune pour l'explorer
             </span>
           </div>
         )}
