@@ -1,0 +1,66 @@
+# Pipeline dédié au rebuild du chatbot (llama-cpp + Qwen2.5-0.5B ~500MB)
+# Déclencher MANUELLEMENT quand chatbot/ est modifié :
+#   gcloud builds submit --config cloudbuild-chatbot.yaml .
+# Nécessite une machine puissante (E2_HIGHCPU_8) pour compiler llama-cpp sans OOM.
+
+substitutions:
+  _REGION: europe-west1
+  _REGISTRY: europe-west1-docker.pkg.dev/homepedia-493013/homepedia
+  _CHATBOT_SERVICE: homepedia-chat
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8  # 8 vCPUs pour compiler llama-cpp sans OOM
+
+timeout: 2400s  # 40 min max (compile + download modèle + push)
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    id: build-chatbot
+    args:
+      - build
+      - -t
+      - ${_REGISTRY}/chat:${COMMIT_SHA}
+      - -t
+      - ${_REGISTRY}/chat:latest
+      - --cache-from
+      - ${_REGISTRY}/chat:latest
+      - ./chatbot
+
+  - name: gcr.io/cloud-builders/docker
+    id: push-chatbot
+    args:
+      - push
+      - --all-tags
+      - ${_REGISTRY}/chat
+    waitFor: [build-chatbot]
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    id: deploy-chatbot
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_CHATBOT_SERVICE}
+      - --image=${_REGISTRY}/chat:${COMMIT_SHA}
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated
+      - --port=8080
+      - --memory=2Gi
+      - --cpu=2
+      - --min-instances=0
+      - --max-instances=2
+      - --set-env-vars=POSTGRES_HOST=aws-0-eu-west-1.pooler.supabase.com,POSTGRES_PORT=5432,POSTGRES_DB=postgres,POSTGRES_USER=postgres.iugsfmvqddburvufzacy,POSTGRES_SSLMODE=require,DISABLE_LLM=false
+      - --update-secrets=POSTGRES_PASSWORD=homepedia-supabase-password:latest
+      - --quiet
+    waitFor: [push-chatbot]
+
+images:
+  - ${_REGISTRY}/chat:${COMMIT_SHA}
+  - ${_REGISTRY}/chat:latest
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/homepedia-493013/secrets/homepedia-supabase-password/versions/latest
+      env: POSTGRES_PASSWORD

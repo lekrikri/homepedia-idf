@@ -105,37 +105,24 @@ steps:
     waitFor: [push-backend]
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # ÉTAPE 1b : Build image Chatbot (Python Flask + Qwen2.5-0.5B baked)
-  # Attention : ~10-15 min (compilation llama-cpp + téléchargement modèle 300MB)
-  # Le cache Docker évite de recompiler si chatbot/ n'a pas changé
+  # ÉTAPE 1b : Tag chatbot existant avec le nouveau COMMIT_SHA (pas de rebuild)
+  # Le chatbot (llama-cpp + Qwen ~500MB) prend 10-15 min à compiler → pipeline
+  # séparé : cloudbuild-chatbot.yaml à déclencher manuellement quand chatbot/ change.
+  # Ici on réutilise :latest pour éviter le timeout sur la machine gratuite.
   # ─────────────────────────────────────────────────────────────────────────────
   - name: gcr.io/cloud-builders/docker
-    id: build-chatbot
+    id: tag-chatbot
+    entrypoint: bash
     args:
-      - build
-      - -t
-      - ${_REGISTRY}/chat:${COMMIT_SHA}
-      - -t
-      - ${_REGISTRY}/chat:latest
-      - --cache-from
-      - ${_REGISTRY}/chat:latest
-      - ./chatbot
+      - -c
+      - |
+        docker pull ${_REGISTRY}/chat:latest || true
+        docker tag ${_REGISTRY}/chat:latest ${_REGISTRY}/chat:${COMMIT_SHA} || true
+        docker push ${_REGISTRY}/chat:${COMMIT_SHA} || true
     waitFor: ['-']
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # ÉTAPE 2b : Push Chatbot
-  # ─────────────────────────────────────────────────────────────────────────────
-  - name: gcr.io/cloud-builders/docker
-    id: push-chatbot
-    args:
-      - push
-      - --all-tags
-      - ${_REGISTRY}/chat
-    waitFor: [build-chatbot]
-
-  # ─────────────────────────────────────────────────────────────────────────────
-  # ÉTAPE 3b : Déployer Chatbot sur Cloud Run
-  # 2GB RAM : Qwen2.5-0.5B (~300MB) + Python + Flask + pool DB
+  # ÉTAPE 2b : Déployer Chatbot sur Cloud Run (image :latest existante)
   # ─────────────────────────────────────────────────────────────────────────────
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
     id: deploy-chatbot
@@ -144,7 +131,7 @@ steps:
       - run
       - deploy
       - ${_CHATBOT_SERVICE}
-      - --image=${_REGISTRY}/chat:${COMMIT_SHA}
+      - --image=${_REGISTRY}/chat:latest
       - --region=${_REGION}
       - --platform=managed
       - --allow-unauthenticated
@@ -156,7 +143,7 @@ steps:
       - --set-env-vars=POSTGRES_HOST=aws-0-eu-west-1.pooler.supabase.com,POSTGRES_PORT=5432,POSTGRES_DB=postgres,POSTGRES_USER=postgres.iugsfmvqddburvufzacy,POSTGRES_SSLMODE=require,DISABLE_LLM=false
       - --update-secrets=POSTGRES_PASSWORD=homepedia-supabase-password:latest
       - --quiet
-    waitFor: [push-chatbot]
+    waitFor: [tag-chatbot]
 
   # ─────────────────────────────────────────────────────────────────────────────
   # ÉTAPE 4 : Récupérer les URLs backend + chatbot (pour injecter dans frontend)

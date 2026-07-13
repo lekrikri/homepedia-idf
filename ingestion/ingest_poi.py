@@ -18,10 +18,14 @@ import os
 
 DB_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://postgres:@fanfan_gwada_971@db.iugsfmvqddburvufzacy.supabase.co:5432/postgres"
+    "postgresql://postgres:%40fanfan_gwada_971@db.iugsfmvqddburvufzacy.supabase.co:5432/postgres"
 )
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
-DELAY_S = 1.2  # ~50 req/min — sous le rate-limit Overpass
+DELAY_S = 1.5  # ~40 req/min — sous le rate-limit Overpass
+HEADERS = {
+    "User-Agent": "HomePedia-Ingestion/1.0 (homepedia-idf; contact: ganou.christophe@gmail.com)",
+    "Accept": "application/json",
+}
 
 # Exactement la même requête batch que MapView.jsx fetchPOIBatch()
 QUERY_TEMPLATE = """[out:json][timeout:25];(
@@ -72,7 +76,8 @@ def fetch_poi(lat: float, lon: float, retries: int = 3) -> dict:
     q = QUERY_TEMPLATE.format(lat=lat, lon=lon)
     for attempt in range(retries):
         try:
-            r = requests.post(OVERPASS_URL, data=q, timeout=30)
+            # Overpass : GET avec param 'data' + User-Agent requis (POST → 406)
+            r = requests.get(OVERPASS_URL, params={"data": q}, headers=HEADERS, timeout=30)
             if r.status_code == 200:
                 return classify(r.json().get("elements", []))
             if r.status_code == 429:
