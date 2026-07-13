@@ -5,6 +5,8 @@ FROM node:20-alpine AS builder
 # VITE_API_URL est baked dans le JS au moment du build (Vite remplace import.meta.env.VITE_API_URL)
 ARG VITE_API_URL=""
 ENV VITE_API_URL=$VITE_API_URL
+ARG VITE_CHAT_API_URL=""
+ENV VITE_CHAT_API_URL=$VITE_CHAT_API_URL
 
 WORKDIR /app
 

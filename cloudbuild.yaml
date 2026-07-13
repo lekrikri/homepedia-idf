@@ -23,6 +23,7 @@ substitutions:
   _REGISTRY: europe-west1-docker.pkg.dev/homepedia-493013/homepedia
   _BACKEND_SERVICE: homepedia-backend
   _FRONTEND_SERVICE: homepedia-frontend
+  _CHATBOT_SERVICE: homepedia-chat
   _BACKEND_URL: https://homepedia-backend-714876351060.europe-west1.run.app
 
 options:
@@ -104,7 +105,61 @@ steps:
     waitFor: [push-backend]
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # ÉTAPE 4 : Récupérer l'URL du backend (pour injecter dans le build frontend)
+  # ÉTAPE 1b : Build image Chatbot (Python Flask + Qwen2.5-0.5B baked)
+  # Attention : ~10-15 min (compilation llama-cpp + téléchargement modèle 300MB)
+  # Le cache Docker évite de recompiler si chatbot/ n'a pas changé
+  # ─────────────────────────────────────────────────────────────────────────────
+  - name: gcr.io/cloud-builders/docker
+    id: build-chatbot
+    args:
+      - build
+      - -t
+      - ${_REGISTRY}/chat:${COMMIT_SHA}
+      - -t
+      - ${_REGISTRY}/chat:latest
+      - --cache-from
+      - ${_REGISTRY}/chat:latest
+      - ./chatbot
+    waitFor: ['-']
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ÉTAPE 2b : Push Chatbot
+  # ─────────────────────────────────────────────────────────────────────────────
+  - name: gcr.io/cloud-builders/docker
+    id: push-chatbot
+    args:
+      - push
+      - --all-tags
+      - ${_REGISTRY}/chat
+    waitFor: [build-chatbot]
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ÉTAPE 3b : Déployer Chatbot sur Cloud Run
+  # 2GB RAM : Qwen2.5-0.5B (~300MB) + Python + Flask + pool DB
+  # ─────────────────────────────────────────────────────────────────────────────
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    id: deploy-chatbot
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_CHATBOT_SERVICE}
+      - --image=${_REGISTRY}/chat:${COMMIT_SHA}
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated
+      - --port=8080
+      - --memory=2Gi
+      - --cpu=2
+      - --min-instances=0
+      - --max-instances=2
+      - --set-env-vars=POSTGRES_HOST=aws-0-eu-west-1.pooler.supabase.com,POSTGRES_PORT=5432,POSTGRES_DB=postgres,POSTGRES_USER=postgres.iugsfmvqddburvufzacy,POSTGRES_SSLMODE=require,DISABLE_LLM=false
+      - --update-secrets=POSTGRES_PASSWORD=homepedia-supabase-password:latest
+      - --quiet
+    waitFor: [push-chatbot]
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ÉTAPE 4 : Récupérer les URLs backend + chatbot (pour injecter dans frontend)
   # ─────────────────────────────────────────────────────────────────────────────
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
     id: get-backend-url
@@ -115,13 +170,17 @@ steps:
         URL=$$(gcloud run services describe ${_BACKEND_SERVICE} \
           --region ${_REGION} \
           --format 'value(status.url)')
+        CHAT_URL=$$(gcloud run services describe ${_CHATBOT_SERVICE} \
+          --region ${_REGION} \
+          --format 'value(status.url)' 2>/dev/null || echo "${_BACKEND_URL}")
         echo "BACKEND_URL=$$URL"
+        echo "CHAT_URL=$$CHAT_URL"
         echo "$$URL" > /workspace/backend_url.txt
-        echo "Backend deploye : $$URL"
-    waitFor: [deploy-backend]
+        echo "$$CHAT_URL" > /workspace/chat_url.txt
+    waitFor: [deploy-backend, deploy-chatbot]
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # ÉTAPE 5 : Build image Frontend (React + Vite) avec l'URL du backend
+  # ÉTAPE 5 : Build image Frontend (React + Vite) avec URLs backend + chatbot
   # ─────────────────────────────────────────────────────────────────────────────
   - name: gcr.io/cloud-builders/docker
     id: build-frontend
@@ -130,10 +189,12 @@ steps:
       - -c
       - |
         FILE_URL=$$(cat /workspace/backend_url.txt 2>/dev/null || true)
+        CHAT_URL=$$(cat /workspace/chat_url.txt 2>/dev/null || true)
         BACKEND_URL=$${FILE_URL:-${_BACKEND_URL}}
-        echo "Build frontend avec VITE_API_URL=$$BACKEND_URL"
+        echo "Build frontend VITE_API_URL=$$BACKEND_URL VITE_CHAT_API_URL=$$CHAT_URL"
         docker build \
           --build-arg VITE_API_URL="$$BACKEND_URL" \
+          --build-arg VITE_CHAT_API_URL="$$CHAT_URL" \
           --cache-from ${_REGISTRY}/frontend:latest \
           -t ${_REGISTRY}/frontend:${COMMIT_SHA} \
           -t ${_REGISTRY}/frontend:latest \
@@ -193,7 +254,7 @@ steps:
         echo "  Backend : $$BACKEND"
         echo "  Frontend: $$FRONTEND"
         echo "==================================="
-    waitFor: [deploy-backend, deploy-frontend]
+    waitFor: [deploy-backend, deploy-frontend, deploy-chatbot]
 
 # Images à conserver dans Artifact Registry après le build
 images:
@@ -201,6 +262,8 @@ images:
   - ${_REGISTRY}/backend:latest
   - ${_REGISTRY}/frontend:${COMMIT_SHA}
   - ${_REGISTRY}/frontend:latest
+  - ${_REGISTRY}/chat:${COMMIT_SHA}
+  - ${_REGISTRY}/chat:latest
 
 # Secrets injectés depuis Secret Manager GCP
 # JWT_SECRET est passé directement via --update-secrets dans deploy-backend (pas besoin ici)
