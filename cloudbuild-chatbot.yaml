@@ -15,6 +15,23 @@ options:
 timeout: 2400s  # 40 min max (compile + download modèle + push)
 
 steps:
+  # HuggingFace bloque les connexions TLS depuis les IPs GCP → modèles stockés dans GCS
+  - name: gcr.io/cloud-builders/gsutil
+    id: download-qwen
+    args:
+      - cp
+      - gs://homepedia-datalake/models/qwen2.5-0.5b-instruct-q4_k_m.gguf
+      - ./chatbot/models/qwen2.5-0.5b.gguf
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    id: download-minilm
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        mkdir -p ./chatbot/models/minilm
+        gsutil -m cp -r gs://homepedia-datalake/models/minilm/* ./chatbot/models/minilm/
+
   - name: gcr.io/cloud-builders/docker
     id: build-chatbot
     args:
@@ -24,6 +41,7 @@ steps:
       - --cache-from
       - ${_REGISTRY}/chat:latest
       - ./chatbot
+    waitFor: [download-qwen, download-minilm]
 
   - name: gcr.io/cloud-builders/docker
     id: push-chatbot

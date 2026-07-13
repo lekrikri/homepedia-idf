@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Dépendances système pour llama-cpp-python
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc g++ cmake make wget \
+    gcc g++ cmake make curl \
     && rm -rf /var/lib/apt/lists/*
 
 # llama-cpp-python CPU-only (pas de CUDA)
@@ -14,20 +14,18 @@ ENV FORCE_CMAKE=1
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Télécharger Qwen2.5-0.5B Q4_K_M au build time → 0 cold start download
-# Le modèle (~491MB) est inclus dans l'image Docker
-RUN mkdir -p models && \
-    wget -q --show-progress \
-      "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf" \
-      -O models/qwen2.5-0.5b.gguf && \
-    echo "✅ Qwen2.5-0.5B téléchargé ($(du -sh models/qwen2.5-0.5b.gguf | cut -f1))"
+# Modèle pré-copié dans le build context par cloudbuild-chatbot.yaml (gsutil cp depuis GCS)
+# HuggingFace bloque les connexions TLS depuis les IPs GCP → modèle stocké dans homepedia-datalake
+COPY models/qwen2.5-0.5b.gguf models/qwen2.5-0.5b.gguf
+RUN echo "✅ Qwen2.5-0.5B prêt ($(du -sh models/qwen2.5-0.5b.gguf | cut -f1))"
 
-# Pré-télécharger MiniLM-L12-v2 (~120MB) → 0 cold start download
-# Stocké dans /root/.cache/huggingface/hub/ à l'intérieur de l'image
+# MiniLM-L12-v2 pré-copié depuis GCS (structure cache HF conservée)
+# cloudbuild-chatbot.yaml télécharge depuis GCS → ./chatbot/models/minilm/
+COPY models/minilm/ /root/.cache/huggingface/hub/models--sentence-transformers--paraphrase-multilingual-MiniLM-L12-v2/
 RUN python -c "\
 from sentence_transformers import SentenceTransformer; \
 m = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2'); \
-print('✅ MiniLM-L12-v2 pré-chargé')"
+print('✅ MiniLM-L12-v2 prêt')"
 
 COPY . .
 
