@@ -240,7 +240,9 @@ def init_app():
         logger.info("⚠️ LLM désactivé (DISABLE_LLM=true)")
 
 
+# Appelé ici pour gunicorn --preload (le bloc __main__ n'est jamais exécuté avec gunicorn)
+init_app()
+
 if __name__ == "__main__":
-    init_app()
     port = int(os.getenv("PORT", "5001"))
     app.run(host="0.0.0.0", port=port, debug=False)
