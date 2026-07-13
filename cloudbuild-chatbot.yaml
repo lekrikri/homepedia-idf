@@ -20,8 +20,6 @@ steps:
     args:
       - build
       - -t
-      - ${_REGISTRY}/chat:${COMMIT_SHA}
-      - -t
       - ${_REGISTRY}/chat:latest
       - --cache-from
       - ${_REGISTRY}/chat:latest
@@ -29,10 +27,7 @@ steps:
 
   - name: gcr.io/cloud-builders/docker
     id: push-chatbot
-    args:
-      - push
-      - --all-tags
-      - ${_REGISTRY}/chat
+    args: [push, "${_REGISTRY}/chat:latest"]
     waitFor: [build-chatbot]
 
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
@@ -42,7 +37,7 @@ steps:
       - run
       - deploy
       - ${_CHATBOT_SERVICE}
-      - --image=${_REGISTRY}/chat:${COMMIT_SHA}
+      - --image=${_REGISTRY}/chat:latest
       - --region=${_REGION}
       - --platform=managed
       - --allow-unauthenticated
@@ -57,10 +52,5 @@ steps:
     waitFor: [push-chatbot]
 
 images:
-  - ${_REGISTRY}/chat:${COMMIT_SHA}
   - ${_REGISTRY}/chat:latest
 
-availableSecrets:
-  secretManager:
-    - versionName: projects/homepedia-493013/secrets/homepedia-supabase-password/versions/latest
-      env: POSTGRES_PASSWORD
