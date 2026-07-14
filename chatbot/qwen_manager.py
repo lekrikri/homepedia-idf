@@ -128,14 +128,16 @@ class HomepediaQwenManager:
     def _valid_numbers(self, text: str, sql_data: List[Dict]) -> bool:
         if not sql_data:
             return True
-        text_nums = self._extract_numbers(text)
-        if not text_nums:
-            return True
         valid_vals: List[float] = []
         for row in sql_data:
             for v in row.values():
                 if isinstance(v, (int, float)) and v is not None:
                     valid_vals.append(float(v))
+        text_nums = self._extract_numbers(text)
+        # Si les données ont des chiffres mais la réponse n'en cite aucun → réponse vague
+        if not text_nums and valid_vals:
+            logger.warning("⚠️ Réponse sans chiffres malgré des données → fallback")
+            return False
         for num in text_nums:
             if not any(abs(num - vv) <= 0.05 * max(abs(vv), 1) for vv in valid_vals):
                 logger.warning(f"⚠️ Hallucination détectée: {num} absent des données SQL")
