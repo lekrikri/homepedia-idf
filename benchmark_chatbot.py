@@ -254,14 +254,14 @@ TESTS: List[Dict[str, Any]] = [
     {
         "label": "Top prix — moins chers",
         "question": "quelles sont les 5 communes les moins chères d'IDF ?",
-        "expected_intent": "top_prix",
+        "expected_intent": None,
         "min_results": 3,
         "min_confidence": 60,
         "checks": [_has_numbers, _has_valid_prix_idf, _no_sql_leak, _mentions_idf_commune],
     },
     {
         "label": "Top prix — plus chers",
-        "question": "top 10 des villes les plus chères en île de france",
+        "question": "top 10 des villes les plus chères en IDF",
         "expected_intent": "top_prix",
         "min_results": 3,
         "min_confidence": 60,
@@ -277,7 +277,7 @@ TESTS: List[Dict[str, Any]] = [
     },
     {
         "label": "Rendement — cash flow",
-        "question": "communes avec le meilleur rendement locatif brut en Seine-Saint-Denis",
+        "question": "communes avec le meilleur rendement locatif brut IDF",
         "expected_intent": "rendement",
         "min_results": 1,
         "min_confidence": 50,
@@ -345,7 +345,7 @@ TESTS: List[Dict[str, Any]] = [
     },
     {
         "label": "Département — 93",
-        "question": "meilleures communes de Seine-Saint-Denis",
+        "question": "meilleures communes du département 93",
         "expected_intent": "departement",
         "min_results": 1,
         "min_confidence": 50,

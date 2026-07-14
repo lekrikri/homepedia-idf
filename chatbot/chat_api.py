@@ -258,6 +258,21 @@ def chat():
 
     logger.info(f"📊 SQL retourné {len(rows)} ligne(s)")
 
+    # Anti-hallucination : si aucune donnée pour un intent SQL, réponse fixe sans LLM
+    NO_SQL_INTENTS = {"salutation", "general", "hors_scope"}
+    if len(rows) == 0 and intent not in NO_SQL_INTENTS:
+        hint = TEMPLATES.get(intent, {}).get("response_hint", "résultats")
+        no_data_msg = (
+            f"Je n'ai pas trouvé de données pour '{hint}' correspondant à votre demande. "
+            "Essayez de reformuler ou précisez une commune ou département d'Île-de-France."
+        )
+        response = {
+            "answer": no_data_msg, "intent": intent, "nb_results": 0, "data": [],
+            "latency_ms": round((time.time() - start) * 1000), "cached": False,
+            "confidence_score": _confidence(intent, 0, False),
+        }
+        return jsonify(response)
+
     # 3. Génération réponse — on passe rows directement (pas format_for_display)
     if not DISABLE_LLM and qwen_manager.initialized:
         llm_response = qwen_manager.generate_response(
