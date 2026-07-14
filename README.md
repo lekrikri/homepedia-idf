@@ -143,12 +143,13 @@ T-DAT-902-PAR_3/
 
 ### Carte interactive (MapLibre GL)
 - Choroplèthes coloriées par indicateur (prix, DPE, sécurité, QdV...)
-- Clic commune → panel détaillé avec scroll : prix, scores composites, DPE, IPS, sécurité, ENEDIS
+- Clic commune → panel détaillé scrollable : prix, scores composites, DPE, IPS, sécurité, ENEDIS
 - **Score expliqué** : accordéon 5 axes (Prix 35%, DPE 20%, IPS 20%, Transport 15%, Sécurité 10%)
 - **Sparkline prix** : évolution SVG par année 2021–2025 + CAGR %/an
 - **Insights commune** : comparaisons automatiques vs moyenne IDF ("prix 12% sous la moyenne...")
-- **Communes similaires** : top 5 communes proches par profil (distance euclidienne 5D), cliquables
-- **Isochrone** : zone d'accessibilité 15/30/45 min (voiture/piéton/vélo) via ORS — bouton toggle sur la carte
+- **Communes similaires (#33)** : top 5 communes proches par profil (distance euclidienne 5D), cliquables
+- **Isochrone (#30)** : zone d'accessibilité 15/30/45 min (voiture/piéton/vélo) via ORS — bouton toggle sur la carte
+- **CTA croisés** : "Voir les transactions" filtré sur la commune + "Simuler l'investissement" → Portfolio
 - POI par catégorie : transports, hôpitaux, restaurants, écoles, parcs, commerces
 - **Cache POI multi-niveaux** : L1 RAM JS → L2 HTTP 24h → L3 Supabase JSONB
 - Prefetch hover : POI chargé au survol avant le clic (<50ms vs 1-4s Overpass)
@@ -164,11 +165,20 @@ T-DAT-902-PAR_3/
 ### Dashboard & Comparateur
 - Indicateurs par commune avec barres DPE, scores 0-100
 - Comparaison côte-à-côte de plusieurs communes
+- Bouton "Simuler l'investissement" dans chaque carte commune → Portfolio pré-rempli
 
-### Portfolio Investisseur (`/portfolio`)
+### Portfolio Investisseur (`/portfolio`) — #34
 - Simulateur cash-flow complet : prix, apport, taux crédit, durée, loyer, charges, taxe foncière, vacance
 - Calculs : mensualité, cash-flow mensuel, rendement brut/net, effort mensuel, ROI 10 ans
 - Graphique SVG cash-flow cumulé sur 20 ans + courbe patrimoine net + point de break-even
+- **Connecté aux autres pages** via query params `?prix=&loyer=&commune=&surface=` :
+  - Carte → Portfolio (prix médian × 50m², loyer médian si disponible)
+  - Transactions → Portfolio (prix réel de la vente, icône savings au hover par ligne)
+  - Comparer → Portfolio (bouton dans chaque CommuneHeader)
+
+### Transactions
+- Tableau paginé avec tri, filtres multi-critères (type, surface, DPE, prix, département...)
+- Actions par ligne au hover : voir sur la carte, voir les scores, **simuler l'investissement**
 
 ---
 
@@ -237,6 +247,51 @@ Le script fait des requêtes GET à l'API Overpass (1.5s délai entre communes) 
 | `GET /api/v1/isochrone?lat=&lon=&minutes=30&profile=driving-car` | Proxy ORS → GeoJSON isochrone |
 | `POST /api/v1/rag/query` | Chatbot RAG (sync) avec audit RGPD |
 | `POST /api/v1/rag/query/stream` | Chatbot RAG (SSE streaming) |
+
+---
+
+## Axes d'amélioration — Suivi
+
+| # | Feature | Statut | Description |
+|---|---------|--------|-------------|
+| #27 | Insights commune | ✅ Livré | Comparaisons textuelles automatiques vs moyenne IDF |
+| #28 | Sparkline prix | ✅ Livré | Évolution SVG 2021–2025 + CAGR par commune |
+| #29 | Cache POI L3 | ✅ Livré | JSONB Supabase → <50ms vs 4s Overpass |
+| #30 | Isochrones | ✅ Livré | ORS API, 15/30/45 min, 3 profils — clé `ORS_API_KEY` à configurer en prod |
+| #33 | Communes similaires | ✅ Livré | Distance euclidienne 5D, top 5, cliquables |
+| #34 | Portfolio investisseur | ✅ Livré | Simulateur cash-flow + connexion Carte/Transactions/Comparer via query params |
+| — | Fix fetch→axios | ✅ Livré | `fetch()` natif ignorait `VITE_API_URL` en prod → remplacé par `axios.get()` partout |
+| — | Fix layout desktop | ✅ Livré | RightPanel vide : `maxHeight` mobile s'appliquait aussi desktop — corrigé via hook `isMobile` |
+
+---
+
+## Ce qui reste à faire
+
+### Déploiement prod (prioritaire)
+```bash
+# Déclencher le build Cloud Run (frontend + backend)
+gcloud builds submit --config cloudbuild.yaml .
+```
+
+### Activer les isochrones en prod
+L'endpoint `/api/v1/isochrone` répond avec `{"fallback": true}` si `ORS_API_KEY` n'est pas configurée.
+```bash
+# Ajouter le secret dans Cloud Run
+gcloud secrets create ors-api-key --data-file=- <<< "votre_clé_ORS"
+gcloud run services update homepedia-api \
+  --set-secrets=ORS_API_KEY=ors-api-key:latest \
+  --region=europe-west1
+```
+Clé gratuite sur [openrouteservice.org](https://openrouteservice.org) — 2000 req/jour.
+
+### Features potentielles supplémentaires
+| Idée | Impact | Effort |
+|------|--------|--------|
+| Heatmap prix au clic (remplace choroplèthe) | Élevé | Moyen |
+| Alerte email / export CSV transactions | Moyen | Faible |
+| Score évolution annuelle (trend ↑↓) | Moyen | Moyen |
+| Carte 3D bâtiments (CesiumJS déjà intégré) | Élevé | Déjà à 80% |
+| Intégration GTFS transports (temps réel) | Élevé | Élevé |
 
 ---
 
