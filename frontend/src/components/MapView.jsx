@@ -1932,47 +1932,46 @@ export default function MapView() {
   // Reset isochrone quand on change de commune
   useEffect(() => { setIsoMinutes(null); }, [selectedCommune]);
 
-  // ── Heatmap transactions ────────────────────────────────────────────────────
+  // ── Heatmap IDF globale (centroïdes communes + prix médian) ────────────────
   useEffect(() => {
     if (!map.current || !mapLoaded) return;
     const SRC = 'heatmap-src', LYR = 'heatmap-layer';
     const cleanup = () => {
-      if (map.current?.getLayer(LYR)) map.current.removeLayer(LYR);
-      if (map.current?.getSource(SRC)) map.current.removeSource(SRC);
+      try {
+        if (map.current?.getLayer(LYR)) map.current.removeLayer(LYR);
+        if (map.current?.getSource(SRC)) map.current.removeSource(SRC);
+      } catch {}
     };
     cleanup();
     if (!showHeatmap) return;
-    const withCoords = transactions.filter(t => t.latitude && t.longitude && t.valeur_fonciere && t.surface_reelle_bati);
-    if (withCoords.length === 0) return;
-    const geojson = {
-      type: 'FeatureCollection',
-      features: withCoords.map(t => ({
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates: [t.longitude, t.latitude] },
-        properties: { prixM2: t.valeur_fonciere / t.surface_reelle_bati }
-      }))
-    };
-    map.current.addSource(SRC, { type: 'geojson', data: geojson });
-    map.current.addLayer({
-      id: LYR, type: 'heatmap', source: SRC,
-      paint: {
-        'heatmap-weight': ['interpolate', ['linear'], ['get', 'prixM2'], 2000, 0, 15000, 1],
-        'heatmap-intensity': 1.5,
-        'heatmap-radius': 30,
-        'heatmap-opacity': 0.75,
-        'heatmap-color': [
-          'interpolate', ['linear'], ['heatmap-density'],
-          0,   'rgba(0,0,0,0)',
-          0.15, '#3c83f6',
-          0.4,  '#10b981',
-          0.65, '#f59e0b',
-          0.85, '#ef4444',
-          1,   '#7c3aed'
-        ]
-      }
-    });
-    return cleanup;
-  }, [showHeatmap, transactions, mapLoaded]);
+    let cancelled = false;
+    axios.get('/api/v1/heatmap').then(r => {
+      if (cancelled || !map.current) return;
+      try {
+        if (map.current.getSource(SRC)) map.current.removeSource(SRC);
+        map.current.addSource(SRC, { type: 'geojson', data: r.data });
+        map.current.addLayer({
+          id: LYR, type: 'heatmap', source: SRC,
+          paint: {
+            'heatmap-weight': ['interpolate', ['linear'], ['get', 'prix_m2'], 3000, 0, 12000, 1],
+            'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 5, 1, 12, 2.5],
+            'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 5, 18, 12, 35],
+            'heatmap-opacity': 0.72,
+            'heatmap-color': [
+              'interpolate', ['linear'], ['heatmap-density'],
+              0,    'rgba(0,0,0,0)',
+              0.1,  '#3c83f6',
+              0.35, '#10b981',
+              0.6,  '#f59e0b',
+              0.8,  '#ef4444',
+              1,    '#7c3aed'
+            ]
+          }
+        });
+      } catch {}
+    }).catch(() => {});
+    return () => { cancelled = true; cleanup(); };
+  }, [showHeatmap, mapLoaded]);
 
   // Garder les refs à jour pour les handlers enregistrés sur la carte
   useEffect(() => { allCommunesRef.current = allCommunes; }, [allCommunes]);
@@ -2524,17 +2523,15 @@ export default function MapView() {
           )}
           </div>
 
-          {transactions.filter(t => t.latitude && t.longitude).length > 0 && (
-            <button
-              onClick={() => setShowHeatmap(v => !v)}
-              title={showHeatmap ? "Masquer la heatmap des prix" : "Afficher la heatmap des prix"}
-              className={`size-11 rounded-xl flex items-center justify-center transition-all ${
-                showHeatmap ? "text-white shadow-lg" : "glass-panel hover:bg-orange-500/20 text-slate-300"
-              }`}
-              style={showHeatmap ? { background: "#f59e0b", boxShadow: "0 4px 20px rgba(245,158,11,0.4)" } : {}}>
-              <span className="material-symbols-outlined" style={{ fontSize: 20 }}>thermostat</span>
-            </button>
-          )}
+          <button
+            onClick={() => setShowHeatmap(v => !v)}
+            title={showHeatmap ? "Masquer la heatmap des prix IDF" : "Heatmap des prix par commune (IDF)"}
+            className={`size-11 rounded-xl flex items-center justify-center transition-all ${
+              showHeatmap ? "text-white shadow-lg" : "glass-panel hover:bg-orange-500/20 text-slate-300"
+            }`}
+            style={showHeatmap ? { background: "#f59e0b", boxShadow: "0 4px 20px rgba(245,158,11,0.4)" } : {}}>
+            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>thermostat</span>
+          </button>
 
           <button
             onClick={() => map.current && map.current.setStyle(

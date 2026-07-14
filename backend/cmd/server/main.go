@@ -100,6 +100,8 @@ func main() {
 
 		// Isochrones (proxy ORS)
 		v1.GET("/isochrone", handlers.GetIsochrone)
+		// Heatmap IDF — centroïdes communes + prix médian (cache 30min / 24h)
+		v1.GET("/heatmap", middleware.HTTPCache(1800, 86400), handlers.GetHeatmapIDF)
 	}
 
 	port := os.Getenv("PORT")
