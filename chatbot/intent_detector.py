@@ -459,12 +459,17 @@ INTENT_PATTERNS = [
         r"(qu'est[- ]ce que|parle[- ]moi de|fiche|d[eé]tail|tout sur|"
         r"inform.+ sur|c'est comment|comment est|portrait de)\s+\w+", re.I
     )),
+    # top_prix avant prix_max : "les moins chères" doit être un classement (ASC), pas un filtre budget
+    ("top_prix", re.compile(
+        r"plus ch[eè]r|plus [eé]lev[eé]|moins ch[eè]r|top prix|"
+        r"classement prix|rang.*prix|cher.*idf|idf.*cher|les? moins ch", re.I
+    )),
     # rendement avant top_investissement : "meilleur rendement locatif" ne doit pas matcher investir
     ("rendement", re.compile(
         r"rendement|rentab(ilit[eé])?|rapport locatif|cash.?flow", re.I
     )),
     ("prix_max", re.compile(
-        r"moins de \d|moins cher|budget|pas cher|abordable|accessible|"
+        r"moins de \d|budget|pas ch[eè]r|abordable|accessible|"
         r"€/m²|euros?/m|inférieur", re.I
     )),
     ("departement", re.compile(
@@ -476,17 +481,13 @@ INTENT_PATTERNS = [
         r"\bdpe\b|[eé]nerg|[eé]cologique|passoire|thermique|consommation.?[eé]nerg", re.I
     )),
     ("securite", re.compile(
-        r"s[eé]curit|cambriolage|crime|d[eé]linquance|\bs[uû]re?\b|tranquille", re.I
+        r"s[eé]curit|cambriolage|crime|d[eé]linquance|\bs[uû]re\b|tranquille", re.I
     )),
     ("ecoles_ips", re.compile(
         r"[eé]cole|famille|enfant|\bips\b|[eé]ducation|scolaire|primaire|coll[eè]ge", re.I
     )),
     ("top_investissement", re.compile(
         r"investir|investissement|investisseur|placer|placement|acheter pour louer", re.I
-    )),
-    ("top_prix", re.compile(
-        r"plus cher|plus [eé]lev[eé]|le moins cher|les moins cher|top prix|"
-        r"classement prix|rang.*prix|cher.*idf|idf.*cher", re.I
     )),
     ("top_qualite_vie", re.compile(
         r"qualit[eé] de vie|vivre|habiter|meilleur endroit|o[uù] vivre|"
@@ -697,7 +698,7 @@ def _build_params(intent: str, q: str) -> Dict[str, Any]:
         if dept:
             params["dept"] = dept
     elif intent == "top_prix":
-        order = "ASC" if re.search(r"moins cher|moins [eé]lev[eé]|pas cher|abordable", q, re.I) else "DESC"
+        order = "ASC" if re.search(r"moins ch[eè]r|moins [eé]lev[eé]|pas cher|abordable|les? moins", q, re.I) else "DESC"
         # psycopg2 ne peut pas interpoler des mots-clés SQL (ORDER BY) → f-string avec valeur validée
         params["_sql"] = f"""
             SELECT city AS commune, TRIM(code_departement) AS dept,
