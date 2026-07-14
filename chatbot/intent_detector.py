@@ -51,7 +51,9 @@ INTENT_EXAMPLES: Dict[str, List[str]] = {
         "tu fais quoi", "tu es qui", "qui es-tu", "comment tu t'appelles",
         "c'est quoi homepedia", "qu'est-ce que tu sais faire",
         "aide-moi", "comment ça marche", "je voudrais de l'aide", "c'est quoi ce chatbot",
-        "tu peux m'aider", "à bientôt", "cool", "ok", "super", "génial", "parfait",
+        "tu peux m'aider", "vous pouvez m'aider", "pouvez-vous m'aider", "j'ai besoin d'aide",
+        "aidez-moi", "tu m'aides", "vous m'aidez", "aide moi stp",
+        "à bientôt", "cool", "ok", "super", "génial", "parfait",
     ],
     "top_investissement": [
         "où investir en Île-de-France",
@@ -138,6 +140,12 @@ INTENT_EXAMPLES: Dict[str, List[str]] = {
         "ratio loyer prix le plus intéressant",
         "taux de rendement brut le plus élevé",
         "loyer rapporté au prix d'achat",
+        "meilleur cash flow en IDF",
+        "communes avec fort rendement en banlieue parisienne",
+        "rentabilité locative brute la plus élevée",
+        "où le loyer ramené au prix est le plus intéressant",
+        "communes avec le meilleur ratio loyer sur prix",
+        "fort rendement locatif banlieue",
     ],
     "commune_detail": [
         "parle-moi de Versailles",
@@ -155,15 +163,24 @@ INTENT_EXAMPLES: Dict[str, List[str]] = {
         "top des prix immobiliers",
         "où les prix sont les plus élevés",
         "palmarès des prix IDF",
+        "les plus chères c'est où",
+        "où c'est le plus cher en IDF",
+        "c'est où les villes les moins chères",
+        "communes les moins chères d'IDF",
     ],
     "ecoles_ips": [
         "meilleures écoles en IDF",
         "communes avec bon IPS",
+        "communes avec un IPS élevé",
+        "communes avec un bon indice de position sociale",
+        "bon IPS en banlieue parisienne",
         "éducation de qualité pour mes enfants",
         "écoles favorisées en banlieue",
         "bon niveau scolaire",
         "communes avec de bonnes écoles primaires",
         "pour les familles avec des enfants scolarisés",
+        "où les enfants sont bien scolarisés",
+        "meilleures communes pour les familles avec enfants",
     ],
     "general": [
         "qu'est-ce que le DPE",
@@ -414,17 +431,26 @@ INTENT_PATTERNS = [
     ("hors_scope", re.compile(
         r"\b(lyon|marseille|bordeaux|toulouse|nantes|lille|nice|strasbourg|"
         r"rennes|montpellier|nancy|metz|reims|tours|dijon)\b|"
-        r"(m[eé]t[eé]o|temps qu'il fait|recette|cuisine|football|match|"
+        r"(m[eé]t[eé]o|temps.{0,6}fait.il|quel temps|qu.il fait dehors|"
+        r"recette|cuisine|football|match|"
         r"politique|[eé]lection|bourse|crypto|bitcoin|action en bourse)", re.I
     )),
     # Questions encyclopédiques immobilier
     ("general", re.compile(
         r"(qu'est[- ]ce que|c'est quoi|comment (fonctionne|calculer|interpr[eé]ter|lire)|"
         r"explique[- ]moi|d[eé]finition|comment (choisir|[eé]valuer)|"
-        r"diff[eé]rence entre .+ et .+|que veut dire|que signifie)\s+"
-        r"(le |la |les |un |une |l'|d'|du )?"
+        r"que veut dire|que signifie)\s+"
+        r"(le |la |les |un |une |l'|d'|du |loi\s+)?"
         r"(dpe|ips|rendement|loyer|zone tendue|score|dvf|pinel|m[eé]dian|"
-        r"investissement|immobilier|march[eé]|prix au m|diagnostic)", re.I
+        r"investissement|immobilier|march[eé]\s+immobilier|prix au m|diagnostic)|"
+        # "Différence entre X et Y" où X/Y contient un mot-clé immobilier
+        r"diff[eé]rence entre\s+.{0,60}(m[eé]dian|moyen|rendement|dpe|ips|net|brut|prix\s+au)|"
+        # Loi Pinel et dispositifs fiscaux directs
+        r"\b(loi\s+)?(pinel|scpi|ptz|robien|borloo|duflot|malraux)\b|"
+        # Taux de cambriolage encyclopédique
+        r"qu.est.ce que.{0,20}taux.{0,10}(cambriolage|criminalit|d[eé]linquance)|"
+        # Score composite
+        r"(score|indice)\s+composite", re.I
     )),
     ("comparaison", re.compile(
         r"compar|versus|vs\.?|diff[eé]rence|entre .+ et .+|.+ ou .+", re.I
@@ -486,6 +512,35 @@ KNOWN_COMMUNES = [
     "guyancourt", "montigny", "velizy", "vélizy", "meudon", "sèvres",
 ]
 
+# Mapping fragment → nom complet en base de données
+# Permet à SQL de trouver "Ivry-sur-Seine" quand l'utilisateur écrit "Ivry"
+COMMUNE_FULLNAMES: Dict[str, str] = {
+    "ivry": "Ivry-sur-Seine",
+    "vitry": "Vitry-sur-Seine",
+    "neuilly": "Neuilly-sur-Seine",
+    "boulogne": "Boulogne-Billancourt",
+    "fontenay": "Fontenay-sous-Bois",
+    "issy": "Issy-les-Moulineaux",
+    "rueil": "Rueil-Malmaison",
+    "asnières": "Asnières-sur-Seine",
+    "asnieres": "Asnières-sur-Seine",
+    "noisy": "Noisy-le-Grand",
+    "gif": "Gif-sur-Yvette",
+    "gif-sur-yvette": "Gif-sur-Yvette",
+    "juvisy": "Juvisy-sur-Orge",
+    "viry": "Viry-Châtillon",
+    "saint-germain": "Saint-Germain-en-Laye",
+    "savigny": "Savigny-sur-Orge",
+    "choisy": "Choisy-le-Roi",
+    "châtillon": "Châtillon",
+    "chatillon": "Châtillon",
+    "charenton": "Charenton-le-Pont",
+    "hay": "L'Haÿ-les-Roses",
+    "l'haÿ": "L'Haÿ-les-Roses",
+    "maisons-alfort": "Maisons-Alfort",
+    "alfortville": "Alfortville",
+}
+
 DEPT_MAP = {
     "paris": "75", "seine-et-marne": "77", "yvelines": "78",
     "essonne": "91", "hauts-de-seine": "92", "seine-saint-denis": "93",
@@ -515,11 +570,15 @@ def extract_price(text: str) -> int:
 
 def extract_communes(text: str) -> list:
     found = []
+    found_lower = []
     text_low = text.lower()
     for c in KNOWN_COMMUNES:
-        # Word boundary pour éviter "paris" dans "parisienne", "créteil" dans "créteillois" etc.
-        if re.search(r'\b' + re.escape(c) + r'\b', text_low) and c not in found:
-            found.append(c)
+        if re.search(r'\b' + re.escape(c) + r'\b', text_low):
+            # Résoudre le nom complet pour que le SQL matche la base (ex: "ivry" → "Ivry-sur-Seine")
+            full = COMMUNE_FULLNAMES.get(c, c)
+            if full.lower() not in found_lower:
+                found.append(full)
+                found_lower.append(full.lower())
     return found[:4]
 
 
@@ -547,10 +606,10 @@ def extract_criteria(text: str) -> Dict[str, Any]:
     if re.search(r'dpe|[eé]nerg|[eé]colog|passoire|thermique|classe [abc]', q):
         criteria["need_dpe"] = True
 
-    if re.search(r's[eé]curit|calme|tranquille|cambriolage|\bs[uû]re?\b', q):
+    if re.search(r's[eé]curit|calme|tranquille|cambriolage|\bs[uû]re?\b|criminalit|d[eé]linquance', q):
         criteria["need_securite"] = True
 
-    if re.search(r'famille|enfant|[eé]cole|ips|scolaire', q):
+    if re.search(r'familial|famille|enfant|[eé]cole|ips|scolaire', q):
         criteria["need_famille"] = True
 
     return criteria
@@ -697,6 +756,14 @@ def detect_intent(question: str) -> Tuple[str, Dict[str, Any]]:
         sql, params = build_multi_criteria_sql(criteria)
         logger.info(f"🔀 Multi-critères ({n_active} actifs) : {list(criteria.keys())}")
         return "multi_criteria", {"_sql": sql, **params}
+
+    # 3.5 Département explicite (code numérique ou nom) — priorité sur sémantique
+    # Évite que MiniLM confonde "communes du 91" avec dpe ou rendement
+    if not communes:
+        dept_early = extract_departement(q)
+        if dept_early:
+            logger.info(f"🗺️ Département détecté prioritaire: {dept_early}")
+            return "departement", {"dept": dept_early, "limit": 5}
 
     # 4. Détection sémantique
     sem_intent, sem_score = _semantic_intent(q)
