@@ -35,9 +35,8 @@ async function fetchPOIBatch(code, _lat, _lon, signal) {
   if (POI_PENDING.has(code)) return POI_PENDING.get(code);
 
   const p = (async () => {
-    const res = await fetch(`/api/v1/poi/${code}`, { signal });
-    if (!res.ok) throw new Error(`POI fetch error ${res.status}`);
-    const b = await res.json();
+    const res = await axios.get(`/api/v1/poi/${code}`, { signal });
+    const b = res.data;
     POI_CACHE.set(code, b);
     POI_PENDING.delete(code);
     return b;
@@ -259,16 +258,16 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock, sheetS
   const [insights, setInsights] = useState(null);
   useEffect(() => {
     if (!codeCommune) { setInsights(null); return; }
-    fetch(`/api/v1/communes/${codeCommune}/insights`)
-      .then(r => r.ok ? r.json() : null).then(d => setInsights(d)).catch(() => {});
+    axios.get(`/api/v1/communes/${codeCommune}/insights`)
+      .then(r => setInsights(r.data)).catch(() => setInsights(null));
   }, [codeCommune]);
 
   // #5 Prix historique par année
   const [prixHisto, setPrixHisto] = useState([]);
   useEffect(() => {
     if (!codeCommune) { setPrixHisto([]); return; }
-    fetch(`/api/v1/communes/${codeCommune}/prix-historique`)
-      .then(r => r.ok ? r.json() : { data: [] }).then(d => setPrixHisto(d.data || [])).catch(() => {});
+    axios.get(`/api/v1/communes/${codeCommune}/prix-historique`)
+      .then(r => setPrixHisto(r.data?.data || [])).catch(() => setPrixHisto([]));
   }, [codeCommune]);
 
   // #25 Accordéon score expliqué
@@ -2004,7 +2003,7 @@ export default function MapView() {
           const hoverCode = e.features[0].properties.code;
           if (hoverCode && hoverCode !== prefetchHoveredCode && !POI_CACHE.has(hoverCode)) {
             prefetchHoveredCode = hoverCode;
-            fetch(`/api/v1/poi/${hoverCode}`).then(r => r.json()).then(b => POI_CACHE.set(hoverCode, b)).catch(() => {});
+            axios.get(`/api/v1/poi/${hoverCode}`).then(r => POI_CACHE.set(hoverCode, r.data)).catch(() => {});
           }
         });
 
