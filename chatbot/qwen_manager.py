@@ -149,35 +149,91 @@ class HomepediaQwenManager:
         for i, r in enumerate(sql_data[:6], 1):
             c = r.get("commune", "?")
             d = r.get("dept", "")
-            p = r.get("prix_m2")
-            rdt = r.get("rendement_pct")
-            sc = r.get("score_global") or r.get("score_invest") or r.get("qualite_vie")
             parts = [f"{c} ({d})" if d else c]
-            if p:
-                parts.append(f"{int(p):,} €/m²".replace(",", " "))
-            if rdt:
-                parts.append(f"{rdt}% rdt")
-            if sc:
-                parts.append(f"score {sc}")
+
+            if intent == "ecoles_ips":
+                ips = r.get("ips_moyen")
+                pct = r.get("pct_ecoles_favorisees")
+                p = r.get("prix_m2")
+                if ips:
+                    parts.append(f"IPS {ips}")
+                if pct:
+                    parts.append(f"{pct}% écoles favorisées")
+                if p:
+                    parts.append(f"{int(p):,} €/m²".replace(",", " "))
+            elif intent == "rendement":
+                rdt = r.get("rendement_pct")
+                loyer = r.get("loyer_m2")
+                p = r.get("prix_m2")
+                if rdt:
+                    parts.append(f"{rdt}% rendement brut")
+                if loyer:
+                    parts.append(f"{loyer} €/m² loyer")
+                if p:
+                    parts.append(f"{int(p):,} €/m²".replace(",", " "))
+            elif intent == "dpe":
+                dpe = r.get("score_dpe")
+                pct_dpe = r.get("pct_bon_dpe")
+                p = r.get("prix_m2")
+                if dpe:
+                    parts.append(f"DPE score {dpe}")
+                if pct_dpe:
+                    parts.append(f"{pct_dpe}% bons DPE")
+                if p:
+                    parts.append(f"{int(p):,} €/m²".replace(",", " "))
+            elif intent == "securite":
+                cam = r.get("cambriolages_pour_mille")
+                sc = r.get("score_securite")
+                p = r.get("prix_m2")
+                if cam is not None:
+                    parts.append(f"{cam}‰ cambriolages")
+                if sc:
+                    parts.append(f"sécurité {sc}/100")
+                if p:
+                    parts.append(f"{int(p):,} €/m²".replace(",", " "))
+            else:
+                p = r.get("prix_m2")
+                rdt = r.get("rendement_pct")
+                sc = r.get("score_global") or r.get("score_invest") or r.get("qualite_vie")
+                if p:
+                    parts.append(f"{int(p):,} €/m²".replace(",", " "))
+                if rdt:
+                    parts.append(f"{rdt}% rdt")
+                if sc:
+                    parts.append(f"score {sc}")
+
             lines.append(f"{i}. {' — '.join(parts)}")
         return "\n".join(lines)
 
     # ── Helpers prompt ─────────────────────────────────────────────────────────
 
-    def _build_messages(self, sql_data: List[Dict], user_query: str, context: str) -> List[Dict]:
+    # Hint par intent : quelle(s) colonne(s) mettre en avant dans la réponse
+    _INTENT_FOCUS = {
+        "ecoles_ips":       "mets en avant l'IPS et le pourcentage d'écoles favorisées (pct_ecoles_favorisees)",
+        "rendement":        "mets en avant le rendement locatif brut (rendement_pct) et le loyer médian (loyer_m2)",
+        "dpe":              "mets en avant le score DPE (score_dpe) et le pourcentage de bons DPE (pct_bon_dpe)",
+        "securite":         "mets en avant le taux de cambriolages (cambriolages_pour_mille) et le score sécurité",
+        "top_investissement": "mets en avant le score investissement (score_invest) et le rendement (rendement_pct)",
+        "top_qualite_vie":  "mets en avant le score qualité de vie (qualite_vie) et l'IPS écoles",
+        "top_prix":         "mets en avant le prix au m² (prix_m2) et le nombre de transactions",
+        "multi_criteria":   "mets en avant le score global et les critères demandés par l'utilisateur",
+        "comparaison":      "compare les colonnes clés : prix_m2, rendement_pct, ips_ecoles, cambriolages_pour_mille, dpe_score",
+    }
+
+    def _build_messages(self, sql_data: List[Dict], user_query: str, context: str, intent: str = "") -> List[Dict]:
         data_json = json.dumps(sql_data[:6], ensure_ascii=False, default=str)
         context_block = f"Historique : {context}\n" if context.strip() else ""
+        focus = self._INTENT_FOCUS.get(intent, "mets en avant les données les plus pertinentes pour la question")
         return [
             {"role": "system", "content": (
                 "Tu es HomePedia, assistant immobilier IDF. "
-                "RÈGLES : cite UNIQUEMENT les chiffres du JSON. "
-                "Réponds en français, 2-3 phrases courtes. "
+                "RÈGLES : cite UNIQUEMENT les chiffres du JSON fourni. "
+                f"Pour cette question, {focus}. "
+                "Réponds en français, 2-4 phrases courtes. "
                 "Pas de code ni de LaTeX."
             )},
             {"role": "user", "content": (
                 f"{context_block}"
-                f"Exemple : Données:[{{\"commune\":\"Massy\",\"prix_m2\":4200}}]"
-                f" → Massy (91) affiche 4 200 €/m².\n"
                 f"Données : {data_json}\nQuestion : {user_query}"
             )},
         ]
@@ -212,7 +268,7 @@ class HomepediaQwenManager:
         """Génère une réponse complète (non-streaming)."""
         if not self.initialized:
             return None
-        messages = self._build_messages(sql_data, user_query, context)
+        messages = self._build_messages(sql_data, user_query, context, intent=intent)
         try:
             response = self.model.create_chat_completion(messages=messages, **self._llm_params())
             text = self._clean(response["choices"][0]["message"]["content"].strip())
@@ -237,7 +293,7 @@ class HomepediaQwenManager:
         """Streaming token-par-token via llama-cpp (générateur de str)."""
         if not self.initialized:
             return
-        messages = self._build_messages(sql_data, user_query, context)
+        messages = self._build_messages(sql_data, user_query, context, intent=intent)
         try:
             for chunk in self.model.create_chat_completion(
                 messages=messages, stream=True, **self._llm_params()

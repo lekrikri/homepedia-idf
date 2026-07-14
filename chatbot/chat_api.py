@@ -124,17 +124,58 @@ def fallback_response(rows: list, intent: str, question: str) -> str:
     for i, row in enumerate(rows[:6], 1):
         commune = row.get("commune", "?")
         dept = row.get("dept", "")
-        prix = row.get("prix_m2")
-        score = row.get("score_global") or row.get("score_invest") or row.get("qualite_vie")
-        rendement = row.get("rendement_pct")
-
         parts = [f"**{commune}** ({dept})"]
-        if prix:
-            parts.append(f"{int(prix):,} €/m²".replace(",", " "))
-        if rendement:
-            parts.append(f"rendement {rendement}%")
-        if score:
-            parts.append(f"score {score}/100")
+
+        if intent == "ecoles_ips":
+            ips = row.get("ips_moyen")
+            pct = row.get("pct_ecoles_favorisees")
+            prix = row.get("prix_m2")
+            if ips:
+                parts.append(f"IPS {ips}")
+            if pct:
+                parts.append(f"{pct}% écoles favorisées")
+            if prix:
+                parts.append(f"{int(prix):,} €/m²".replace(",", " "))
+        elif intent == "rendement":
+            rdt = row.get("rendement_pct")
+            loyer = row.get("loyer_m2")
+            prix = row.get("prix_m2")
+            if rdt:
+                parts.append(f"{rdt}% rendement brut")
+            if loyer:
+                parts.append(f"{loyer} €/m² loyer")
+            if prix:
+                parts.append(f"{int(prix):,} €/m²".replace(",", " "))
+        elif intent == "dpe":
+            dpe = row.get("score_dpe")
+            pct_dpe = row.get("pct_bon_dpe")
+            prix = row.get("prix_m2")
+            if dpe:
+                parts.append(f"DPE score {dpe}")
+            if pct_dpe:
+                parts.append(f"{pct_dpe}% bons DPE")
+            if prix:
+                parts.append(f"{int(prix):,} €/m²".replace(",", " "))
+        elif intent == "securite":
+            cam = row.get("cambriolages_pour_mille")
+            sc = row.get("score_securite")
+            prix = row.get("prix_m2")
+            if cam is not None:
+                parts.append(f"{cam}‰ cambriolages")
+            if sc:
+                parts.append(f"sécurité {sc}/100")
+            if prix:
+                parts.append(f"{int(prix):,} €/m²".replace(",", " "))
+        else:
+            prix = row.get("prix_m2")
+            rendement = row.get("rendement_pct")
+            score = row.get("score_global") or row.get("score_invest") or row.get("qualite_vie")
+            if prix:
+                parts.append(f"{int(prix):,} €/m²".replace(",", " "))
+            if rendement:
+                parts.append(f"rendement {rendement}%")
+            if score:
+                parts.append(f"score {score}/100")
 
         lines.append(f"{i}. {' — '.join(parts)}")
 
