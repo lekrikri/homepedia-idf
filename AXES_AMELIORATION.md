@@ -534,3 +534,37 @@
 ---
 
 > *Document mis à jour — analyse interne + Gemini + ChatGPT + Claude — Juillet 2026*
+
+---
+
+## ✅ Implémenté (session 2026-07-14)
+
+| # | Feature | Commit | Statut |
+|---|---|---|---|
+| 3 | Cache sémantique RAG (MiniLM cosine ≥ 0.92) | `a7a358b` | ✅ Prod |
+| 4 | Export PDF — bouton download + CSS @media print | `a7a358b` | ✅ Prod |
+| 5 | Évolution des prix — sparkline SVG par année + CAGR + badge trend N-1→N | `a7a358b` | ✅ Prod |
+| 25 | Score expliqué — accordéon 5 axes avec barres de contribution | `a7a358b` | ✅ Prod |
+| 27 | "Pourquoi cette commune ?" — insights textuels + comparaisons vs IDF | `a7a358b` | ✅ Prod |
+| 28 | Score de confiance chatbot — `confidence_score: 0–100` par réponse | `a7a358b` | ✅ Prod |
+| 29 | Audit RGPD — `audit_logs` (auth + RAG) + purge 30j + migration SQL | `a7a358b` | ✅ Prod |
+| 33 | Communes similaires — distance euclidienne 5 features, endpoint Go `/similaires` | `a7a358b` | ✅ Prod |
+| 34 | Portfolio Investisseur — simulateur cash-flow, connecté Carte/Transactions/Comparer via query params | `a7a358b` | ✅ Prod |
+| 36 | Favoris surveillance prix — FavoritesModal reécrit, prix live `Promise.allSettled`, DeltaBadge ↑↓, export JSON | `97e35e7` | ✅ Prod |
+| — | Heatmap IDF globale — endpoint Go `/api/v1/heatmap` + layer MapLibre gradient de prix | `d66ef21` | ✅ Prod |
+| — | Fix desktop RightPanel — `overflow-hidden` + hook `isMobile` + `dynamicStyle` conditionnel | `d66ef21` | ✅ Prod |
+| — | Fix carte noire — `mapLoaded` state déclaré + `setMapLoaded(true)` dans `on("load")` | `ed8fd9f` | ✅ Prod |
+| — | Chatbot streaming natif — `generate_stream()` llama-cpp, prompt raccourci, `max_tokens=120`, sans `gc.collect()` | `ed8fd9f` | ✅ Prod |
+
+---
+
+## ⏳ À faire — Prochaines priorités suggérées
+
+| Tier | # | Axe | Effort |
+|---|---|---|---|
+| Quick Win | 26 | MVT PostGIS — tuiles vectorielles (besoin import géométrie Supabase) | 3–5j |
+| Moyen terme | 30 | Isochrones GTFS — ORS API key à créer sur openrouteservice.org (2000 req/j gratuit) | 1–2sem |
+| Moyen terme | 32 | RAG adaptatif — routing SQL/BM25/ChromaDB selon type de question | 1sem |
+| Moyen terme | 31 | Fine-tuning Qwen2.5 LoRA corpus immobilier FR | 2–3sem |
+| Data | 1 | Delta Lake CDF (Databricks) — recalcul incrémental uniquement | 1–2j |
+| Data | 2 | Great Expectations / Deequ — validation qualité données auto bronze/silver/gold | 2–3j |
