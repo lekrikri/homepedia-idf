@@ -132,6 +132,12 @@ INTENT_EXAMPLES: Dict[str, List[str]] = {
         "rapport loyer sur prix d'achat",
         "investissement à forte rentabilité",
         "cash flow positif immobilier",
+        "où investir avec le meilleur rendement locatif",
+        "communes avec le meilleur rendement locatif brut IDF",
+        "rendement locatif le plus élevé en banlieue",
+        "ratio loyer prix le plus intéressant",
+        "taux de rendement brut le plus élevé",
+        "loyer rapporté au prix d'achat",
     ],
     "commune_detail": [
         "parle-moi de Versailles",

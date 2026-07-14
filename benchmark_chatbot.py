@@ -30,7 +30,7 @@ BOLD    = "\033[1m"
 DIM     = "\033[2m"
 
 # Plages de valeurs réalistes pour l'IDF (validation RAG anti-hallucination)
-PRIX_MIN_IDF = 1_500   # €/m²  — zones rurales 77/91
+PRIX_MIN_IDF = 800    # €/m²  — zones très rurales 77
 PRIX_MAX_IDF = 16_000  # €/m²  — Paris 6e
 RENDEMENT_MIN = 1.0    # %
 RENDEMENT_MAX = 9.0    # %
@@ -65,15 +65,10 @@ def _is_hors_scope(text: str) -> bool:
     return any(w in text.lower() for w in ["île-de-france", "idf", "spécialisé", "périmètre", "uniquement"])
 
 def _has_valid_prix_idf(text: str) -> bool:
-    """Prix IDF plausibles : 1500-16000 euros/m2 (gère espaces milliers ex: 7 184)."""
-    # Extraire nombres 4-5 chiffres éventuellement séparés par espace/nbsp
-    raw = re.findall(r'(\d{1,2}[\s ]?\d{3})|(\d{4,5})', text)
-    numbers = []
-    for grp in raw:
-        for n in grp:
-            if n:
-                val = int(re.sub(r'[^\d]', '', n))
-                numbers.append(val)
+    """Prix IDF plausibles : 800-16000 euros/m2 (gère espaces insécables milliers)."""
+    t = re.sub(r"[  ]", " ", text)
+    raw = re.findall(r"(\d{1,2} \d{3})|(\d{4,5})", t)
+    numbers = [int(re.sub(r"[^\d]", "", n)) for grp in raw for n in grp if n]
     return any(PRIX_MIN_IDF <= n <= PRIX_MAX_IDF for n in numbers)
 
 def _has_rendement_realistic(text: str) -> bool:
@@ -541,13 +536,13 @@ def main() -> None:
 
     # Détail par catégorie
     print(f"\n{BOLD}Détail par intent :{RESET}")
-    for intent_name, st in sorted(intent_stats.items()):
+    for intent_name, st in sorted(intent_stats.items(), key=lambda x: x[0] or "_"):
         p = st["pass"]
         t = st["total"]
         pct_i = round(p / t * 100) if t else 0
         c = GREEN if pct_i == 100 else YELLOW if pct_i >= 50 else RED
         bar = "█" * p + "░" * (t - p)
-        print(f"  {intent_name:<20} {c}{p}/{t} ({pct_i:>3}%) {bar}{RESET}")
+        print(f"  {(intent_name or "None"):<20} {c}{p}/{t} ({pct_i:>3}%) {bar}{RESET}")
 
     # Sauvegarder le rapport JSON
     report = {
