@@ -1439,6 +1439,7 @@ export default function MapView() {
   const [isoProfile, setIsoProfile] = useState('driving-car');
   const [isoLoading, setIsoLoading] = useState(false);
   const [showHeatmap, setShowHeatmap] = useState(false);
+  const [mapLoaded, setMapLoaded] = useState(false);
   const setTxHoverRef = useRef(null);
   useEffect(() => { setTxHoverRef.current = setTxHover; }, []);
   const setHoveredTxIdRef = useRef(null);
@@ -2105,6 +2106,7 @@ export default function MapView() {
 
     // ── Chargement polygones IDF + hover ────────────────────────────────────
     map.current.on("load", async () => {
+      setMapLoaded(true);
       try {
         const res = await fetch(
           "https://geo.api.gouv.fr/communes?codeRegion=11&geometry=contour&format=geojson&fields=nom,code",
