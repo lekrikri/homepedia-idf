@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
+import { useSearchParams, useNavigate } from "react-router-dom";
 
 const terminalGridStyle = {
   backgroundImage: "radial-gradient(circle at 2px 2px, rgba(60,131,246,0.05) 1px, transparent 0)",
@@ -145,11 +146,26 @@ function CashflowChart({ data, breakEvenYear }) {
 }
 
 export default function Portfolio() {
-  const [prix, setPrix] = useState(350000);
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+
+  // Initialisation depuis query params (?prix=X&loyer=Y&commune=NOM&surface=S)
+  const communeLabel = searchParams.get('commune') || null;
+  const surfaceParam = Number(searchParams.get('surface')) || 0;
+  const prixParam = searchParams.get('prix') ? Number(searchParams.get('prix')) : null;
+  // Si prix/m² passé + surface, on calcule le total ; sinon on prend prix direct
+  const prixInit = prixParam
+    ? (surfaceParam && prixParam < 50000 ? Math.round(prixParam * surfaceParam) : prixParam)
+    : 350000;
+
+  const [prix, setPrix] = useState(Math.min(Math.max(prixInit, 50000), 2000000));
   const [apportPct, setApportPct] = useState(20);
   const [taux, setTaux] = useState(3.5);
   const [duree, setDuree] = useState(20);
-  const [loyer, setLoyer] = useState(1200);
+  const [loyer, setLoyer] = useState(() => {
+    const l = Number(searchParams.get('loyer'));
+    return l > 0 ? Math.min(Math.max(l, 200), 8000) : 1200;
+  });
   const [charges, setCharges] = useState(2400);
   const [taxeFonciere, setTaxeFonciere] = useState(1800);
   const [vacance, setVacance] = useState(5);
@@ -238,9 +254,17 @@ export default function Portfolio() {
               <span className="text-slate-400">Portfolio</span>
             </div>
             <h1 className="text-3xl font-bold text-white">Portfolio Investisseur</h1>
-            <p className="text-slate-400 mt-1 text-xs font-semibold uppercase tracking-widest">
-              Simulez votre investissement locatif en IDF
-            </p>
+            {communeLabel ? (
+              <div className="flex items-center gap-2 mt-1.5">
+                <span className="material-symbols-outlined text-primary" style={{ fontSize: 14 }}>location_on</span>
+                <span className="text-sm font-semibold text-primary">{communeLabel}</span>
+                <button onClick={() => navigate('/carte')} className="text-[10px] text-slate-500 hover:text-slate-300 underline ml-1">Voir sur la carte</button>
+              </div>
+            ) : (
+              <p className="text-slate-400 mt-1 text-xs font-semibold uppercase tracking-widest">
+                Simulez votre investissement locatif en IDF
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-xl px-4 py-2">
             <span className="material-symbols-outlined text-primary" style={{ fontSize: 16 }}>info</span>

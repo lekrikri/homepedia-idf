@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { isFavorite, addFavorite, removeFavorite } from "../utils/favorites.js";
 import { useCommunes } from "../contexts/CommunesContext.jsx";
@@ -183,6 +183,7 @@ function CommuneSearch({ label, color, value, onSelect }) {
 // ── Bloc d'en-tête commune ────────────────────────────────────────────────────
 
 function CommuneHeader({ data, color, side }) {
+  const navigate = useNavigate();
   const [fav, setFav] = useState(() => data ? isFavorite(data.code_commune) : false);
 
   const toggleFav = () => {
@@ -225,6 +226,20 @@ function CommuneHeader({ data, color, side }) {
           <div><p className="text-[10px] text-slate-500 uppercase">Prix médian/m²</p><p className="text-sm font-bold text-blue-400">{fmt(data.prix_median_m2)} €</p></div>
         )}
       </div>
+      {data.prix_median_m2 && (
+        <button
+          onClick={() => {
+            const prixTotal = Math.round(data.prix_median_m2 * 50);
+            const params = new URLSearchParams({ prix: prixTotal, commune: data.nom || data.city || '' });
+            if (data.loyer_median_m2) params.set('loyer', Math.round(data.loyer_median_m2 * 50));
+            navigate(`/portfolio?${params.toString()}`);
+          }}
+          className="mt-3 w-full py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all hover:brightness-110"
+          style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)", color: "#10b981" }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 13 }}>savings</span>
+          Simuler l'investissement
+        </button>
+      )}
     </div>
   );
 }

@@ -617,6 +617,19 @@ export default function Transactions() {
                     {/* Actions — toujours rendues mais invisibles hors hover */}
                     <td className="px-5 py-3 text-right">
                       <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {t.valeur_fonciere && (
+                          <button
+                            onClick={() => {
+                              const params = new URLSearchParams({ prix: Math.round(t.valeur_fonciere) });
+                              if (t.commune) params.set('commune', t.commune);
+                              if (t.surface_reelle_bati) params.set('surface', Math.round(t.surface_reelle_bati));
+                              navigate(`/portfolio?${params.toString()}`);
+                            }}
+                            title="Simuler l'investissement"
+                            className="p-1 rounded-lg hover:bg-emerald-900/40 text-slate-500 hover:text-emerald-400 transition-colors">
+                            <span className="material-symbols-outlined" style={{ fontSize: 15 }}>savings</span>
+                          </button>
+                        )}
                         {t.code_commune && (
                           <button
                             onClick={() => navigate(`/carte?commune=${t.code_commune}`)}
