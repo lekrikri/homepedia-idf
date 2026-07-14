@@ -102,6 +102,9 @@ func main() {
 		v1.GET("/isochrone", handlers.GetIsochrone)
 		// Heatmap IDF — centroïdes communes + prix médian (cache 30min / 24h)
 		v1.GET("/heatmap", middleware.HTTPCache(1800, 86400), handlers.GetHeatmapIDF)
+
+		// Tuiles vectorielles MVT (PostGIS ST_AsMVT) — cache 1h navigateur
+		v1.GET("/tiles/:z/:x/:y", middleware.HTTPCache(3600, 86400), handlers.GetTiles)
 	}
 
 	port := os.Getenv("PORT")

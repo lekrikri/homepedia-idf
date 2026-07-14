@@ -155,6 +155,35 @@ INTENT_EXAMPLES: Dict[str, List[str]] = {
         "communes avec de bonnes écoles primaires",
         "pour les familles avec des enfants scolarisés",
     ],
+    "general": [
+        "qu'est-ce que le DPE",
+        "comment fonctionne l'IPS",
+        "c'est quoi le rendement locatif",
+        "comment calculer le rendement brut",
+        "qu'est-ce que la zone tendue",
+        "comment choisir une commune pour investir",
+        "différence entre rendement brut et net",
+        "c'est quoi les scores composites",
+        "explique-moi le marché immobilier IDF",
+        "comment interpréter le score investissement",
+        "qu'est-ce que le DVF",
+        "comment fonctionne la loi Pinel",
+        "c'est quoi le prix médian au m2",
+        "comment lire un diagnostic DPE",
+    ],
+    "hors_scope": [
+        "quel temps fait-il aujourd'hui",
+        "qui a gagné le match",
+        "donne-moi une recette de cuisine",
+        "comment s'appelle le président",
+        "tu connais les prix à Lyon",
+        "immobilier à Marseille",
+        "prix à Bordeaux",
+        "hors de l'île-de-france",
+        "paris ville lumière histoire",
+        "actualité politique",
+        "bourse et marchés financiers",
+    ],
 }
 
 
@@ -353,6 +382,20 @@ TEMPLATES: Dict[str, Dict] = {
         "params": {},
         "response_hint": "salutation",
     },
+
+    # Question encyclopédique immobilière — Qwen répond directement sans SQL
+    "general": {
+        "sql": None,
+        "params": {},
+        "response_hint": "explication concept immobilier IDF",
+    },
+
+    # Question hors périmètre IDF — réponse fixe sans SQL
+    "hors_scope": {
+        "sql": None,
+        "params": {},
+        "response_hint": "hors périmètre",
+    },
 }
 
 
@@ -363,6 +406,22 @@ INTENT_PATTERNS = [
     ("salutation", re.compile(
         r"^(salut|bonjour|bonsoir|hello|coucou|hey|hi|ok|merci|super|g[eé]nial|"
         r"parfait|cool|bravo|au revoir|bye|à bient[oô]t|bonne\s+\w+)[\s!.?]*$", re.I
+    )),
+    # Hors périmètre — villes hors IDF ou sujets non-immobiliers
+    ("hors_scope", re.compile(
+        r"\b(lyon|marseille|bordeaux|toulouse|nantes|lille|nice|strasbourg|"
+        r"rennes|montpellier|nancy|metz|reims|tours|dijon)\b|"
+        r"(m[eé]t[eé]o|temps qu'il fait|recette|cuisine|football|match|"
+        r"politique|[eé]lection|bourse|crypto|bitcoin|action en bourse)", re.I
+    )),
+    # Questions encyclopédiques immobilier
+    ("general", re.compile(
+        r"(qu'est[- ]ce que|c'est quoi|comment (fonctionne|calculer|interpr[eé]ter|lire)|"
+        r"explique[- ]moi|d[eé]finition|comment (choisir|[eé]valuer)|"
+        r"diff[eé]rence entre .+ et .+|que veut dire|que signifie)\s+"
+        r"(le |la |les |un |une |l'|d'|du )?"
+        r"(dpe|ips|rendement|loyer|zone tendue|score|dvf|pinel|m[eé]dian|"
+        r"investissement|immobilier|march[eé]|prix au m|diagnostic)", re.I
     )),
     ("comparaison", re.compile(
         r"compar|versus|vs\.?|diff[eé]rence|entre .+ et .+|.+ ou .+", re.I
@@ -584,6 +643,7 @@ def _build_params(intent: str, q: str) -> Dict[str, Any]:
 def detect_intent(question: str) -> Tuple[str, Dict[str, Any]]:
     """
     Détection hybride :
+    0. Hors périmètre IDF/immo → hors_scope (court-circuit)
     1. Comparaison multi-communes (heuristique)
     2. Commune unique nommée → fiche détail
     3. Multi-critères (≥ 2 dimensions actives)
@@ -592,6 +652,15 @@ def detect_intent(question: str) -> Tuple[str, Dict[str, Any]]:
     6. Fallback final top_qualite_vie
     """
     q = question.strip()
+
+    # 0. Hors périmètre — check regex prioritaire avant tout
+    for intent_name, pattern in INTENT_PATTERNS:
+        if intent_name == "hors_scope" and pattern.search(q):
+            logger.info("🚫 Hors scope détecté")
+            return "hors_scope", {}
+        if intent_name == "general" and pattern.search(q):
+            logger.info("📚 Question encyclopédique détectée")
+            return "general", {}
 
     # 1. Comparaison explicite entre communes nommées
     communes = extract_communes(q)

@@ -192,6 +192,36 @@ def chat():
     intent, params = detect_intent(question)
     logger.info(f"🎯 Intent: {intent} | params: {list(params.keys())}")
 
+    # Court-circuit hors_scope — réponse fixe sans SQL
+    if intent == "hors_scope":
+        response = {
+            "answer": "Je suis spécialisé dans l'immobilier en Île-de-France uniquement. "
+                      "Pour cette question, je ne peux pas vous aider, mais posez-moi une question "
+                      "sur les prix, les communes, le DPE ou les rendements locatifs en IDF !",
+            "intent": intent, "nb_results": 0, "data": [],
+            "latency_ms": round((time.time() - start) * 1000), "cached": False,
+            "confidence_score": 95,
+        }
+        return jsonify(response)
+
+    # Court-circuit general — question encyclopédique, Qwen répond sans données SQL
+    if intent == "general":
+        if not DISABLE_LLM and qwen_manager.initialized:
+            answer = qwen_manager.generate_response([], question, intent, context=context_summary)
+        else:
+            answer = None
+        if not answer:
+            answer = ("Je suis HomePedia IA, spécialisé dans les données immobilières IDF. "
+                      "Pour des explications détaillées sur ce concept, consultez notre guide ou "
+                      "reformulez votre question avec une commune spécifique.")
+        response = {
+            "answer": answer, "intent": intent, "nb_results": 0, "data": [],
+            "latency_ms": round((time.time() - start) * 1000), "cached": False,
+            "confidence_score": 70,
+        }
+        set_cached(question, response)
+        return jsonify(response)
+
     # Court-circuit salutation — pas de SQL, réponse fixe immédiate
     if intent == "salutation":
         greeting = (
@@ -275,6 +305,41 @@ def chat_stream():
     )
 
     intent, params = detect_intent(question)
+
+    def _sse_fixed(text: str, intent_name: str):
+        """SSE helper pour les réponses sans SQL."""
+        def gen():
+            meta = json.dumps({"intent": intent_name, "nb_results": 0, "data": []})
+            yield f"data: {meta}\n\n"
+            for word in text.split(" "):
+                yield f"data: {json.dumps({'chunk': word + ' '})}\n\n"
+            yield "data: [DONE]\n\n"
+        return Response(gen(), mimetype="text/event-stream",
+                        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    if intent == "hors_scope":
+        return _sse_fixed(
+            "Je suis spécialisé dans l'immobilier en Île-de-France uniquement. "
+            "Pour cette question, je ne peux pas vous aider, mais posez-moi une question "
+            "sur les prix, les communes, le DPE ou les rendements locatifs en IDF !",
+            "hors_scope"
+        )
+
+    if intent == "general":
+        if not DISABLE_LLM and qwen_manager.initialized:
+            def gen_general():
+                meta = json.dumps({"intent": "general", "nb_results": 0, "data": []})
+                yield f"data: {meta}\n\n"
+                for chunk in qwen_manager.generate_stream([], question, intent, context=context_summary):
+                    yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+                yield "data: [DONE]\n\n"
+            return Response(gen_general(), mimetype="text/event-stream",
+                            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+        return _sse_fixed(
+            "Je suis HomePedia IA, spécialisé dans les données immobilières IDF. "
+            "Reformulez votre question avec une commune spécifique pour obtenir des données précises.",
+            "general"
+        )
 
     if intent == "salutation":
         greeting = (

@@ -2104,21 +2104,20 @@ export default function MapView() {
     });
     // Contrôles zoom/navigation gérés par les boutons custom (éviter superposition)
 
-    // ── Chargement polygones IDF + hover ────────────────────────────────────
-    map.current.on("load", async () => {
+    // ── Tuiles vectorielles MVT (PostGIS ST_AsMVT) ──────────────────────────
+    map.current.on("load", () => {
       setMapLoaded(true);
       try {
-        const res = await fetch(
-          "https://geo.api.gouv.fr/communes?codeRegion=11&geometry=contour&format=geojson&fields=nom,code",
-          { signal: AbortSignal.timeout(5000) }
-        );
-        const geojson = await res.json();
-        if (!map.current) return;
+        const apiBase = import.meta.env.VITE_API_URL || "";
 
+        // Source vector — tuiles servies par le backend Go /api/v1/tiles/{z}/{x}/{y}
+        // promoteId utilise code_insee comme ID stable pour feature-state (hover)
         map.current.addSource("communes-geo", {
-          type: "geojson",
-          data: geojson,
-          generateId: true,
+          type: "vector",
+          tiles: [`${apiBase}/api/v1/tiles/{z}/{x}/{y}`],
+          minzoom: 7,
+          maxzoom: 16,
+          promoteId: { communes: "code_insee" },
         });
 
         // Fill hover
@@ -2126,6 +2125,7 @@ export default function MapView() {
           id: "communes-fill",
           type: "fill",
           source: "communes-geo",
+          "source-layer": "communes",
           paint: {
             "fill-color": "#3778E2",
             "fill-opacity": ["case", ["boolean", ["feature-state", "hover"], false], 0.18, 0],
@@ -2137,6 +2137,7 @@ export default function MapView() {
           id: "communes-border",
           type: "line",
           source: "communes-geo",
+          "source-layer": "communes",
           paint: {
             "line-color": "#3778E2",
             "line-width": ["case", ["boolean", ["feature-state", "hover"], false], 1.8, 0.25],
@@ -2151,22 +2152,28 @@ export default function MapView() {
         });
 
         let hoveredId = null;
-
         let prefetchHoveredCode = null;
+
         map.current.on("mousemove", "communes-fill", (e) => {
           if (!e.features?.length) return;
           map.current.getCanvas().style.cursor = "pointer";
           if (hoveredId !== null) {
-            map.current.setFeatureState({ source: "communes-geo", id: hoveredId }, { hover: false });
+            map.current.setFeatureState(
+              { source: "communes-geo", sourceLayer: "communes", id: hoveredId },
+              { hover: false }
+            );
           }
-          hoveredId = e.features[0].id;
-          map.current.setFeatureState({ source: "communes-geo", id: hoveredId }, { hover: true });
+          hoveredId = e.features[0].properties.code_insee;
+          map.current.setFeatureState(
+            { source: "communes-geo", sourceLayer: "communes", id: hoveredId },
+            { hover: true }
+          );
           hoverPopup
             .setLngLat(e.lngLat)
             .setHTML(`<span style="font-size:12px;font-weight:700;color:#e2e8f0">${e.features[0].properties.nom}</span>`)
             .addTo(map.current);
-          // Prefetch POI silencieux — résultat mis en L1 RAM + cache HTTP navigateur
-          const hoverCode = e.features[0].properties.code;
+          // Prefetch POI silencieux
+          const hoverCode = e.features[0].properties.code_insee;
           if (hoverCode && hoverCode !== prefetchHoveredCode && !POI_CACHE.has(hoverCode)) {
             prefetchHoveredCode = hoverCode;
             axios.get(`/api/v1/poi/${hoverCode}`).then(r => POI_CACHE.set(hoverCode, r.data)).catch(() => {});
@@ -2176,26 +2183,29 @@ export default function MapView() {
         map.current.on("mouseleave", "communes-fill", () => {
           map.current.getCanvas().style.cursor = "";
           if (hoveredId !== null) {
-            map.current.setFeatureState({ source: "communes-geo", id: hoveredId }, { hover: false });
+            map.current.setFeatureState(
+              { source: "communes-geo", sourceLayer: "communes", id: hoveredId },
+              { hover: false }
+            );
           }
           hoveredId = null;
           hoverPopup.remove();
         });
 
-        // Click sur le layer GeoJSON → sélection directe (plus rapide, sans géocodage)
+        // Click sur le layer MVT → sélection directe (plus rapide, sans géocodage)
         map.current.on("click", "communes-fill", (e) => {
           if (lockedRef.current) return;
           if (!e.features?.length) return;
-          if (markerClickedRef.current) return; // clic sur marqueur, ignorer
+          if (markerClickedRef.current) return;
           e.originalEvent._communeHandled = true;
-          const { code, nom } = e.features[0].properties;
-          const found = allCommunesRef.current.find(c => c.code_insee === code)
+          const { code_insee, nom } = e.features[0].properties;
+          const found = allCommunesRef.current.find(c => c.code_insee === code_insee)
             || allCommunesRef.current.find(c => c.nom.toLowerCase() === nom.toLowerCase());
           if (found && handleSelectRef.current) handleSelectRef.current(found);
         });
 
       } catch (err) {
-        console.warn("GeoJSON IDF non chargé:", err);
+        console.warn("MVT source error:", err);
       }
     });
 
