@@ -334,7 +334,7 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock, sheetS
     ? DPE_LETTERS[Math.min(6, Math.max(0, Math.round(agregat.score_dpe_moyen) - 1))]
     : null;
 
-  const panelBase = "fixed md:relative bottom-0 left-0 right-0 md:inset-auto w-full md:w-80 md:h-full flex-shrink-0 z-30 md:z-20 rounded-t-2xl md:rounded-none overflow-y-auto";
+  const panelBase = "fixed md:relative bottom-0 left-0 right-0 md:inset-auto w-full md:w-80 flex-shrink-0 z-30 md:z-20 rounded-t-2xl md:rounded-none overflow-y-auto md:overflow-y-scroll scrollbar-thin";
   const panelStyle = { background: "rgba(11,17,27,0.97)", backdropFilter: "blur(16px)", borderTop: "1px solid rgba(60,131,246,0.2)", borderLeft: "1px solid rgba(60,131,246,0.12)" };
   const mobileH = sheetState === 'hidden' ? "translate-y-full" : sheetState === 'expanded' ? "translate-y-0" : "translate-y-0";
   const mobileMax = sheetState === 'expanded' ? "82vh" : sheetState === 'hidden' ? "0" : "34vh";
@@ -2204,7 +2204,7 @@ export default function MapView() {
     : ["Île-de-France"];
 
   return (
-    <div className="relative flex h-full">
+    <div className="relative flex flex-1 min-h-0">
       {/* Backdrop mobile — ferme sidebar au clic dehors */}
       {sidebarOpen && (
         <div className="md:hidden fixed inset-0 bg-black/50 z-20" onClick={() => setSidebarOpen(false)} />
