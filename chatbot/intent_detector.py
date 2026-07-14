@@ -341,16 +341,9 @@ TEMPLATES: Dict[str, Dict] = {
     },
 
     "top_prix": {
-        "sql": """
-            SELECT city AS commune, TRIM(code_departement) AS dept,
-                   ROUND(prix_median_m2::numeric, 0) AS prix_m2,
-                   nb_transactions
-            FROM communes_agregat
-            WHERE prix_median_m2 IS NOT NULL
-            ORDER BY prix_median_m2 %(order)s
-            LIMIT %(limit)s
-        """,
-        "params": {"order": "DESC", "limit": 5},
+        # SQL construit dynamiquement dans _build_params (ORDER BY non interpolable par psycopg2)
+        "sql": None,
+        "params": {"limit": 5},
         "response_hint": "communes classées par prix au m²",
     },
 
@@ -438,7 +431,7 @@ INTENT_PATTERNS = [
         r"€/m²|euros?/m|inférieur", re.I
     )),
     ("departement", re.compile(
-        r"\b(75|77|78|91|92|93|94|95)\b|paris|seine.?et.?marne|yvelines|"
+        r"\b(75|77|78|91|92|93|94|95|paris)\b|seine.?et.?marne|yvelines|"
         r"essonne|hauts.?de.?seine|seine.?saint.?denis|val.?de.?marne|"
         r"val.?d.?oise", re.I
     )),
@@ -633,8 +626,17 @@ def _build_params(intent: str, q: str) -> Dict[str, Any]:
         if dept:
             params["dept"] = dept
     elif intent == "top_prix":
-        if re.search(r"moins cher|moins [eé]lev[eé]|pas cher|abordable", q, re.I):
-            params["order"] = "ASC"
+        order = "ASC" if re.search(r"moins cher|moins [eé]lev[eé]|pas cher|abordable", q, re.I) else "DESC"
+        # psycopg2 ne peut pas interpoler des mots-clés SQL (ORDER BY) → f-string avec valeur validée
+        params["_sql"] = f"""
+            SELECT city AS commune, TRIM(code_departement) AS dept,
+                   ROUND(prix_median_m2::numeric, 0) AS prix_m2,
+                   nb_transactions
+            FROM communes_agregat
+            WHERE prix_median_m2 IS NOT NULL
+            ORDER BY prix_median_m2 {order}
+            LIMIT %(limit)s
+        """
     return params
 
 

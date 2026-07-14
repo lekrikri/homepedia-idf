@@ -245,8 +245,8 @@ def chat():
         return jsonify(response)
 
     # 2. Exécution SQL
-    if intent == "multi_criteria":
-        # SQL construit dynamiquement par build_multi_criteria_sql()
+    if "_sql" in params or intent == "multi_criteria":
+        # SQL construit dynamiquement (multi_criteria, top_prix, etc.)
         custom_sql = params.pop("_sql")
         rows = execute_template(custom_sql, params)
     else:
@@ -355,7 +355,7 @@ def chat_stream():
         return Response(generate_greeting(), mimetype="text/event-stream",
                         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
-    if intent == "multi_criteria":
+    if "_sql" in params or intent == "multi_criteria":
         custom_sql = params.pop("_sql")
         rows = execute_template(custom_sql, params)
     else:
