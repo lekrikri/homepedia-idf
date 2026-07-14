@@ -247,7 +247,7 @@ function TransportsSection({ lat, lon, code }) {
   );
 }
 
-function RightPanel({ commune, transactions, agregat, isLocked, onUnlock, sheetState, setSheetState }) {
+function RightPanel({ commune, transactions, agregat, isLocked, onUnlock, sheetState, setSheetState, onSelectCommune }) {
   const [activeScoreTip, setActiveScoreTip] = useState(null);
   const codeCommune = agregat?.code_commune || commune?.code_insee;
   const [fav, setFav] = useState(() => codeCommune ? isFavorite(codeCommune) : false);
@@ -272,6 +272,14 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock, sheetS
 
   // #25 Accordéon score expliqué
   const [showScoreDetail, setShowScoreDetail] = useState(false);
+
+  // #33 Villes similaires
+  const [similaires, setSimilaires] = useState([]);
+  useEffect(() => {
+    if (!codeCommune) { setSimilaires([]); return; }
+    axios.get(`/api/v1/communes/${codeCommune}/similaires`)
+      .then(r => setSimilaires(r.data?.similaires || [])).catch(() => setSimilaires([]));
+  }, [codeCommune]);
 
   const toggleFav = () => {
     if (!codeCommune) return;
@@ -997,6 +1005,51 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock, sheetS
           <TransportsSection lat={agregat.centroid_lat} lon={agregat.centroid_lon} code={agregat.code_commune} />
         )}
 
+        {/* ── #33 COMMUNES SIMILAIRES ───────────────────────────────────── */}
+        {similaires.length > 0 && (
+          <div className="rounded-xl p-4" style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(139,92,246,0.18)" }}>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="material-symbols-outlined" style={{ fontSize: 13, color: "#8b5cf6" }}>group_work</span>
+              <p className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold">Communes similaires</p>
+            </div>
+            <div className="space-y-1.5">
+              {similaires.map(s => {
+                const prixDelta = s.prix_median_m2 && agregat?.prix_median_m2
+                  ? Math.round((s.prix_median_m2 - agregat.prix_median_m2) / agregat.prix_median_m2 * 100)
+                  : null;
+                return (
+                  <button key={s.code_commune}
+                    onClick={() => onSelectCommune && onSelectCommune({ code_insee: s.code_commune, nom: s.city })}
+                    className="w-full flex items-center justify-between p-2.5 rounded-lg transition-all hover:bg-violet-500/10 text-left"
+                    style={{ background: "rgba(15,23,36,0.5)", border: "1px solid rgba(30,41,59,0.5)" }}>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-[9px] px-1.5 py-0.5 rounded font-bold shrink-0"
+                        style={{ background: "rgba(139,92,246,0.15)", color: "#8b5cf6", border: "1px solid rgba(139,92,246,0.25)" }}>
+                        {s.code_departement}
+                      </span>
+                      <span className="text-[11px] text-slate-200 font-medium truncate">{s.city}</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0 ml-2">
+                      {s.prix_median_m2 && (
+                        <span className="text-[10px] text-slate-400 mono-nums">
+                          {Math.round(s.prix_median_m2 / 100) / 10}k€
+                        </span>
+                      )}
+                      {prixDelta !== null && (
+                        <span className={`text-[9px] font-bold mono-nums ${prixDelta <= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                          {prixDelta > 0 ? "+" : ""}{prixDelta}%
+                        </span>
+                      )}
+                      <span className="material-symbols-outlined text-slate-600" style={{ fontSize: 14 }}>arrow_forward</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[8px] text-slate-600 mt-2">Similarité sur prix, DPE, IPS, investissement et sécurité</p>
+          </div>
+        )}
+
         {/* ── DERNIÈRES VENTES ──────────────────────────────────────────── */}
         <div className="rounded-xl p-4" style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(60,131,246,0.12)" }}>
           <div className="flex items-center gap-2 mb-3">
@@ -1348,6 +1401,11 @@ export default function MapView() {
   // Bottom sheet mobile — état partagé avec RightPanel
   const [sheetState, setSheetState] = useState('peek');
   useEffect(() => { setSheetState('peek'); }, [selectedCommune]);
+
+  // #30 Isochrone
+  const [isoMinutes, setIsoMinutes] = useState(null); // null = off, 15/30/45
+  const [isoProfile, setIsoProfile] = useState('driving-car');
+  const [isoLoading, setIsoLoading] = useState(false);
   const setTxHoverRef = useRef(null);
   useEffect(() => { setTxHoverRef.current = setTxHover; }, []);
   const setHoveredTxIdRef = useRef(null);
@@ -1808,6 +1866,38 @@ export default function MapView() {
     else { shopMarkersRef.current.forEach(m => m.remove()); shopMarkersRef.current = []; }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showShops, selectedCommune]);
+
+  // #30 Isochrone — charger + afficher layer GeoJSON sur MapLibre
+  useEffect(() => {
+    const removeIso = () => {
+      if (!map.current) return;
+      if (map.current.getLayer('iso-fill')) map.current.removeLayer('iso-fill');
+      if (map.current.getLayer('iso-line')) map.current.removeLayer('iso-line');
+      if (map.current.getSource('isochrone')) map.current.removeSource('isochrone');
+    };
+    if (!isoMinutes || !agregat?.centroid_lat || !agregat?.centroid_lon || !map.current) {
+      removeIso();
+      return;
+    }
+    setIsoLoading(true);
+    axios.get('/api/v1/isochrone', {
+      params: { lat: agregat.centroid_lat, lon: agregat.centroid_lon, minutes: isoMinutes, profile: isoProfile }
+    }).then(r => {
+      if (r.data?.fallback) return; // pas de clé ORS configurée
+      removeIso();
+      if (!map.current) return;
+      map.current.addSource('isochrone', { type: 'geojson', data: r.data });
+      map.current.addLayer({ id: 'iso-fill', type: 'fill', source: 'isochrone',
+        paint: { 'fill-color': '#3c83f6', 'fill-opacity': 0.12 } });
+      map.current.addLayer({ id: 'iso-line', type: 'line', source: 'isochrone',
+        paint: { 'line-color': '#3c83f6', 'line-width': 2, 'line-dasharray': [4, 2] } });
+    }).catch(() => {}).finally(() => setIsoLoading(false));
+    return removeIso;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isoMinutes, isoProfile, agregat?.centroid_lat, agregat?.centroid_lon]);
+
+  // Reset isochrone quand on change de commune
+  useEffect(() => { setIsoMinutes(null); }, [selectedCommune]);
 
   // Garder les refs à jour pour les handlers enregistrés sur la carte
   useEffect(() => { allCommunesRef.current = allCommunes; }, [allCommunes]);
@@ -2340,6 +2430,23 @@ export default function MapView() {
             style={showShops ? { background: "#a855f7", boxShadow: "0 4px 20px rgba(168,85,247,0.4)" } : {}}>
             <span className="material-symbols-outlined" style={{ fontSize: 20 }}>storefront</span>
           </button>
+
+          {/* #30 Isochrone — cycle 15/30/45 min / off */}
+          {selectedCommune && (
+            <button
+              onClick={() => setIsoMinutes(v => v === null ? 15 : v === 15 ? 30 : v === 30 ? 45 : null)}
+              title={isoMinutes ? `Isochrone ${isoMinutes} min — cliquer pour changer` : "Afficher zone d'accessibilité (isochrone)"}
+              className={`size-11 rounded-xl flex flex-col items-center justify-center transition-all gap-0.5 ${
+                isoMinutes ? "text-white shadow-lg" : "glass-panel hover:bg-cyan-500/20 text-slate-300"
+              }`}
+              style={isoMinutes ? { background: "#0891b2", boxShadow: "0 4px 20px rgba(8,145,178,0.4)" } : {}}>
+              {isoLoading
+                ? <span className="material-symbols-outlined animate-spin" style={{ fontSize: 16 }}>progress_activity</span>
+                : <span className="material-symbols-outlined" style={{ fontSize: 16 }}>route</span>
+              }
+              {isoMinutes && <span className="text-[8px] font-black leading-none">{isoMinutes}′</span>}
+            </button>
+          )}
           </div>
 
           <button
@@ -2532,7 +2639,7 @@ export default function MapView() {
         </div>
       </div>
 
-      <RightPanel commune={selectedCommune} transactions={transactions} agregat={agregat} isLocked={!!lockedCommune} onUnlock={handleUnlock} sheetState={sheetState} setSheetState={setSheetState} />
+      <RightPanel commune={selectedCommune} transactions={transactions} agregat={agregat} isLocked={!!lockedCommune} onUnlock={handleUnlock} sheetState={sheetState} setSheetState={setSheetState} onSelectCommune={handleSelectCommune} />
     </div>
   );
 }

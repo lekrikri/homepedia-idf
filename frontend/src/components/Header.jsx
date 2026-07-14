@@ -10,6 +10,7 @@ const NAV_PUBLIC = [
   { to: "/transactions", label: "Transactions" },
   { to: "/dashboard",    label: "Dashboard" },
   { to: "/comparer",     label: "Comparer" },
+  { to: "/portfolio",    label: "Portfolio",    icon: "savings" },
 ];
 const NAV_ADMIN = [
   ...NAV_PUBLIC,
@@ -124,17 +125,18 @@ export default function Header() {
           </div>
 
           <nav className="hidden md:flex items-center gap-6">
-            {(user?.role === "admin" ? NAV_ADMIN : NAV_PUBLIC).map(({ to, label, end }) => (
+            {(user?.role === "admin" ? NAV_ADMIN : NAV_PUBLIC).map(({ to, label, end, icon }) => (
               <NavLink
                 key={to}
                 to={to}
                 end={end ?? false}
                 className={({ isActive }) =>
                   isActive
-                    ? "text-primary font-semibold text-sm border-b-2 border-primary pb-5 mt-5"
-                    : "text-slate-400 hover:text-slate-100 font-medium text-sm transition-colors"
+                    ? "text-primary font-semibold text-sm border-b-2 border-primary pb-5 mt-5 flex items-center gap-1"
+                    : "text-slate-400 hover:text-slate-100 font-medium text-sm transition-colors flex items-center gap-1"
                 }
               >
+                {icon && <span className="material-symbols-outlined" style={{ fontSize: 15 }}>{icon}</span>}
                 {label}
               </NavLink>
             ))}
@@ -276,12 +278,13 @@ export default function Header() {
           <nav className="absolute top-16 left-0 right-0 py-2 shadow-2xl"
             style={{ background: "#0b1117", borderBottom: "1px solid rgba(60,131,246,0.2)" }}
             onClick={e => e.stopPropagation()}>
-            {(user?.role === "admin" ? NAV_ADMIN : NAV_PUBLIC).map(({ to, label, end }) => (
+            {(user?.role === "admin" ? NAV_ADMIN : NAV_PUBLIC).map(({ to, label, end, icon }) => (
               <NavLink key={to} to={to} end={end ?? false}
                 onClick={() => setShowMobileNav(false)}
                 className={({ isActive }) =>
                   `flex items-center gap-3 px-6 py-3.5 text-sm font-medium transition-colors ${isActive ? "text-primary bg-primary/10 border-l-2 border-primary" : "text-slate-400 hover:text-slate-100 hover:bg-slate-800/50"}`
                 }>
+                {icon && <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{icon}</span>}
                 {label}
               </NavLink>
             ))}

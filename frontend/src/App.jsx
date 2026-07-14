@@ -7,6 +7,7 @@ import Transactions from "./components/Transactions.jsx";
 import Dashboard from "./components/Dashboard.jsx";
 import Pipeline from "./components/Pipeline.jsx";
 import Comparer from "./components/Comparer.jsx";
+import Portfolio from "./components/Portfolio.jsx";
 import NotFound from "./components/NotFound.jsx";
 import { CommunesProvider } from "./contexts/CommunesContext.jsx";
 import ChatWidget from "./components/ChatWidget.jsx";
@@ -24,6 +25,7 @@ export default function App() {
             <Route path="/dashboard"    element={<Dashboard />} />
             <Route path="/pipeline"     element={<Pipeline />} />
             <Route path="/comparer"     element={<Comparer />} />
+            <Route path="/portfolio"    element={<Portfolio />} />
             <Route path="*"             element={<NotFound />} />
           </Routes>
         </main>

@@ -94,6 +94,12 @@ func main() {
 			rag.POST("/query", handlers.RAGQuery)
 			rag.POST("/query/stream", handlers.RAGQueryStream)
 		}
+
+		// Communes similaires (distance euclidienne sur 5 features normalisées)
+		v1.GET("/communes/:code/similaires", middleware.HTTPCache(1800, 86400), handlers.GetCommunesSimilaires)
+
+		// Isochrones (proxy ORS)
+		v1.GET("/isochrone", handlers.GetIsochrone)
 	}
 
 	port := os.Getenv("PORT")
