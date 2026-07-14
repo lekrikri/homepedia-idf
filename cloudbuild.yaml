@@ -25,6 +25,7 @@ substitutions:
   _FRONTEND_SERVICE: homepedia-frontend
   _CHATBOT_SERVICE: homepedia-chat
   _BACKEND_URL: https://homepedia-backend-714876351060.europe-west1.run.app
+  _TAG: latest  # override via --substitutions=_TAG=$(git rev-parse --short HEAD)
 
 options:
   logging: CLOUD_LOGGING_ONLY
@@ -61,7 +62,7 @@ steps:
     args:
       - build
       - -t
-      - ${_REGISTRY}/backend:${COMMIT_SHA}
+      - ${_REGISTRY}/backend:${_TAG}
       - -t
       - ${_REGISTRY}/backend:latest
       - --cache-from
@@ -90,7 +91,7 @@ steps:
       - run
       - deploy
       - ${_BACKEND_SERVICE}
-      - --image=${_REGISTRY}/backend:${COMMIT_SHA}
+      - --image=${_REGISTRY}/backend:${_TAG}
       - --region=${_REGION}
       - --platform=managed
       - --allow-unauthenticated
@@ -117,8 +118,8 @@ steps:
       - -c
       - |
         docker pull ${_REGISTRY}/chat:latest || true
-        docker tag ${_REGISTRY}/chat:latest ${_REGISTRY}/chat:${COMMIT_SHA} || true
-        docker push ${_REGISTRY}/chat:${COMMIT_SHA} || true
+        docker tag ${_REGISTRY}/chat:latest ${_REGISTRY}/chat:${_TAG} || true
+        docker push ${_REGISTRY}/chat:${_TAG} || true
     waitFor: ['-']
 
   # ─────────────────────────────────────────────────────────────────────────────
@@ -183,7 +184,7 @@ steps:
           --build-arg VITE_API_URL="$$BACKEND_URL" \
           --build-arg VITE_CHAT_API_URL="$$CHAT_URL" \
           --cache-from ${_REGISTRY}/frontend:latest \
-          -t ${_REGISTRY}/frontend:${COMMIT_SHA} \
+          -t ${_REGISTRY}/frontend:${_TAG} \
           -t ${_REGISTRY}/frontend:latest \
           ./frontend
     waitFor: [get-backend-url]
@@ -209,7 +210,7 @@ steps:
       - run
       - deploy
       - ${_FRONTEND_SERVICE}
-      - --image=${_REGISTRY}/frontend:${COMMIT_SHA}
+      - --image=${_REGISTRY}/frontend:${_TAG}
       - --region=${_REGION}
       - --platform=managed
       - --allow-unauthenticated
@@ -245,11 +246,11 @@ steps:
 
 # Images à conserver dans Artifact Registry après le build
 images:
-  - ${_REGISTRY}/backend:${COMMIT_SHA}
+  - ${_REGISTRY}/backend:${_TAG}
   - ${_REGISTRY}/backend:latest
-  - ${_REGISTRY}/frontend:${COMMIT_SHA}
+  - ${_REGISTRY}/frontend:${_TAG}
   - ${_REGISTRY}/frontend:latest
-  - ${_REGISTRY}/chat:${COMMIT_SHA}
+  - ${_REGISTRY}/chat:${_TAG}
   - ${_REGISTRY}/chat:latest
 
 # Secrets injectés depuis Secret Manager GCP
