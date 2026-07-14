@@ -248,6 +248,7 @@ function TransportsSection({ lat, lon, code }) {
 }
 
 function RightPanel({ commune, transactions, agregat, isLocked, onUnlock, sheetState, setSheetState, onSelectCommune }) {
+  const navigate = useNavigate();
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -622,7 +623,9 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock, sheetS
           const yScale = v => H - pad - ((v - minP) / (maxP - minP + 1)) * (H - pad * 2);
           const pts = prixHisto.map((p, i) => `${xScale(i)},${yScale(p.prix_m2)}`).join(" ");
           const first = prixHisto[0], last = prixHisto[prixHisto.length - 1];
+          const prevLast = prixHisto[prixHisto.length - 2];
           const cagr = ((last.prix_m2 / first.prix_m2) ** (1 / (last.year - first.year)) - 1) * 100;
+          const yearTrend = ((last.prix_m2 - prevLast.prix_m2) / prevLast.prix_m2) * 100;
           return (
             <div className="rounded-xl p-4" style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(60,131,246,0.12)" }}>
               <div className="flex items-center justify-between mb-3">
@@ -630,10 +633,15 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock, sheetS
                   <span className="material-symbols-outlined text-primary" style={{ fontSize: 13 }}>show_chart</span>
                   <p className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold">Évolution des prix</p>
                 </div>
-                <span className={`text-[10px] font-bold mono-nums px-2 py-0.5 rounded-full ${cagr >= 0 ? "text-emerald-400" : "text-red-400"}`}
-                  style={{ background: cagr >= 0 ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)" }}>
-                  {cagr >= 0 ? "+" : ""}{cagr.toFixed(1)}% /an
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className={`text-[10px] font-bold mono-nums px-1.5 py-0.5 rounded-full ${yearTrend >= 0 ? "text-emerald-400" : "text-red-400"}`}
+                    style={{ background: yearTrend >= 0 ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)" }}
+                    title={`Variation ${prevLast.year}→${last.year}`}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 9, verticalAlign: "middle" }}>{yearTrend >= 0 ? "trending_up" : "trending_down"}</span>
+                    {' '}{yearTrend >= 0 ? "+" : ""}{yearTrend.toFixed(1)}%
+                  </span>
+                  <span className="text-[9px] text-slate-600 mono-nums" title="CAGR annuel moyen">{cagr >= 0 ? "+" : ""}{cagr.toFixed(1)}%/an</span>
+                </div>
               </div>
               <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 44 }}>
                 <defs>
@@ -1095,14 +1103,31 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock, sheetS
           }
         </div>
 
-        {/* ── CTA — Voir transactions ───────────────────────────────────── */}
-        <button
-          onClick={() => {/* navigate to transactions with commune filter */}}
-          className="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all hover:brightness-110"
-          style={{ background: "linear-gradient(135deg, #2563eb, #3c83f6)", color: "white" }}>
-          Voir les transactions
-          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>arrow_forward</span>
-        </button>
+        {/* ── CTAs — Transactions + Portfolio ──────────────────────────── */}
+        <div className="space-y-2">
+          <button
+            onClick={() => navigate(`/transactions?commune=${encodeURIComponent(commune?.nom || '')}&code=${codeCommune || ''}`)}
+            className="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all hover:brightness-110"
+            style={{ background: "linear-gradient(135deg, #2563eb, #3c83f6)", color: "white" }}>
+            Voir les transactions
+            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>arrow_forward</span>
+          </button>
+          {agregat?.prix_median_m2 && (
+            <button
+              onClick={() => {
+                const prixTotal = Math.round((agregat.prix_median_m2 || agregat.prix_m2_median || 5000) * 50);
+                const loyerMensuel = agregat.loyer_median_m2 ? Math.round(agregat.loyer_median_m2 * 50) : '';
+                const params = new URLSearchParams({ prix: prixTotal, commune: commune?.nom || '' });
+                if (loyerMensuel) params.set('loyer', loyerMensuel);
+                navigate(`/portfolio?${params.toString()}`);
+              }}
+              className="w-full py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all hover:brightness-110"
+              style={{ background: "rgba(16,185,129,0.15)", border: "1px solid rgba(16,185,129,0.3)", color: "#10b981" }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>savings</span>
+              Simuler l'investissement
+            </button>
+          )}
+        </div>
 
         <div className="h-2" />
       </div>
@@ -1413,6 +1438,7 @@ export default function MapView() {
   const [isoMinutes, setIsoMinutes] = useState(null); // null = off, 15/30/45
   const [isoProfile, setIsoProfile] = useState('driving-car');
   const [isoLoading, setIsoLoading] = useState(false);
+  const [showHeatmap, setShowHeatmap] = useState(false);
   const setTxHoverRef = useRef(null);
   useEffect(() => { setTxHoverRef.current = setTxHover; }, []);
   const setHoveredTxIdRef = useRef(null);
@@ -1905,6 +1931,48 @@ export default function MapView() {
 
   // Reset isochrone quand on change de commune
   useEffect(() => { setIsoMinutes(null); }, [selectedCommune]);
+
+  // ── Heatmap transactions ────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return;
+    const SRC = 'heatmap-src', LYR = 'heatmap-layer';
+    const cleanup = () => {
+      if (map.current?.getLayer(LYR)) map.current.removeLayer(LYR);
+      if (map.current?.getSource(SRC)) map.current.removeSource(SRC);
+    };
+    cleanup();
+    if (!showHeatmap) return;
+    const withCoords = transactions.filter(t => t.latitude && t.longitude && t.valeur_fonciere && t.surface_reelle_bati);
+    if (withCoords.length === 0) return;
+    const geojson = {
+      type: 'FeatureCollection',
+      features: withCoords.map(t => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [t.longitude, t.latitude] },
+        properties: { prixM2: t.valeur_fonciere / t.surface_reelle_bati }
+      }))
+    };
+    map.current.addSource(SRC, { type: 'geojson', data: geojson });
+    map.current.addLayer({
+      id: LYR, type: 'heatmap', source: SRC,
+      paint: {
+        'heatmap-weight': ['interpolate', ['linear'], ['get', 'prixM2'], 2000, 0, 15000, 1],
+        'heatmap-intensity': 1.5,
+        'heatmap-radius': 30,
+        'heatmap-opacity': 0.75,
+        'heatmap-color': [
+          'interpolate', ['linear'], ['heatmap-density'],
+          0,   'rgba(0,0,0,0)',
+          0.15, '#3c83f6',
+          0.4,  '#10b981',
+          0.65, '#f59e0b',
+          0.85, '#ef4444',
+          1,   '#7c3aed'
+        ]
+      }
+    });
+    return cleanup;
+  }, [showHeatmap, transactions, mapLoaded]);
 
   // Garder les refs à jour pour les handlers enregistrés sur la carte
   useEffect(() => { allCommunesRef.current = allCommunes; }, [allCommunes]);
@@ -2455,6 +2523,18 @@ export default function MapView() {
             </button>
           )}
           </div>
+
+          {transactions.filter(t => t.latitude && t.longitude).length > 0 && (
+            <button
+              onClick={() => setShowHeatmap(v => !v)}
+              title={showHeatmap ? "Masquer la heatmap des prix" : "Afficher la heatmap des prix"}
+              className={`size-11 rounded-xl flex items-center justify-center transition-all ${
+                showHeatmap ? "text-white shadow-lg" : "glass-panel hover:bg-orange-500/20 text-slate-300"
+              }`}
+              style={showHeatmap ? { background: "#f59e0b", boxShadow: "0 4px 20px rgba(245,158,11,0.4)" } : {}}>
+              <span className="material-symbols-outlined" style={{ fontSize: 20 }}>thermostat</span>
+            </button>
+          )}
 
           <button
             onClick={() => map.current && map.current.setStyle(
