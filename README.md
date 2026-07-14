@@ -89,8 +89,9 @@ T-DAT-902-PAR_3/
 ├── backend/                       # API Go (Gin)
 │   ├── cmd/server/main.go         # Routes + middlewares
 │   ├── internal/
-│   │   ├── handlers/              # communes.go, poi.go, agregat.go...
-│   │   ├── middleware/            # http_cache.go (Cache-Control headers)
+│   │   ├── handlers/              # communes.go, poi.go, agregat.go, insights.go,
+│   │   │                      # similaires.go, isochrones.go, rag.go...
+│   │   ├── middleware/            # http_cache.go, audit.go (RGPD logs)
 │   │   └── cache/                 # Cache RAM en mémoire (TTL 1h)
 │   └── migrations/                # SQL migrations Supabase
 │
@@ -105,7 +106,8 @@ T-DAT-902-PAR_3/
 │   ├── src/
 │   │   ├── pages/                 # Dashboard, Map, Compare, Landing
 │   │   └── components/
-│   │       ├── MapView.jsx        # MapLibre GL + POI cache L1
+│   │       ├── MapView.jsx        # MapLibre GL + POI cache L1 + isochrone + similaires
+│   │       ├── Portfolio.jsx      # Simulateur investissement cash-flow
 │   │       ├── ChatWidget.jsx     # Dark theme + markdown rendering
 │   │       ├── Dashboard.jsx      # Indicateurs commune
 │   │       └── Comparer.jsx       # Comparaison multi-communes
@@ -141,20 +143,32 @@ T-DAT-902-PAR_3/
 
 ### Carte interactive (MapLibre GL)
 - Choroplèthes coloriées par indicateur (prix, DPE, sécurité, QdV...)
-- Clic commune → panel détaillé (prix, scores, DPE, indicateurs)
+- Clic commune → panel détaillé avec scroll : prix, scores composites, DPE, IPS, sécurité, ENEDIS
+- **Score expliqué** : accordéon 5 axes (Prix 35%, DPE 20%, IPS 20%, Transport 15%, Sécurité 10%)
+- **Sparkline prix** : évolution SVG par année 2021–2025 + CAGR %/an
+- **Insights commune** : comparaisons automatiques vs moyenne IDF ("prix 12% sous la moyenne...")
+- **Communes similaires** : top 5 communes proches par profil (distance euclidienne 5D), cliquables
+- **Isochrone** : zone d'accessibilité 15/30/45 min (voiture/piéton/vélo) via ORS — bouton toggle sur la carte
 - POI par catégorie : transports, hôpitaux, restaurants, écoles, parcs, commerces
 - **Cache POI multi-niveaux** : L1 RAM JS → L2 HTTP 24h → L3 Supabase JSONB
 - Prefetch hover : POI chargé au survol avant le clic (<50ms vs 1-4s Overpass)
+- Export PDF : bouton download → impression fiche commune via `@media print`
 
 ### Assistant IA HomePedia (Chatbot)
 - Intents détectés : top communes par prix/rendement/QdV/sécurité/DPE, comparaisons, multi-critères
 - Court-circuit salutations (sans SQL → réponse d'aide immédiate)
-- Réponse JSON + SSE streaming
+- Réponse JSON + SSE streaming + **score de confiance 0–100** par réponse
+- **Cache sémantique** : MiniLM-L12-v2 cosine ≥ 0.92 (latence ÷3 pour questions similaires)
 - LLM Qwen2.5-0.5B Q4_K_M, ~1-3s warm
 
 ### Dashboard & Comparateur
 - Indicateurs par commune avec barres DPE, scores 0-100
 - Comparaison côte-à-côte de plusieurs communes
+
+### Portfolio Investisseur (`/portfolio`)
+- Simulateur cash-flow complet : prix, apport, taux crédit, durée, loyer, charges, taxe foncière, vacance
+- Calculs : mensualité, cash-flow mensuel, rendement brut/net, effort mensuel, ROI 10 ans
+- Graphique SVG cash-flow cumulé sur 20 ans + courbe patrimoine net + point de break-even
 
 ---
 
@@ -210,6 +224,19 @@ Le script fait des requêtes GET à l'API Overpass (1.5s délai entre communes) 
 - Host : `db.iugsfmvqddburvufzacy.supabase.co` (port 5432)
 - DB : `postgres` | User : `postgres`
 - MCP configuré dans `.mcp.json` (project_ref=`iugsfmvqddburvufzacy`)
+
+---
+
+## APIs notables
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/v1/communes/:code/insights` | Comparaisons vs IDF + phrases d'analyse |
+| `GET /api/v1/communes/:code/prix-historique` | Médiane/m² par année (PERCENTILE_CONT) |
+| `GET /api/v1/communes/:code/similaires` | Top 5 communes proches (distance euclidienne 5D) |
+| `GET /api/v1/isochrone?lat=&lon=&minutes=30&profile=driving-car` | Proxy ORS → GeoJSON isochrone |
+| `POST /api/v1/rag/query` | Chatbot RAG (sync) avec audit RGPD |
+| `POST /api/v1/rag/query/stream` | Chatbot RAG (SSE streaming) |
 
 ---
 
