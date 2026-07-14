@@ -262,16 +262,21 @@ Le script fait des requêtes GET à l'API Overpass (1.5s délai entre communes) 
 | #34 | Portfolio investisseur | ✅ Livré | Simulateur cash-flow + connexion Carte/Transactions/Comparer via query params |
 | — | Fix fetch→axios | ✅ Livré | `fetch()` natif ignorait `VITE_API_URL` en prod → remplacé par `axios.get()` partout |
 | — | Fix layout desktop | ✅ Livré | RightPanel vide : `maxHeight` mobile s'appliquait aussi desktop — corrigé via hook `isMobile` |
+| — | Score trend annuel | ✅ Livré | Sparkline : variation N-1→N avec icône ↑↓ coloré en plus du CAGR global |
+| — | Heatmap prix IDF | ✅ Livré | Layer MapLibre sur 1266 centroïdes communes, gradient bleu→violet, toggle thermostat |
+| — | Favoris alertes prix | ✅ Livré | Prix live au montage + badge ↑↓ variation, export JSON, boutons Carte/Portfolio/Comparer |
 
 ---
 
 ## Ce qui reste à faire
 
-### Déploiement prod (prioritaire)
+### Déploiement prod
 ```bash
 # Déclencher le build Cloud Run (frontend + backend)
 gcloud builds submit --config cloudbuild.yaml .
+# NOTE : _TAG=latest par défaut (COMMIT_SHA n'est pas injecté en build manuel — corrigé)
 ```
+> Build `5dc3af9f` en cours (features 2026-07-14 : heatmap, trend, favoris alertes).
 
 ### Activer les isochrones en prod
 L'endpoint `/api/v1/isochrone` répond avec `{"fallback": true}` si `ORS_API_KEY` n'est pas configurée.
@@ -285,13 +290,14 @@ gcloud run services update homepedia-api \
 Clé gratuite sur [openrouteservice.org](https://openrouteservice.org) — 2000 req/jour.
 
 ### Features potentielles supplémentaires
-| Idée | Impact | Effort |
-|------|--------|--------|
-| Heatmap prix au clic (remplace choroplèthe) | Élevé | Moyen |
-| Alerte email / export CSV transactions | Moyen | Faible |
-| Score évolution annuelle (trend ↑↓) | Moyen | Moyen |
-| Carte 3D bâtiments (CesiumJS déjà intégré) | Élevé | Déjà à 80% |
-| Intégration GTFS transports (temps réel) | Élevé | Élevé |
+| Idée | Impact | Effort | Statut |
+|------|--------|--------|--------|
+| Heatmap prix IDF globale | Élevé | Moyen | ✅ Livré |
+| Alerte prix favoris + export CSV/JSON | Moyen | Faible | ✅ Livré |
+| Score évolution annuelle (trend ↑↓) | Moyen | Moyen | ✅ Livré |
+| Carte 3D bâtiments (CesiumJS) | Élevé | Déjà complet | ✅ Livré |
+| Activer isochrones prod (ORS_API_KEY) | Élevé | 5 min | ⏳ À faire |
+| Intégration GTFS transports (temps réel) | Élevé | Élevé | — |
 
 ---
 
