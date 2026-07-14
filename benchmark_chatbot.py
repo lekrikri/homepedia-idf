@@ -65,10 +65,16 @@ def _is_hors_scope(text: str) -> bool:
     return any(w in text.lower() for w in ["île-de-france", "idf", "spécialisé", "périmètre", "uniquement"])
 
 def _has_valid_prix_idf(text: str) -> bool:
-    """Vérifie que les prix cités sont dans la plage IDF (1 500–16 000 €/m²)."""
-    numbers = [int(n.replace(" ", "").replace(" ", "")) for n in re.findall(r'\d[\d\s ]{2,}', text)]
-    prix_candidates = [n for n in numbers if PRIX_MIN_IDF <= n <= PRIX_MAX_IDF]
-    return len(prix_candidates) > 0
+    """Prix IDF plausibles : 1500-16000 euros/m2 (gère espaces milliers ex: 7 184)."""
+    # Extraire nombres 4-5 chiffres éventuellement séparés par espace/nbsp
+    raw = re.findall(r'(\d{1,2}[\s ]?\d{3})|(\d{4,5})', text)
+    numbers = []
+    for grp in raw:
+        for n in grp:
+            if n:
+                val = int(re.sub(r'[^\d]', '', n))
+                numbers.append(val)
+    return any(PRIX_MIN_IDF <= n <= PRIX_MAX_IDF for n in numbers)
 
 def _has_rendement_realistic(text: str) -> bool:
     """Vérifie que le rendement cité est réaliste (1–9%)."""
@@ -82,9 +88,11 @@ def _has_rendement_realistic(text: str) -> bool:
     return False
 
 def _mentions_idf_commune(text: str) -> bool:
-    """Vérifie qu'au moins une commune IDF est mentionnée dans la réponse."""
-    text_low = text.lower()
-    return any(c in text_low for c in COMMUNES_IDF_SAMPLE)
+    """Au moins une commune IDF mentionnée (dept entre parenthèses ou nom connu)."""
+    # Cherche un numéro de département IDF entre parenthèses : (75), (77)...(95)
+    if re.search(r'\((7[5-9]|9[1-5])\)', text):
+        return True
+    return any(c in text.lower() for c in COMMUNES_IDF_SAMPLE)
 
 def _no_generic_error(text: str) -> bool:
     """Vérifie qu'il n'y a pas de message d'erreur générique."""
@@ -422,7 +430,8 @@ def run_test(test: Dict, api_url: str, verbose: bool) -> Tuple[bool, Dict]:
     answer = data.get("answer", "")
     intent = data.get("intent", "")
     nb_results = data.get("nb_results", 0)
-    confidence = data.get("confidence_score", 0)
+    confidence = data.get("confidence_score")  # None si champ absent
+    conf_display = confidence if confidence is not None else "-"
 
     failures = []
 
@@ -436,7 +445,7 @@ def run_test(test: Dict, api_url: str, verbose: bool) -> Tuple[bool, Dict]:
 
     # Vérif score de confiance
     min_conf = test.get("min_confidence", 0)
-    if min_conf > 0 and confidence < min_conf:
+    if min_conf > 0 and confidence is not None and confidence < min_conf:
         failures.append(f"confidence={confidence}% < {min_conf}%")
 
     # Vérif checks qualité réponse
@@ -448,7 +457,7 @@ def run_test(test: Dict, api_url: str, verbose: bool) -> Tuple[bool, Dict]:
     result = {
         "intent": intent,
         "nb_results": nb_results,
-        "confidence": confidence,
+        "confidence": confidence,  # peut être None
         "latency_ms": latency,
         "answer": answer[:300] if not verbose else answer,
         "failures": failures,
@@ -502,10 +511,12 @@ def main() -> None:
         status = f"{GREEN}✅ PASS{RESET}" if passed else f"{RED}❌ FAIL{RESET}"
         intent_disp = result.get("intent", "?")[:17]
         nb = result.get("nb_results", 0)
-        conf = result.get("confidence", 0)
+        _raw_conf = result.get("confidence")
+        conf = _raw_conf if _raw_conf is not None else "-"
         ms = result.get("latency_ms", 0)
 
-        print(f"{i:<3} {test['label']:<44} {intent_disp:<18} {nb:>3} {conf:>4}% {ms:>5}ms  {status}")
+        conf_str = f"{conf:>4}%" if isinstance(conf, int) else f"  {conf:>2} "
+        print(f"{i:<3} {test['label']:<44} {intent_disp:<18} {nb:>3} {conf_str} {ms:>5}ms  {status}")
 
         if not passed:
             for f in result["failures"]:

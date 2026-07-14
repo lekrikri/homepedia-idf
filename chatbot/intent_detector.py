@@ -111,6 +111,10 @@ INTENT_EXAMPLES: Dict[str, List[str]] = {
         "faible consommation d'énergie",
         "diagnostic de performance énergétique",
         "quel est le meilleur bilan DPE",
+        "communes avec le meilleur DPE en Île-de-France",
+        "où les logements consomment le moins d'énergie",
+        "performance énergétique des communes IDF",
+        "communes classe A ou B en énergie en Île-de-France",
     ],
     "securite": [
         "communes les plus sûres",
@@ -423,8 +427,9 @@ INTENT_PATTERNS = [
         r"(qu'est[- ]ce que|parle[- ]moi de|fiche|d[eé]tail|tout sur|"
         r"inform.+ sur|c'est comment|comment est|portrait de)\s+\w+", re.I
     )),
+    # rendement avant top_investissement : "meilleur rendement locatif" ne doit pas matcher investir
     ("rendement", re.compile(
-        r"rendement|locatif|loyer|rentab|rapport locatif", re.I
+        r"rendement|rentab(ilit[eé])?|rapport locatif|cash.?flow", re.I
     )),
     ("prix_max", re.compile(
         r"moins de \d|moins cher|budget|pas cher|abordable|accessible|"
@@ -436,13 +441,13 @@ INTENT_PATTERNS = [
         r"val.?d.?oise", re.I
     )),
     ("dpe", re.compile(
-        r"dpe|[eé]nergie|[eé]cologique|[eé]co|passoire|thermique|consommation", re.I
+        r"\bdpe\b|[eé]nerg|[eé]cologique|passoire|thermique|consommation.?[eé]nerg", re.I
     )),
     ("securite", re.compile(
-        r"s[eé]curit|cambriolage|crime|d[eé]linquance|s[uû]r|tranquille", re.I
+        r"s[eé]curit|cambriolage|crime|d[eé]linquance|\bs[uû]re?\b|tranquille", re.I
     )),
     ("ecoles_ips", re.compile(
-        r"[eé]cole|famille|enfant|ips|[eé]ducation|scolaire|primaire|coll[eè]ge", re.I
+        r"[eé]cole|famille|enfant|\bips\b|[eé]ducation|scolaire|primaire|coll[eè]ge", re.I
     )),
     ("top_investissement", re.compile(
         r"investir|investissement|investisseur|placer|placement|acheter pour louer", re.I
@@ -506,7 +511,8 @@ def extract_communes(text: str) -> list:
     found = []
     text_low = text.lower()
     for c in KNOWN_COMMUNES:
-        if c in text_low and c not in found:
+        # Word boundary pour éviter "paris" dans "parisienne", "créteil" dans "créteillois" etc.
+        if re.search(r'\b' + re.escape(c) + r'\b', text_low) and c not in found:
             found.append(c)
     return found[:4]
 
@@ -535,7 +541,7 @@ def extract_criteria(text: str) -> Dict[str, Any]:
     if re.search(r'dpe|[eé]nerg|[eé]colog|passoire|thermique|classe [abc]', q):
         criteria["need_dpe"] = True
 
-    if re.search(r's[eé]curit|calme|tranquille|cambriolage|s[uû]r(?!\w)', q):
+    if re.search(r's[eé]curit|calme|tranquille|cambriolage|\bs[uû]re?\b', q):
         criteria["need_securite"] = True
 
     if re.search(r'famille|enfant|[eé]cole|ips|scolaire', q):
@@ -562,8 +568,8 @@ def build_multi_criteria_sql(criteria: Dict[str, Any]) -> Tuple[str, Dict[str, A
         conditions.append("score_dpe_moyen <= 3.0")
 
     if criteria.get("need_securite"):
-        # taux_cambriolages en ‰ — seuil bas = commune sûre
-        conditions.append("taux_cambriolages <= 4.0")
+        # taux_cambriolages en ‰ — seuil 6.0 = sous la médiane IDF (~8‰)
+        conditions.append("taux_cambriolages <= 6.0")
 
     if criteria.get("need_famille"):
         # IPS médian IDF ≈ 95 ; on filtre au-dessus
