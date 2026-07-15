@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 # ── Config Supabase ──────────────────────────────────────────────────────────
 PG_CONFIG = {
     "host":     os.getenv("POSTGRES_HOST",     "aws-0-eu-west-1.pooler.supabase.com"),
-    "port":     int(os.getenv("POSTGRES_PORT", "5432")),
+    "port":     int(os.getenv("POSTGRES_PORT", "6543")),  # 6543 = transaction mode (serverless)
     "dbname":   os.getenv("POSTGRES_DB",       "postgres"),
     "user":     os.getenv("POSTGRES_USER",     "postgres.iugsfmvqddburvufzacy"),
     "password": os.getenv("POSTGRES_PASSWORD", ""),
@@ -32,7 +32,7 @@ def get_pool() -> pool.SimpleConnectionPool:
     global _pool
     if _pool is None:
         try:
-            _pool = pool.SimpleConnectionPool(1, 5, **PG_CONFIG)
+            _pool = pool.SimpleConnectionPool(1, 2, **PG_CONFIG)
             logger.info("✅ Pool PostgreSQL initialisé")
         except Exception as e:
             logger.error(f"❌ Pool PostgreSQL échoué: {e}")
