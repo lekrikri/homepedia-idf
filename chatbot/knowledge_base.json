@@ -1,0 +1,132 @@
+[
+  {
+    "id": "dpe_definition",
+    "triggers": ["dpe", "diagnostic performance énergétique", "diagnostic énergétique", "passoire thermique", "classe énergie", "étiquette énergie"],
+    "answer": "Le **DPE (Diagnostic de Performance Énergétique)** note les logements de **A** (très économe, < 70 kWh/m²/an) à **G** (passoire thermique, > 420 kWh/m²/an). Obligatoire depuis 2021 pour toute vente ou location, il influence fortement le prix et la louabilité du bien. En Île-de-France, la note moyenne se situe autour de **D**. Les communes récentes (ZAC, écoquartiers) ont souvent des notes A/B, tandis que les centres-villes anciens (Paris, Saint-Denis) concentrent les G. Un bien classé F ou G ne peut plus être mis en location depuis 2023 (si consommation > 450 kWh/m²/an)."
+  },
+  {
+    "id": "ips_definition",
+    "triggers": ["ips", "indice de position sociale", "indice position sociale", "indice scolaire"],
+    "answer": "L'**IPS (Indice de Position Sociale)** mesure le niveau socio-économique des familles des élèves d'une école (revenus, diplômes, profession des parents). Il varie de **44** (très défavorisé) à **190** (très favorisé), avec une **moyenne nationale à 100** et IDF à **~115**. Un IPS élevé signifie que les élèves viennent de familles aisées — cela corrèle avec de meilleurs résultats scolaires mais aussi avec des prix immobiliers plus élevés. Les communes du 92 (Hauts-de-Seine) affichent les IPS les plus élevés d'IDF (120-145 en moyenne), le 93 les plus bas (80-95)."
+  },
+  {
+    "id": "rendement_calcul",
+    "triggers": ["calculer rendement", "calcul rendement", "comment calculer", "formule rendement", "rendement locatif brut"],
+    "answer": "Le **rendement locatif brut** se calcule ainsi : **(loyer annuel / prix d'achat) × 100**. Exemple : appartement acheté 200 000 € loué 800 €/mois → (800 × 12) / 200 000 × 100 = **4,8% brut**. Le rendement **net** déduit en plus les charges (taxe foncière, charges copropriété, assurance PNO, gestion locative ~8%) et les travaux. Un bon rendement brut en IDF se situe entre **4% et 6%** — au-delà de 6% c'est très attractif mais souvent dans des secteurs plus risqués (93, 91 périphérique). Paris intramuros tourne autour de 2,5-3,5% brut."
+  },
+  {
+    "id": "rendement_brut_vs_net",
+    "triggers": ["rendement brut", "rendement net", "différence brut net", "brut et net", "rendement réel"],
+    "answer": "Le **rendement brut** = (loyer annuel / prix achat) × 100. Le **rendement net** déduit toutes les charges : taxe foncière (~1-2 mois de loyer), charges non récupérables, assurance PNO, gestion (si agence ~8%), entretien et travaux. En pratique, le net est environ **1,5 à 2 points de moins** que le brut. Exemple : 5% brut → ~3,3% net. Le **rendement net-net** déduit aussi la fiscalité (IR + prélèvements sociaux sur les revenus fonciers). Pour un investisseur en tranche à 30%, compter encore -1 à -1,5 point. D'où l'intérêt du régime LMNP (meublé) ou de la SCI à l'IS pour optimiser."
+  },
+  {
+    "id": "prix_median_vs_moyen",
+    "triggers": ["prix médian", "prix moyen", "médian et moyen", "différence médian", "médiane", "moyenne immobilière"],
+    "answer": "Le **prix médian** est la valeur qui sépare les transactions en deux moitiés égales (50% des ventes en dessous, 50% au-dessus). Le **prix moyen** est la somme divisée par le nombre de ventes. En immobilier, le **médian est plus fiable** car il n'est pas faussé par quelques ventes exceptionnelles très chères. Exemple : 9 appartements vendus à 300 000€ et 1 villa à 3M€ → moyenne = 570 000€, médiane = 300 000€. HomePedia utilise le **prix médian** pour toutes ses analyses afin de refléter le marché réel."
+  },
+  {
+    "id": "zone_tendue",
+    "triggers": ["zone tendue", "encadrement loyers", "loyers encadrés", "hausse loyers", "plafond loyer"],
+    "answer": "Une **zone tendue** est une agglomération où l'offre de logements est insuffisante par rapport à la demande, entraînant des loyers élevés. En Île-de-France, **Paris et toute la petite couronne** (92, 93, 94 + certaines communes 77, 78, 91, 95) sont en zone tendue. Conséquences : **encadrement des loyers** (à Paris et dans certaines communes), délai de préavis réduit à 1 mois pour les locataires, taxe sur les logements vacants. L'**encadrement des loyers** fixe un loyer de référence par type de bien et quartier — dépasser de plus de 20% est passible d'amende."
+  },
+  {
+    "id": "dvf",
+    "triggers": ["dvf", "demande de valeurs foncières", "demandes de valeurs foncières", "transactions foncières", "données transactions"],
+    "answer": "Le **DVF (Demandes de Valeurs Foncières)** est la base de données officielle du Ministère des Finances recensant toutes les **transactions immobilières en France depuis 2014**. Elle contient le prix de vente, la surface, le type de bien et l'adresse pour chaque vente. Accessible gratuitement sur **data.gouv.fr** ou **app.dvf.etalab.gouv.fr**. HomePedia utilise les données DVF pour calculer les **prix médians par commune** en IDF. C'est la source la plus fiable car elle capture toutes les ventes notariées."
+  },
+  {
+    "id": "cash_flow",
+    "triggers": ["cash flow", "cashflow", "flux de trésorerie", "flux trésorerie", "revenus nets mensuels"],
+    "answer": "Le **cash flow** locatif est le **revenu mensuel net restant** après toutes les charges : loyer – crédit immobilier – charges copropriété – taxe foncière (lissée) – assurance – vacance locative provisionnée. Un cash flow **positif** signifie que le bien s'autofinance (rare à Paris, plus courant en grande couronne). Un cash flow **négatif** (effort d'épargne mensuel) est acceptable si la valorisation du capital compense. En IDF, obtenir du cash flow positif nécessite généralement un rendement brut > 6-7% ou un apport important."
+  },
+  {
+    "id": "loi_pinel",
+    "triggers": ["pinel", "loi pinel", "dispositif pinel", "réduction impôt pinel", "investissement pinel"],
+    "answer": "La **loi Pinel** était un dispositif de défiscalisation pour l'investissement locatif dans le neuf. Il permettait une **réduction d'impôt de 9% à 14%** du prix d'achat (selon 6, 9 ou 12 ans de location) pour des logements neufs en zone tendue. **Il a été supprimé au 31 décembre 2024**. En IDF, les zones éligibles étaient A, Abis (Paris) et B1 (grande couronne). Des alternatives existent : **Denormandie** (ancien rénové), **LMNP** (meublé), **Malraux** (patrimoine). Si vous avez un bien Pinel en cours, la réduction d'impôt continue jusqu'à la fin de votre engagement."
+  },
+  {
+    "id": "ptz",
+    "triggers": ["ptz", "prêt à taux zéro", "prêt taux zéro", "primo accédant", "aide achat premier logement"],
+    "answer": "Le **PTZ (Prêt à Taux Zéro)** est un prêt sans intérêts accordé aux **primo-accédants** (premier achat de résidence principale) sous conditions de ressources. En Île-de-France (zones A/Abis), le PTZ peut financer jusqu'à **50% du prix d'achat dans le neuf** et **40% dans l'ancien avec travaux** (depuis 2024). Les plafonds de ressources varient selon la composition du foyer (ex: 37 000€/an pour une personne seule en zone A). Il se cumule avec d'autres prêts et n'est pas remboursable immédiatement (différé de 5 à 15 ans selon ressources)."
+  },
+  {
+    "id": "frais_notaire",
+    "triggers": ["frais notaire", "frais d'acte", "frais acquisition", "frais d'acquisition", "frais achat", "droits mutation"],
+    "answer": "Les **frais de notaire** (appelés aussi droits de mutation) représentent **7 à 8% du prix** dans l'ancien et **2 à 3% dans le neuf**. Pour un appartement à 300 000€ dans l'ancien, comptez ~22 000 à 24 000€ de frais. Ils se décomposent en : droits de mutation (5,8% en IDF), émoluments du notaire (~1%), débours (frais administratifs). On dit souvent «frais de notaire» mais en réalité 80% vont à l'État et aux collectivités. À noter : en Île-de-Seine-Saint-Denis (93), les droits sont légèrement réduits dans certaines communes en politique de la ville."
+  },
+  {
+    "id": "taxe_fonciere",
+    "triggers": ["taxe foncière", "impôt foncier", "taxe propriété", "taux foncier"],
+    "answer": "La **taxe foncière** est un impôt local annuel dû par tout propriétaire (occupant ou bailleur). Son montant dépend de la **valeur cadastrale** du bien et du **taux voté par la commune**. En Île-de-France, les taux varient énormément : Paris tourne autour de **13%** (très bas), certaines communes du 93 comme Saint-Denis ou Montreuil peuvent dépasser **40-50%**. Pour un T2 de 40m² à 200 000€, la taxe foncière varie de 500€ (Paris) à 2 000€+ (certaines communes 93). Pour un investisseur, c'est une charge non récupérable sur le locataire à intégrer dans le calcul de rendement net."
+  },
+  {
+    "id": "denormandie",
+    "triggers": ["denormandie", "dispositif denormandie", "rénovation locative défiscalisation", "ancien rénové défiscalisation"],
+    "answer": "Le **dispositif Denormandie** est la version «ancien» du Pinel : il permet une **réduction d'impôt de 12% à 21%** du prix total (achat + travaux) pour des logements anciens à rénover dans des communes éligibles. Conditions : travaux représentant minimum 25% du coût total, location nue pendant 6, 9 ou 12 ans, loyers et ressources locataires plafonnés. En IDF, certaines communes des Hauts-de-Seine, Val-de-Marne et Seine-Saint-Denis sont éligibles. Avantage sur Pinel : s'applique à l'ancien, souvent mieux situé. Disponible jusqu'en 2027."
+  },
+  {
+    "id": "plus_value_immo",
+    "triggers": ["plus-value", "plus value", "taxe revente", "impôt revente", "exonération plus-value", "revendre appartement impôt"],
+    "answer": "La **plus-value immobilière** est la différence entre le prix de vente et le prix d'achat (corrigé des travaux et frais). Elle est imposée à **19% + 17,2% de prélèvements sociaux = 36,2%**. Mais il existe des **abattements pour durée de détention** : exonération totale d'IR après **22 ans**, de prélèvements sociaux après **30 ans**. La **résidence principale est totalement exonérée**. Pour les investisseurs, l'exonération progressive démarre à la 6ème année. Astuce : les frais de notaire et travaux viennent en déduction du prix d'achat (augmentent la base d'achat), réduisant la plus-value imposable."
+  },
+  {
+    "id": "ratio_loyer_prix",
+    "triggers": ["ratio loyer", "loyer ramené au prix", "rapport loyer prix", "loyer sur prix", "ratio locatif"],
+    "answer": "Le **ratio loyer/prix** (ou gross yield) rapporte le loyer mensuel au prix d'achat : **(loyer mensuel / prix d'achat) × 100**. Un ratio de **0,5%** signifie une mensualité de loyer = 0,5% du prix. En pratique, ce ratio varie en IDF de **0,2% à 0,8%**. Exemple : T2 à 200 000€ loué 700€/mois → 0,35% → rendement brut annuel de 4,2%. HomePedia calcule ce ratio et le présente comme **rendement locatif brut en %/an**. Plus le ratio est élevé, plus le bien génère de cashflow. À Paris, ce ratio est faible (0,25-0,35%) ; dans le 93 ou 91, il peut atteindre 0,5-0,7%."
+  },
+  {
+    "id": "vacance_locative",
+    "triggers": ["vacance locative", "logement vacant", "risque locatif", "bien vacant", "trouver locataire"],
+    "answer": "La **vacance locative** est la période pendant laquelle un bien reste sans locataire entre deux contrats. En Île-de-France, la demande locative est très forte — la vacance moyenne est de **2 à 4 semaines** pour un bien correctement priced. Les zones les plus demandées (Paris, petite couronne, RER) ont quasiment zéro vacance. Pour se protéger : prévoir 1 mois de vacance/an dans son calcul de rendement. La **GLI (Garantie des Loyers Impayés)** couvre aussi souvent la vacance locative. Attention : en grande couronne ou zones moins tendues, la vacance peut atteindre 1 à 2 mois/an."
+  },
+  {
+    "id": "grand_paris_express",
+    "triggers": ["grand paris express", "gpe", "ligne 15", "ligne 16", "ligne 17", "ligne 18", "nouveau métro", "extension metro"],
+    "answer": "Le **Grand Paris Express (GPE)** est le plus grand chantier ferroviaire d'Europe : 200 km de nouvelles lignes de métro automatiques (lignes 15, 16, 17, 18) et 68 nouvelles gares d'ici 2030. Impact immobilier majeur : les communes autour des futures gares voient leurs prix progresser de **10 à 25%** en anticipation. Communes à surveiller : Vitry-sur-Seine, Champigny (ligne 15), Saint-Denis Pleyel (hub 4 lignes), Villejuif, Bagneux, Rosny-sous-Bois (ligne 11 extension), Noisy-Champs. La ligne 15 Sud est la plus avancée (ouverture prévue 2025-2026). HomePedia n'intègre pas encore les données GPE directement mais les communes concernées apparaissent souvent dans les tops investissement."
+  },
+  {
+    "id": "couronne_idf",
+    "triggers": ["première couronne", "deuxième couronne", "grande couronne", "petite couronne", "ceinture paris"],
+    "answer": "La **petite couronne** regroupe les 3 départements directement autour de Paris : **92 (Hauts-de-Seine), 93 (Seine-Saint-Denis), 94 (Val-de-Marne)**. La **grande couronne** comprend les 4 départements plus éloignés : **77 (Seine-et-Marne), 78 (Yvelines), 91 (Essonne), 95 (Val-d'Oise)**. En immobilier : petite couronne = prix plus élevés (4 000-8 000€/m²), meilleure liquidité, forte demande locative. Grande couronne = prix plus abordables (2 000-4 500€/m²), meilleurs rendements mais plus de vacance locative. La première/deuxième couronne est souvent utilisée comme synonyme de petite/grande couronne."
+  },
+  {
+    "id": "score_composite_homepedia",
+    "triggers": ["score composite", "score global", "comment calculez votre score", "score homepedia", "comment fonctionne votre score", "votre score"],
+    "answer": "Le **score global HomePedia** (sur 100) est un indicateur composite pondéré calculé à partir de plusieurs critères : **qualité de vie** (DPE, IPS écoles, taux de cambriolage, espaces verts), **attractivité** (prix, liquidité, demande locative), **rendement** (loyer médian / prix médian). Les poids sont ajustés selon l'usage (vivre vs investir). Le **score investissement** privilégie rendement et valorisation ; le **score qualité de vie** pondère davantage sécurité, écoles et environnement. Ces scores sont calculés sur les **1 266 communes IDF** à partir de données publiques (DVF, ADEME, INSEE, DEPP, SSMSI)."
+  },
+  {
+    "id": "lmnp",
+    "triggers": ["lmnp", "lmp", "loueur meublé non professionnel", "meublé non professionnel", "location meublée impôt", "régime réel meublé"],
+    "answer": "Le **LMNP (Loueur Meublé Non Professionnel)** est un statut fiscal avantageux pour la location meublée. Avantages : amortissement du bien (2-3%/an) et des meubles déductibles des revenus, réduisant drastiquement la base imposable. Au **régime réel**, il est courant d'avoir zéro impôt sur les revenus locatifs pendant 10-15 ans grâce aux amortissements. Conditions : recettes locatives < 23 000€/an ou < 50% des revenus totaux. Le statut **LMP** (Professionnel) s'applique au-delà. En IDF, le LMNP est très utilisé pour les studios meublés proches des universités ou en courte durée (Airbnb)."
+  },
+  {
+    "id": "carrez_surface",
+    "triggers": ["loi carrez", "carrez", "surface loi carrez", "surface privative", "mesure surface", "superficie"],
+    "answer": "La **loi Carrez** (1996) impose la mesure exacte de la **surface privative** d'un logement en copropriété lors de toute vente. Elle exclut : murs, cloisons, gaines, embrasures, surfaces < 1,80m de hauteur, caves, parkings, balcons. Une erreur de plus de **5%** dans la surface annoncée donne droit à une réduction proportionnelle du prix dans l'année suivant la vente. Différente de la surface habitable (loi Boutin, pour les locations) qui est généralement légèrement plus grande. Toujours vérifier l'attestation Carrez avant d'acheter — certains vendeurs annoncent la surface Boutin (plus grande) pour un bien en copropriété."
+  },
+  {
+    "id": "syndic_copropriete",
+    "triggers": ["syndic", "copropriété", "charges copropriété", "assemblée générale copropriété", "quote part", "tantièmes"],
+    "answer": "Le **syndic de copropriété** est le gestionnaire professionnel d'un immeuble en copropriété. Il gère l'entretien des parties communes, les travaux, la comptabilité et organise l'**Assemblée Générale** annuelle. Les **charges de copropriété** se divisent en charges courantes (entretien, gardiennage, espaces verts) et charges spéciales (travaux). En IDF, les charges varient de **20€/mois** (petit immeuble sans gardien) à **500€+** (grand immeuble haussmannien avec gardien et piscine). Pour un investisseur : les charges de copropriété sont en partie récupérables sur le locataire (ordures ménagères, eau froide) et en partie non récupérables (travaux, assurance immeuble)."
+  },
+  {
+    "id": "taux_cambriolage",
+    "triggers": ["taux cambriolage", "cambriolage pour mille", "cambriolages pour mille", "statistiques sécurité", "données ssmsi"],
+    "answer": "Le **taux de cambriolage pour mille habitants** mesure le nombre de cambriolages de logements pour 1 000 habitants sur une année. Source : **SSMSI (Service Statistique Ministériel de la Sécurité Intérieure)**, données officielles du Ministère de l'Intérieur. En Île-de-France, la moyenne est d'environ **5,7‰**. Les communes les plus sûres (< 2‰) sont souvent des villes résidentielles pavillonnaires de grande couronne. Les taux les plus élevés se trouvent dans les centres-villes animés et certaines communes du 93 (8-12‰). Un taux < 4‰ est considéré comme bon pour une ville IDF."
+  },
+  {
+    "id": "premiere_deuxieme_couronne_prix",
+    "triggers": ["banlieue proche", "banlieue parisienne", "investir banlieue", "banlieue paris prix"],
+    "answer": "La **banlieue parisienne** immobilière se divise en zones de prix distincts. **Petite couronne** (92/93/94) : 4 000 à 10 000€/m² selon les communes — Neuilly (11 000€), Boulogne (7 500€), Montreuil (5 500€), Saint-Denis (3 000€). **Grande couronne** (77/78/91/95) : 2 000 à 5 000€/m² — Versailles (5 500€), Massy (4 500€), Cergy (3 300€), Meaux (2 400€). La règle générale : plus on s'éloigne de Paris, plus le prix baisse mais le rendement monte. L'accessibilité aux transports (RER, futur GPE) reste le premier facteur de valorisation."
+  },
+  {
+    "id": "hors_scope_credit",
+    "triggers": ["taux credit", "taux pret", "simulation pret", "simulation de pret", "credits immobiliers", "taux hypothecaire", "taux immobilier actuel", "taux emprunt"],
+    "answer": "Je suis spécialisé dans l'analyse des communes IDF (prix, rendement, qualité de vie, DPE). Pour les **taux de crédit immobilier en temps réel**, consultez un courtier (Meilleurtaux, Cafpi, Empruntis) ou directement votre banque — les taux varient chaque semaine selon la politique de la BCE. Ce que je peux faire : comparer les communes IDF selon les critères immobiliers qui vous importent. Posez-moi une question sur les prix, les rendements ou la qualité de vie en Île-de-France !"
+  },
+  {
+    "id": "hors_scope_agence",
+    "triggers": ["agence immobilière", "agent immobilier", "trouver agence", "contacter agence"],
+    "answer": "Je suis un outil d'analyse de marché IDF, pas un annuaire d'agences. Pour trouver une agence immobilière, consultez **SeLoger**, **Logic-Immo**, **PAP** ou **Google Maps** avec votre commune cible. Ce que je fais en revanche : analyser le marché de n'importe quelle commune IDF (prix, rendement, qualité de vie, DPE, sécurité) pour vous aider à choisir où chercher. Quelle commune vous intéresse ?"
+  }
+]
