@@ -8,6 +8,7 @@ import gc
 import re
 import json
 import logging
+from decimal import Decimal
 from typing import List, Dict, Any, Optional
 
 try:
@@ -131,7 +132,7 @@ class HomepediaQwenManager:
         valid_vals: List[float] = []
         for row in sql_data:
             for v in row.values():
-                if isinstance(v, (int, float)) and v is not None:
+                if isinstance(v, (int, float, Decimal)) and v is not None:
                     valid_vals.append(float(v))
         text_nums = self._extract_numbers(text)
         # Si les données ont des chiffres mais la réponse n'en cite aucun → réponse vague
@@ -223,7 +224,9 @@ class HomepediaQwenManager:
     }
 
     def _build_messages(self, sql_data: List[Dict], user_query: str, context: str, intent: str = "") -> List[Dict]:
-        data_json = json.dumps(sql_data[:6], ensure_ascii=False, default=str)
+        # Convertir Decimal → float pour que Qwen voie des nombres (pas des strings)
+        data_json = json.dumps(sql_data[:6], ensure_ascii=False,
+                               default=lambda v: float(v) if isinstance(v, Decimal) else str(v))
         context_block = f"Historique : {context}\n" if context.strip() else ""
         focus = self._INTENT_FOCUS.get(intent, "mets en avant les données les plus pertinentes pour la question")
         return [

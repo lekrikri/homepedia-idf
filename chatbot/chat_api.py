@@ -230,6 +230,25 @@ def chat():
     if sem:
         return jsonify({**sem, "cached": True, "semantic_cache": True})
 
+    # Knowledge Base — court-circuit avant intent detection
+    # Intercepte les questions théoriques quel que soit l'intent qui serait détecté
+    kb_result = search_kb(question)
+    if kb_result:
+        kb_answer, kb_score = kb_result
+        logger.info(f"📚 KB match (score={kb_score}) — bypass intent detection")
+        response = {
+            "answer": kb_answer,
+            "intent": "general",
+            "nb_results": 0,
+            "data": [],
+            "latency_ms": round((time.time() - start) * 1000),
+            "cached": False,
+            "confidence_score": 90,
+            "source": "knowledge_base",
+        }
+        set_cached(question, response)
+        return jsonify(response)
+
     # 1. Détection d'intent (hybride MiniLM + regex)
     intent, params = detect_intent(question)
     logger.info(f"🎯 Intent: {intent} | params: {list(params.keys())}")
@@ -285,25 +304,6 @@ def chat():
         }
         set_cached(question, response)
         return jsonify(response)
-
-    # 2b. Knowledge Base — court-circuit pour questions théoriques (intent general)
-    if intent == "general":
-        kb_result = search_kb(question)
-        if kb_result:
-            kb_answer, kb_score = kb_result
-            logger.info(f"📚 KB réponse retournée (score={kb_score})")
-            response = {
-                "answer": kb_answer,
-                "intent": "general",
-                "nb_results": 0,
-                "data": [],
-                "latency_ms": round((time.time() - start) * 1000),
-                "cached": False,
-                "confidence_score": 90,
-                "source": "knowledge_base",
-            }
-            set_cached(question, response)
-            return jsonify(response)
 
     # 2. Exécution SQL
     if "_sql" in params or intent == "multi_criteria":
