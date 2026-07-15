@@ -306,6 +306,25 @@ def chat():
         set_cached(question, response)
         return jsonify(response)
 
+    # 2b. Knowledge Base — court-circuit pour questions théoriques (intent general)
+    if intent == "general":
+        kb_result = search_kb(question)
+        if kb_result:
+            kb_answer, kb_score = kb_result
+            logger.info(f"📚 KB réponse retournée (score={kb_score})")
+            response = {
+                "answer": kb_answer,
+                "intent": "general",
+                "nb_results": 0,
+                "data": [],
+                "latency_ms": round((time.time() - start) * 1000),
+                "cached": False,
+                "confidence_score": 90,
+                "source": "knowledge_base",
+            }
+            set_cached(question, response)
+            return jsonify(response)
+
     # 2. Exécution SQL
     if "_sql" in params or intent == "multi_criteria":
         # SQL construit dynamiquement (multi_criteria, top_prix, etc.)
