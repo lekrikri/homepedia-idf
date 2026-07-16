@@ -2178,18 +2178,24 @@ export default function MapView() {
           map.current.addLayer({
             id: LYR, type: 'heatmap', source: SRC,
             paint: {
-              'heatmap-weight': ['interpolate', ['linear'], ['get', 'prix_m2'], 3000, 0, 12000, 1],
-              'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 5, 1, 12, 2.5],
-              'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 5, 18, 12, 35],
-              'heatmap-opacity': 0.72,
+              // Poids basé sur le prix — zones Paris/proche couronne ressortent plus fort
+              'heatmap-weight': ['interpolate', ['linear'], ['get', 'prix_m2'], 1500, 0.1, 5000, 0.5, 12000, 1],
+              // Intensité croissante avec le zoom (plus détaillé en zoom in)
+              'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 5, 0.6, 9, 1.4, 12, 2.8],
+              // Rayon large pour couvrir la commune, réduit en zoom in
+              'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 5, 22, 8, 30, 12, 40],
+              'heatmap-opacity': 0.78,
+              // Palette : transparent → bleu roi (abordable) → cyan → vert → jaune → orange → rouge (très cher)
               'heatmap-color': [
                 'interpolate', ['linear'], ['heatmap-density'],
                 0,    'rgba(0,0,0,0)',
-                0.1,  '#3c83f6',
-                0.35, '#10b981',
-                0.6,  '#f59e0b',
-                0.8,  '#ef4444',
-                1,    '#7c3aed'
+                0.05, 'rgba(30,80,220,0.6)',
+                0.2,  '#2563eb',
+                0.4,  '#06b6d4',
+                0.55, '#10b981',
+                0.7,  '#f59e0b',
+                0.85, '#f97316',
+                1,    '#dc2626'
               ]
             }
           });
@@ -2779,54 +2785,26 @@ export default function MapView() {
           )}
           </div>
 
+          {/* Toggle 3D — placé avant heatmap pour rester toujours visible */}
           <button
-            onClick={() => { setShowHeatmap(v => !v); if (showHeatmap) { setTimelineYear(null); setTimelinePlay(false); } }}
-            title={showHeatmap ? "Masquer la heatmap des prix IDF" : "Heatmap des prix par commune (IDF)"}
+            onClick={() => {
+              if (!is3D && map.current) {
+                const { lng, lat } = map.current.getCenter();
+                const zoom = map.current.getZoom();
+                setCesiumInitCenter({ lng, lat, zoom });
+              }
+              setIs3D(v => !v);
+            }}
+            title={is3D ? "Passer en vue 2D" : "Passer en vue 3D"}
             className={`size-11 rounded-xl flex items-center justify-center transition-all ${
-              showHeatmap ? "text-white shadow-lg" : "glass-panel hover:bg-orange-500/20 text-slate-300"
-            }`}
-            style={showHeatmap ? { background: "#f59e0b", boxShadow: "0 4px 20px rgba(245,158,11,0.4)" } : {}}>
-            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>thermostat</span>
+              is3D
+                ? "bg-primary text-white shadow-lg shadow-primary/40"
+                : "glass-panel hover:bg-primary/20 text-slate-300"
+            }`}>
+            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>
+              {is3D ? "map" : "3d_rotation"}
+            </span>
           </button>
-
-          {/* Timeline animée — visible uniquement quand la heatmap est active */}
-          {showHeatmap && (
-            <div className="glass-panel rounded-xl px-3 py-2 flex flex-col gap-1.5 min-w-[160px]">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] text-slate-400 font-medium tracking-wide uppercase">Timeline prix</span>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => { setTimelineYear(null); setTimelinePlay(false); }}
-                    title="Revenir au prix actuel"
-                    className={`text-[9px] px-1.5 py-0.5 rounded-full transition-all ${!timelineYear ? 'bg-orange-500 text-white' : 'text-slate-400 hover:text-slate-200'}`}>
-                    Actuel
-                  </button>
-                  <button
-                    onClick={() => { if (!timelineYear) setTimelineYear(2021); setTimelinePlay(v => !v); }}
-                    title={timelinePlay ? "Pause" : "Lecture automatique"}
-                    className="text-slate-300 hover:text-white transition-colors">
-                    <span className="material-symbols-outlined" style={{ fontSize: 14 }}>
-                      {timelinePlay ? 'pause' : 'play_arrow'}
-                    </span>
-                  </button>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="range" min={2021} max={2026} step={1}
-                  value={timelineYear ?? 2024}
-                  onChange={e => { setTimelinePlay(false); setTimelineYear(Number(e.target.value)); }}
-                  className="flex-1 h-1 accent-orange-400 cursor-pointer"
-                />
-                <span className="text-[11px] font-bold mono-nums text-orange-400 w-8 text-right">
-                  {timelineYear ?? '—'}
-                </span>
-              </div>
-              {timelineYear && timelineYear >= 2025 && (
-                <span className="text-[9px] text-purple-400">Prévision</span>
-              )}
-            </div>
-          )}
 
           <button
             onClick={() => map.current && map.current.setStyle(
@@ -2838,6 +2816,45 @@ export default function MapView() {
             className="size-11 rounded-xl glass-panel flex items-center justify-center hover:bg-primary/20 transition-all">
             <span className="material-symbols-outlined text-slate-300" style={{ fontSize: 20 }}>layers</span>
           </button>
+
+          <button
+            onClick={() => { setShowHeatmap(v => !v); if (showHeatmap) { setTimelineYear(null); setTimelinePlay(false); } }}
+            title={showHeatmap ? "Masquer la heatmap des prix IDF" : "Heatmap des prix par commune (IDF)"}
+            className={`size-11 rounded-xl flex items-center justify-center transition-all ${
+              showHeatmap ? "text-white shadow-lg" : "glass-panel hover:bg-orange-500/20 text-slate-300"
+            }`}
+            style={showHeatmap ? { background: "#f59e0b", boxShadow: "0 4px 20px rgba(245,158,11,0.4)" } : {}}>
+            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>thermostat</span>
+          </button>
+
+          {/* Timeline — barre compacte sur une ligne, visible quand heatmap active */}
+          {showHeatmap && (
+            <div className="glass-panel rounded-xl px-2.5 py-2 flex items-center gap-2" style={{ width: 148 }}>
+              <button
+                onClick={() => { if (!timelineYear) setTimelineYear(2021); setTimelinePlay(v => !v); }}
+                title={timelinePlay ? "Pause" : "Lecture 2021→2026"}
+                className="text-orange-400 hover:text-orange-300 transition-colors shrink-0">
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>
+                  {timelinePlay ? 'pause' : 'play_arrow'}
+                </span>
+              </button>
+              <input
+                type="range" min={2021} max={2026} step={1}
+                value={timelineYear ?? 2024}
+                onChange={e => { setTimelinePlay(false); setTimelineYear(Number(e.target.value)); }}
+                className="flex-1 h-1 cursor-pointer"
+                style={{ accentColor: timelineYear && timelineYear >= 2025 ? '#a78bfa' : '#f59e0b' }}
+              />
+              <button
+                onClick={() => { setTimelineYear(null); setTimelinePlay(false); }}
+                title="Prix actuel"
+                className={`text-[10px] font-bold mono-nums shrink-0 w-8 text-right transition-colors ${
+                  !timelineYear ? 'text-orange-400' : (timelineYear >= 2025 ? 'text-purple-400 hover:text-purple-300' : 'text-orange-400 hover:text-orange-300')
+                }`}>
+                {timelineYear ?? 'Live'}
+              </button>
+            </div>
+          )}
 
           {!is3D && (
             <div className="flex flex-col glass-panel rounded-xl overflow-hidden divide-y divide-primary/10">
