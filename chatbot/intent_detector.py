@@ -118,6 +118,16 @@ INTENT_EXAMPLES: Dict[str, List[str]] = {
         "performance énergétique des communes IDF",
         "communes classe A ou B en énergie en Île-de-France",
     ],
+    "risques": [
+        "communes sans risque inondation",
+        "zones non inondables en IDF",
+        "risque argile gonflement maison",
+        "risque retrait gonflement argile",
+        "communes sûres des risques naturels",
+        "pas de risque inondation banlieue",
+        "zones à faible risque BRGM",
+        "communes sans risque environnemental",
+    ],
     "securite": [
         "communes les plus sûres",
         "peu de cambriolages en IDF",
@@ -328,6 +338,25 @@ TEMPLATES: Dict[str, Dict] = {
         "response_hint": "communes avec meilleure performance énergétique (DPE)",
     },
 
+    "risques": {
+        "sql": """
+            SELECT city AS commune, TRIM(code_departement) AS dept,
+                   ROUND(prix_median_m2::numeric, 0) AS prix_m2,
+                   risque_argile,
+                   risque_inondation,
+                   ROUND(score_risques::numeric, 1) AS score_risques
+            FROM communes_agregat
+            WHERE risque_argile IS NOT NULL
+              AND risque_inondation IS NOT NULL
+              AND prix_median_m2 IS NOT NULL
+            ORDER BY (risque_argile + risque_inondation) ASC,
+                     score_risques DESC
+            LIMIT %(limit)s
+        """,
+        "params": {"limit": 6},
+        "response_hint": "communes à faibles risques environnementaux (inondation, argile BRGM)",
+    },
+
     "securite": {
         "sql": """
             SELECT city AS commune, TRIM(code_departement) AS dept,
@@ -519,6 +548,10 @@ INTENT_PATTERNS = [
     )),
     ("dpe", re.compile(
         r"\bdpe\b|[eé]nerg|[eé]cologique|passoire|thermique|consommation.?[eé]nerg", re.I
+    )),
+    ("risques", re.compile(
+        r"risque.?(inondation|argile|naturel|brgm|g[eé]ologique)|inondation|"
+        r"retrait.gonflement|zone.inondable|risque.environnemental", re.I
     )),
     ("securite", re.compile(
         r"s[eé]curit|cambriolage|crime|d[eé]linquance|\bs[uû]re\b|tranquille", re.I

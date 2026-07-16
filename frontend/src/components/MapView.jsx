@@ -297,6 +297,14 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock, sheetS
       .then(r => setSimilaires(r.data?.similaires || [])).catch(() => setSimilaires([]));
   }, [codeCommune]);
 
+  // Villes jumelles — similaires mais moins chères
+  const [jumelles, setJumelles] = useState([]);
+  useEffect(() => {
+    if (!codeCommune) { setJumelles([]); return; }
+    axios.get(`/api/v1/communes/${codeCommune}/jumelles`)
+      .then(r => setJumelles(r.data?.jumelles || [])).catch(() => setJumelles([]));
+  }, [codeCommune]);
+
   const toggleFav = () => {
     if (!codeCommune) return;
     if (fav) {
@@ -1082,6 +1090,55 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock, sheetS
           );
         })()}
 
+        {/* ── RISQUES ENVIRONNEMENTAUX (BRGM / géorisques) ─────────────── */}
+        {(agregat?.risque_argile != null || agregat?.risque_inondation != null) && (() => {
+          const argile    = agregat.risque_argile    ?? 0;
+          const inondation = agregat.risque_inondation ?? 0;
+          const score     = agregat.score_risques    ?? 100;
+          const argileLabel = argile === 0 ? { text: "Nul",           color: "#10b981" }
+                            : argile === 1 ? { text: "Faible à Moyen",color: "#f59e0b" }
+                            : argile === 2 ? { text: "Moyen à Fort",  color: "#f97316" }
+                            :               { text: "Fort",           color: "#ef4444" };
+          const inondLabel  = inondation === 0 ? { text: "Non exposée",    color: "#10b981" }
+                            : inondation === 1 ? { text: "Faible",         color: "#f59e0b" }
+                            : inondation === 2 ? { text: "Modérée",        color: "#f97316" }
+                            :                   { text: "Forte",           color: "#ef4444" };
+          const globalBadge = score >= 85 ? { text: "Faible risque", color: "#10b981" }
+                            : score >= 60 ? { text: "Risque modéré", color: "#f59e0b" }
+                            :               { text: "Risque élevé",  color: "#ef4444" };
+          return (
+            <div className="rounded-xl p-4" style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(251,191,36,0.15)" }}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined" style={{ fontSize: 13, color: globalBadge.color }}>warning</span>
+                  <p className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold">Risques environnementaux</p>
+                </div>
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full"
+                  style={{ color: globalBadge.color, background: globalBadge.color + "18", border: `1px solid ${globalBadge.color}40` }}>
+                  {globalBadge.text}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-lg p-2.5" style={{ background: "rgba(15,23,36,0.6)", border: `1px solid ${argileLabel.color}30` }}>
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="material-symbols-outlined" style={{ fontSize: 12, color: argileLabel.color }}>landscape</span>
+                    <p className="text-[8px] text-slate-500 font-medium">Retrait-gonflement argile</p>
+                  </div>
+                  <p className="text-[11px] font-bold" style={{ color: argileLabel.color }}>{argileLabel.text}</p>
+                </div>
+                <div className="rounded-lg p-2.5" style={{ background: "rgba(15,23,36,0.6)", border: `1px solid ${inondLabel.color}30` }}>
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="material-symbols-outlined" style={{ fontSize: 12, color: inondLabel.color }}>water</span>
+                    <p className="text-[8px] text-slate-500 font-medium">Risque inondation</p>
+                  </div>
+                  <p className="text-[11px] font-bold" style={{ color: inondLabel.color }}>{inondLabel.text}</p>
+                </div>
+              </div>
+              <p className="text-[8px] text-slate-600 mt-2">Source : BRGM · géorisques.gouv.fr</p>
+            </div>
+          );
+        })()}
+
         {/* ── ÉQUIPEMENTS & SERVICES (chips) ────────────────────────────── */}
         {agregat?.nb_poi_total > 0 && (
           <div className="rounded-xl p-4" style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(60,131,246,0.12)" }}>
@@ -1162,6 +1219,49 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock, sheetS
               })}
             </div>
             <p className="text-[8px] text-slate-600 mt-2">Similarité sur prix, DPE, IPS, investissement et sécurité</p>
+          </div>
+        )}
+
+        {/* ── VILLES JUMELLES — similaires mais moins chères ───────────── */}
+        {jumelles.length > 0 && (
+          <div className="rounded-xl p-4" style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(16,185,129,0.18)" }}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-emerald-400" style={{ fontSize: 13 }}>location_city</span>
+                <p className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold">Villes jumelles</p>
+              </div>
+              <span className="text-[9px] text-emerald-400 font-semibold">Similaire · Prix inférieur</span>
+            </div>
+            <div className="space-y-1.5">
+              {jumelles.map(j => (
+                <button key={j.code_commune}
+                  onClick={() => onSelectCommune && onSelectCommune({ code_insee: j.code_commune, nom: j.city })}
+                  className="w-full flex items-center justify-between p-2.5 rounded-lg transition-all hover:bg-emerald-500/10 text-left"
+                  style={{ background: "rgba(15,23,36,0.5)", border: "1px solid rgba(30,41,59,0.5)" }}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-[9px] px-1.5 py-0.5 rounded font-bold shrink-0"
+                      style={{ background: "rgba(16,185,129,0.15)", color: "#10b981", border: "1px solid rgba(16,185,129,0.25)" }}>
+                      {j.code_departement}
+                    </span>
+                    <span className="text-[11px] text-slate-200 font-medium truncate">{j.city}</span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0 ml-2">
+                    {j.prix_median_m2 && (
+                      <span className="text-[10px] text-slate-400 mono-nums">
+                        {Math.round(j.prix_median_m2 / 100) / 10}k€
+                      </span>
+                    )}
+                    {j.prix_delta_pct != null && (
+                      <span className="text-[9px] font-black mono-nums text-emerald-400">
+                        {Math.round(j.prix_delta_pct)}%
+                      </span>
+                    )}
+                    <span className="material-symbols-outlined text-slate-600" style={{ fontSize: 14 }}>arrow_forward</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <p className="text-[8px] text-slate-600 mt-2">Qualité de vie et DPE similaires · Prix au m² plus bas</p>
           </div>
         )}
 

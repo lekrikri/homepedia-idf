@@ -98,6 +98,8 @@ func main() {
 
 		// Communes similaires (distance euclidienne sur 5 features normalisées)
 		v1.GET("/communes/:code/similaires", middleware.HTTPCache(1800, 86400), handlers.GetCommunesSimilaires)
+		// Villes jumelles — similaires mais moins chères (−8% mini)
+		v1.GET("/communes/:code/jumelles", middleware.HTTPCache(1800, 86400), handlers.GetVillesJumelles)
 
 		// Isochrones (proxy ORS)
 		v1.GET("/isochrone", handlers.GetIsochrone)
