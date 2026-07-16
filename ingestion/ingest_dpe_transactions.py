@@ -42,22 +42,21 @@ def fetch_dpe_idf() -> dict:
     """
     print(f"  📥 DPE Île-de-France (region=11)...")
     result = defaultdict(lambda: defaultdict(Counter))
-    after = None
     page = 0
     total_fetched = 0
 
-    while True:
-        params = {
-            "size": BATCH_SIZE,
-            "select": "etiquette_dpe,surface_habitable_logement,code_insee_ban",
-            "qs": IDF_REGION_FILTER,
-        }
-        if after:
-            params["after"] = after
+    # URL initiale — requests encode : en %3A automatiquement dans qs
+    first_url = (
+        f"{DPE_API}?size={BATCH_SIZE}"
+        f"&select=etiquette_dpe,surface_habitable_logement,code_insee_ban"
+        f"&qs={IDF_REGION_FILTER.replace(':', '%3A')}"
+    )
+    next_url = first_url
 
+    while next_url:
         try:
-            r = requests.get(DPE_API, params=params, timeout=60,
-                             headers={"Accept": "application/json"})
+            # Utiliser l'URL directement (évite le double encodage du paramètre after)
+            r = requests.get(next_url, timeout=60, headers={"Accept": "application/json"})
             r.raise_for_status()
             data = r.json()
         except Exception as e:
@@ -88,12 +87,8 @@ def fetch_dpe_idf() -> dict:
         total_fetched += len(rows)
         page += 1
 
-        # Pagination : l'API data.fair utilise le champ "next" avec ?after=...
-        next_url = data.get("next", "") or ""
-        if "after=" in next_url:
-            after = next_url.split("after=")[-1].split("&")[0]
-        else:
-            break
+        # L'API data.fair renvoie l'URL complète suivante dans "next"
+        next_url = data.get("next") or ""
 
         if page % 10 == 0:
             print(f"    ... page {page}, {total_fetched:,} DPE récupérés ({len(result)} communes)")
