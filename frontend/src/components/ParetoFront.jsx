@@ -82,6 +82,7 @@ export default function ParetoFront({ onSelectCommune }) {
   const [selected, setSelected] = useState(null);
   const [filterDept, setFilterDept] = useState("all");
   const [showOnlyPareto, setShowOnlyPareto] = useState(false);
+  const [showInfo, setShowInfo] = useState(() => !localStorage.getItem("hp_pareto_info_closed"));
 
   useEffect(() => {
     axios.get("/api/v1/pareto").then(r => {
@@ -128,6 +129,23 @@ export default function ParetoFront({ onSelectCommune }) {
               {points.length} communes IDF · <span className="text-emerald-400">{paretoSet.size} sur le front optimal</span>
             </p>
           </div>
+          <button
+            onClick={() => {
+              const next = !showInfo;
+              setShowInfo(next);
+              if (!next) localStorage.setItem("hp_pareto_info_closed", "1");
+              else localStorage.removeItem("hp_pareto_info_closed");
+            }}
+            className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-lg transition-all"
+            style={{
+              background: showInfo ? "rgba(167,139,250,0.12)" : "rgba(30,41,59,0.6)",
+              border: showInfo ? "1px solid rgba(167,139,250,0.3)" : "1px solid rgba(30,41,59,0.8)",
+              color: showInfo ? "#a78bfa" : "#64748b",
+            }}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 14 }}>help_outline</span>
+            {showInfo ? "Masquer l'aide" : "Comment ça marche ?"}
+          </button>
           <div className="flex items-center gap-2 flex-wrap">
             <select
               value={filterDept}
@@ -164,6 +182,53 @@ export default function ParetoFront({ onSelectCommune }) {
           ))}
         </div>
       </div>
+
+      {/* Bloc explicatif rétractable */}
+      {showInfo && (
+        <div className="px-5 py-4 border-b border-slate-800" style={{ background: "rgba(167,139,250,0.04)" }}>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="flex gap-3">
+              <div className="size-8 rounded-lg shrink-0 flex items-center justify-center mt-0.5"
+                style={{ background: "rgba(167,139,250,0.15)", border: "1px solid rgba(167,139,250,0.3)" }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 16, color: "#a78bfa" }}>psychology</span>
+              </div>
+              <div>
+                <p className="text-[11px] font-bold text-slate-200 mb-1">C'est quoi le front de Pareto ?</p>
+                <p className="text-[10px] text-slate-400 leading-relaxed">
+                  Une commune est sur le front de Pareto si aucune autre commune n'offre simultanément un meilleur rendement <em>et</em> un risque plus faible. Ce sont les choix objectivement optimaux — tout autre choix implique un compromis.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <div className="size-8 rounded-lg shrink-0 flex items-center justify-center mt-0.5"
+                style={{ background: "rgba(16,185,129,0.15)", border: "1px solid rgba(16,185,129,0.3)" }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 16, color: "#10b981" }}>show_chart</span>
+              </div>
+              <div>
+                <p className="text-[11px] font-bold text-slate-200 mb-1">Comment lire le graphique ?</p>
+                <p className="text-[10px] text-slate-400 leading-relaxed">
+                  <span className="text-slate-300 font-semibold">Axe X (horizontal)</span> = Score de risque (0 = sans risque, 100 = très risqué).<br />
+                  <span className="text-slate-300 font-semibold">Axe Y (vertical)</span> = Rendement locatif brut (%).<br />
+                  Le coin <span className="text-emerald-400 font-semibold">haut-gauche</span> = idéal.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <div className="size-8 rounded-lg shrink-0 flex items-center justify-center mt-0.5"
+                style={{ background: "rgba(248,113,113,0.15)", border: "1px solid rgba(248,113,113,0.3)" }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 16, color: "#f87171" }}>scatter_plot</span>
+              </div>
+              <div>
+                <p className="text-[11px] font-bold text-slate-200 mb-1">Comment utiliser ?</p>
+                <p className="text-[10px] text-slate-400 leading-relaxed">
+                  Les <span className="text-white font-semibold">points avec contour blanc</span> sont sur le front optimal (ligne pointillée verte).
+                  Filtrez par département pour comparer entre eux. Cliquez sur un point pour voir la fiche commune.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Scatter Plot */}
       <div className="flex-1 p-4">

@@ -27,7 +27,7 @@ function getInitials(user) {
   return user.email?.[0]?.toUpperCase() || "?";
 }
 
-export default function Header() {
+export default function Header({ onOpenTour }) {
   const navigate = useNavigate();
   const [search,       setSearch]       = useState("");
   const [suggestions,  setSuggestions]  = useState([]);
@@ -191,6 +191,13 @@ export default function Header() {
 
         {/* Right actions */}
         <div className="flex items-center gap-2 md:gap-4">
+          <button
+            onClick={onOpenTour}
+            title="Didacticiel — découvrir HomePedia"
+            className="hidden md:flex items-center justify-center size-9 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>help_outline</span>
+          </button>
           <button className="hidden md:block p-2 text-slate-400 hover:text-slate-100 relative" title="Notifications — bientôt disponible" disabled>
             <span className="material-symbols-outlined" style={{ fontSize: 22 }}>notifications</span>
           </button>
