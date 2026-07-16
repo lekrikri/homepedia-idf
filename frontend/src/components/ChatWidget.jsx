@@ -79,7 +79,7 @@ function Message({ msg }) {
 }
 
 export default function ChatWidget() {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(() => new URLSearchParams(window.location.search).get("chat") === "open");
   const [messages, setMessages] = useState([
     {
       role: "assistant",

@@ -151,7 +151,7 @@ export default function LandingPage() {
             Explorer la carte
           </Link>
           <Link
-            to="/chat"
+            to="/carte?chat=open"
             className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl font-bold text-slate-200 text-sm border border-slate-700 hover:border-primary/50 hover:bg-slate-800 transition-all"
           >
             <span className="material-symbols-outlined" style={{ fontSize: 20 }}>smart_toy</span>
@@ -329,7 +329,7 @@ export default function LandingPage() {
               Lancer HomePedia IDF
             </Link>
             <Link
-              to="/chat"
+              to="/carte?chat=open"
               className="inline-flex items-center gap-2 px-8 py-4 rounded-xl font-bold text-slate-200 text-sm border border-slate-700 hover:border-primary/50 hover:bg-slate-800 transition-all"
             >
               <span className="material-symbols-outlined" style={{ fontSize: 20 }}>smart_toy</span>
