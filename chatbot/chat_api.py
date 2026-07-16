@@ -380,8 +380,6 @@ def chat_stream():
         if isinstance(h, dict) and h.get("role") == "user"
     )
 
-    intent, params = detect_intent(question)
-
     def _sse_fixed(text: str, intent_name: str):
         """SSE helper pour les réponses sans SQL."""
         def gen():
@@ -392,6 +390,19 @@ def chat_stream():
             yield "data: [DONE]\n\n"
         return Response(gen(), mimetype="text/event-stream",
                         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    # Cache exact (réponse déjà calculée)
+    cached = get_cached(question)
+    if cached:
+        return _sse_fixed(cached.get("answer", ""), cached.get("intent", "general"))
+
+    # Knowledge Base — court-circuit avant intent detection
+    kb_result = search_kb(question)
+    if kb_result:
+        kb_answer, _ = kb_result
+        return _sse_fixed(kb_answer, "general")
+
+    intent, params = detect_intent(question)
 
     if intent == "hors_scope":
         return _sse_fixed(
@@ -446,20 +457,22 @@ def chat_stream():
         meta = json.dumps({"intent": intent, "nb_results": len(rows), "data": rows[:8]})
         yield f"data: {meta}\n\n"
 
-        # Générer la réponse avec rows directs + context Ticket 3
         if not DISABLE_LLM and qwen_manager.initialized:
-            answer = qwen_manager.generate_response(
-                rows, question, intent, context=context_summary
-            )
+            # Vrai streaming token-par-token via llama-cpp
+            buffer = ""
+            for chunk in qwen_manager.generate_stream(rows, question, intent, context=context_summary):
+                buffer += chunk
+                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+
+            # Anti-hallucination post-stream : si la réponse est invalide → remplacer
+            if not buffer or not qwen_manager._valid_numbers(buffer, rows):
+                fallback = fallback_response(rows, intent, question)
+                yield f"data: {json.dumps({'replace': fallback})}\n\n"
         else:
-            answer = None
-
-        if not answer:
+            # Fallback déterministe streamé mot par mot
             answer = fallback_response(rows, intent, question)
-
-        # Streamer mot par mot
-        for word in answer.split(" "):
-            yield f"data: {json.dumps({'chunk': word + ' '})}\n\n"
+            for word in answer.split(" "):
+                yield f"data: {json.dumps({'chunk': word + ' '})}\n\n"
 
         yield "data: [DONE]\n\n"
 

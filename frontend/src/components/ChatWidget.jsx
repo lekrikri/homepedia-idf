@@ -57,7 +57,10 @@ function Message({ msg }) {
           isUser ? "rounded-tr-sm" : "rounded-tl-sm"
         }`}
       >
-        {renderText(msg.content)}
+        {msg.content ? renderText(msg.content) : null}
+        {msg.streaming && (
+          <span style={{ display: "inline-block", width: "2px", height: "14px", background: C.accent, verticalAlign: "middle", marginLeft: "2px", animation: "blink 1s step-end infinite" }} />
+        )}
         {msg.data && msg.data.length > 0 && (
           <div style={{ borderTop: `1px solid ${C.border}` }} className="mt-2 pt-2 space-y-1">
             {msg.data.slice(0, 5).map((row, i) => (
@@ -88,6 +91,7 @@ export default function ChatWidget() {
   const [inputFocused, setInputFocused] = useState(false);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
+  const abortRef = useRef(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -102,28 +106,79 @@ export default function ChatWidget() {
     if (!q || loading) return;
 
     setInput("");
-    setMessages((prev) => [...prev, { role: "user", content: q }]);
+    setMessages((prev) => [...prev,
+      { role: "user", content: q },
+      { role: "assistant", content: "", streaming: true, data: [] },
+    ]);
     setLoading(true);
 
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+
     try {
-      const res = await fetch(`${CHAT_API}/chat`, {
+      const res = await fetch(`${CHAT_API}/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: q }),
+        signal: ctrl.signal,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: data.answer, data: data.data, intent: data.intent },
-      ]);
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: "Désolé, une erreur est survenue. Veuillez réessayer." },
-      ]);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() ?? "";
+
+        for (const part of parts) {
+          const line = part.split("\n").find(l => l.startsWith("data:"));
+          if (!line) continue;
+          const payload = line.slice(5).trim();
+          if (payload === "[DONE]") break;
+          try {
+            const ev = JSON.parse(payload);
+            setMessages((prev) => {
+              const copy = [...prev];
+              const last = copy[copy.length - 1];
+              if (!last || last.role !== "assistant") return prev;
+              // Premier event : metadata (intent + data SQL)
+              if (ev.intent !== undefined) {
+                copy[copy.length - 1] = { ...last, data: ev.data || [], intent: ev.intent };
+              // Event replace : hallucination détectée → remplacer le texte
+              } else if (ev.replace !== undefined) {
+                copy[copy.length - 1] = { ...last, content: ev.replace };
+              // Chunk texte normal
+              } else if (ev.chunk !== undefined) {
+                copy[copy.length - 1] = { ...last, content: (last.content || "") + ev.chunk };
+              }
+              return copy;
+            });
+          } catch { /* payload malformé ignoré */ }
+        }
+      }
+    } catch (e) {
+      if (e.name !== "AbortError") {
+        setMessages((prev) => {
+          const copy = [...prev];
+          const last = copy[copy.length - 1];
+          if (last?.role === "assistant") copy[copy.length - 1] = { ...last, content: "Désolé, une erreur est survenue. Veuillez réessayer.", streaming: false };
+          return copy;
+        });
+      }
     } finally {
       setLoading(false);
+      abortRef.current = null;
+      setMessages((prev) => {
+        const copy = [...prev];
+        const last = copy[copy.length - 1];
+        if (last?.streaming) copy[copy.length - 1] = { ...last, streaming: false };
+        return copy;
+      });
     }
   }
 
@@ -173,20 +228,6 @@ export default function ChatWidget() {
             {messages.map((msg, i) => (
               <Message key={i} msg={msg} />
             ))}
-            {loading && (
-              <div className="flex gap-2 items-center">
-                <BotIcon />
-                <div style={{ background: C.bgMessage, border: `1px solid ${C.border}` }} className="rounded-2xl rounded-tl-sm px-3 py-2 flex gap-1">
-                  {[0, 1, 2].map((i) => (
-                    <div
-                      key={i}
-                      className="w-1.5 h-1.5 rounded-full animate-bounce"
-                      style={{ background: C.accent, animationDelay: `${i * 0.15}s` }}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
             <div ref={bottomRef} />
           </div>
 
