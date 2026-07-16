@@ -16,7 +16,8 @@ import (
 //   - commune      (string) — code INSEE commune (ex: "92012")
 //   - departement  (string) — code département (ex: "92")
 //   - type_local   (string) — Appartement | Maison | Local industriel…
-//   - annee        (int)    — année de mutation (2019-2024)
+//   - annee        (int)    — année exacte de mutation (filtre =)
+//   - annee_max    (int)    — année maximale de mutation (filtre <=, pour slider "jusqu'à X")
 //   - dpe          (string) — classe énergie A-G
 //   - prix_min     (int)    — prix minimum en €
 //   - prix_max     (int)    — prix maximum en €
@@ -81,7 +82,11 @@ func ListTransactions(c *gin.Context) {
 		addCond("type_local ILIKE $%d", typeLocal)
 	}
 	if annee != "" {
-		addCond("EXTRACT(YEAR FROM date_mutation)::text = $%d", annee)
+		addCond("EXTRACT(YEAR FROM date_mutation)::int = $%d", annee)
+	}
+	anneeMax := c.Query("annee_max")
+	if anneeMax != "" {
+		addCond("EXTRACT(YEAR FROM date_mutation)::int <= $%d", anneeMax)
 	}
 	if dpe != "" {
 		addCond("classe_energie = $%d", strings.ToUpper(dpe))

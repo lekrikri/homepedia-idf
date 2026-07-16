@@ -1499,7 +1499,7 @@ export default function MapView() {
     txAbortRef.current?.abort();
     txAbortRef.current = new AbortController();
     const typeParam = types.size === 1 ? `&type_local=${[...types][0]}` : "";
-    const anneeParam = maxAnnee < ANNEE_MAX ? `&annee=${maxAnnee}` : "";
+    const anneeParam = `&annee_max=${maxAnnee}`;
     axios.get(`/api/v1/transactions?commune=${commune.code_insee}&limit=100${typeParam}${anneeParam}`, { signal: txAbortRef.current.signal }).then(r => {
       const data = r.data.data || [];
       setTransactions(data);
