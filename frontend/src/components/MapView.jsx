@@ -2617,21 +2617,40 @@ export default function MapView() {
             <span className="material-symbols-outlined" style={{ fontSize: 20 }}>storefront</span>
           </button>
 
-          {/* #30 Isochrone — cycle 15/30/45 min / off */}
-          {selectedCommune && (
-            <button
-              onClick={() => setIsoMinutes(v => v === null ? 15 : v === 15 ? 30 : v === 30 ? 45 : null)}
-              title={isoMinutes ? `Isochrone ${isoMinutes} min — cliquer pour changer` : "Afficher zone d'accessibilité (isochrone)"}
-              className={`size-11 rounded-xl flex flex-col items-center justify-center transition-all gap-0.5 ${
-                isoMinutes ? "text-white shadow-lg" : "glass-panel hover:bg-cyan-500/20 text-slate-300"
-              }`}
-              style={isoMinutes ? { background: "#0891b2", boxShadow: "0 4px 20px rgba(8,145,178,0.4)" } : {}}>
-              {isoLoading
-                ? <span className="material-symbols-outlined animate-spin" style={{ fontSize: 16 }}>progress_activity</span>
-                : <span className="material-symbols-outlined" style={{ fontSize: 16 }}>route</span>
-              }
-              {isoMinutes && <span className="text-[8px] font-black leading-none">{isoMinutes}′</span>}
-            </button>
+          {/* #30 Isochrone — cycle 15/30/45 min / off + profil */}
+          <button
+            onClick={() => selectedCommune && setIsoMinutes(v => v === null ? 15 : v === 15 ? 30 : v === 30 ? 45 : null)}
+            title={!selectedCommune ? "Sélectionnez une commune pour afficher l'isochrone" : isoMinutes ? `Isochrone ${isoMinutes} min — cliquer pour changer` : "Zone d'accessibilité (isochrone) — 15/30/45 min"}
+            className={`size-11 rounded-xl flex flex-col items-center justify-center transition-all gap-0.5 ${
+              !selectedCommune ? "glass-panel opacity-40 cursor-not-allowed text-slate-500"
+              : isoMinutes ? "text-white shadow-lg" : "glass-panel hover:bg-cyan-500/20 text-slate-300"
+            }`}
+            style={isoMinutes ? { background: "#0891b2", boxShadow: "0 4px 20px rgba(8,145,178,0.4)" } : {}}>
+            {isoLoading
+              ? <span className="material-symbols-outlined animate-spin" style={{ fontSize: 16 }}>progress_activity</span>
+              : <span className="material-symbols-outlined" style={{ fontSize: 16 }}>route</span>
+            }
+            {isoMinutes && <span className="text-[8px] font-black leading-none">{isoMinutes}′</span>}
+          </button>
+          {/* Toggle profil isochrone — affiché quand isochrone actif */}
+          {isoMinutes && (
+            <div className="flex flex-col gap-1">
+              {[
+                { profile: "driving-car",   icon: "directions_car",  label: "Voiture" },
+                { profile: "cycling-regular", icon: "directions_bike", label: "Vélo" },
+                { profile: "foot-walking",  icon: "directions_walk", label: "Piéton" },
+              ].map(({ profile, icon, label }) => (
+                <button key={profile}
+                  onClick={() => setIsoProfile(profile)}
+                  title={label}
+                  className={`size-8 rounded-lg flex items-center justify-center transition-all text-xs ${
+                    isoProfile === profile ? "text-white" : "glass-panel text-slate-400 hover:text-slate-200"
+                  }`}
+                  style={isoProfile === profile ? { background: "#0e7490", boxShadow: "0 2px 8px rgba(14,116,144,0.5)" } : {}}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 14 }}>{icon}</span>
+                </button>
+              ))}
+            </div>
           )}
           </div>
 
