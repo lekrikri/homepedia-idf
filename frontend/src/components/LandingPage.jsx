@@ -13,65 +13,81 @@ const FEATURES = [
     title: "Carte interactive MVT",
     desc: "Tuiles vectorielles PostGIS — naviguez sur 1 266 communes IDF avec prix au m² et transactions DVF en temps réel.",
     color: "#3c83f6",
+    link: "/carte",
   },
   {
-    icon: "equalizer",
-    title: "Scores composites",
-    desc: "Score global, investissement, qualité de vie, sécurité et DPE calculés sur chaque commune pour un choix éclairé.",
-    color: "#22c55e",
+    icon: "schedule",
+    title: "Timeline animée 2021–2026",
+    desc: "Slider temporel sur la heatmap des prix — visualisez l'évolution réelle 2021–2024 et les prévisions Prophet 2025–2026.",
+    color: "#f59e0b",
+    link: "/carte",
+  },
+  {
+    icon: "scatter_plot",
+    title: "Pareto Front multicritère",
+    desc: "Scatter plot rendement locatif vs risque BRGM pour 1 264 communes — identifiez les opportunités sur le front optimal.",
+    color: "#10b981",
+    link: "/pareto",
+  },
+  {
+    icon: "warning",
+    title: "Risques environnementaux",
+    desc: "Données BRGM par commune : retrait-gonflement argile et risque inondation (0 → 3) + score global géorisques.",
+    color: "#ef4444",
+    link: "/carte",
   },
   {
     icon: "compare_arrows",
-    title: "Comparaison multi-communes",
-    desc: "Comparez jusqu'à plusieurs communes côte à côte : prix, rendement, DPE, IPS écoles et taux de cambriolages.",
+    title: "Villes jumelles",
+    desc: "Trouvez des communes au profil similaire mais moins chères (−8% minimum) grâce à la distance euclidienne 5D.",
     color: "#a78bfa",
+    link: "/carte",
+  },
+  {
+    icon: "trending_up",
+    title: "Prévisions Prophet 2025–2026",
+    desc: "Modèle bayésien (Meta Prophet) entraîné commune par commune sur DVF 2019–2024 — graphique historique + prévisions avec intervalles de confiance 80% dans chaque fiche.",
+    color: "#a78bfa",
+    link: "/carte",
   },
   {
     icon: "directions_walk",
     title: "Isochrones & accessibilité",
     desc: "Visualisez les zones accessibles à pied, en vélo ou en voiture depuis n'importe quel point d'Île-de-France.",
-    color: "#f59e0b",
-  },
-  {
-    icon: "show_chart",
-    title: "Évolution temporelle",
-    desc: "Suivez la tendance des prix de 2021 à 2025 avec des graphiques construits sur données DVF réelles.",
-    color: "#3c83f6",
+    color: "#06b6d4",
+    link: "/carte",
   },
   {
     icon: "smart_toy",
     title: "Assistant IA (RAG streaming)",
-    desc: "Posez des questions en langage naturel — l'IA analyse les données et répond en temps réel avec streaming.",
+    desc: "16 intents — prix, rendement, risques BRGM, DPE, sécurité. Réponses en temps réel via Qwen2.5-0.5B + ChromaDB.",
     color: "#ec4899",
+    link: "/carte?chat=open",
   },
   {
-    icon: "bolt",
-    title: "Performance DPE",
-    desc: "Visualisez la distribution énergétique des biens et identifiez les communes aux meilleures classes énergétiques.",
-    color: "#f59e0b",
-  },
-  {
-    icon: "security",
-    title: "Données officielles certifiées",
-    desc: "DVF, INSEE, ADEME DPE, SSMSI criminalité, IPS écoles, ENEDIS — 7 sources open data officielles.",
+    icon: "api",
+    title: "API publique documentée",
+    desc: "Spec OpenAPI 3.0.3 complète — tous les endpoints documentés avec exemples. Swagger UI accessible via /docs.",
     color: "#22c55e",
+    link: null,
   },
   {
-    icon: "favorite",
-    title: "Favoris & portfolio",
-    desc: "Sauvegardez vos communes favorites et constituez un portfolio d'investissement locatif pour les suivre.",
-    color: "#a78bfa",
+    icon: "savings",
+    title: "Portfolio investisseur",
+    desc: "Simulateur cash-flow (apport, taux, durée, loyer, charges) avec graphique SVG sur 20 ans.",
+    color: "#f59e0b",
+    link: "/portfolio",
   },
 ];
 
 const SOURCES = [
   { label: "DVF", full: "Demandes de Valeurs Foncières", color: "#3c83f6" },
   { label: "INSEE", full: "Statistiques socio-démographiques", color: "#22c55e" },
-  { label: "ADEME DPE", full: "Performance Énergétique des logements", color: "#f59e0b" },
+  { label: "ADEME DPE", full: "Performance Énergétique + enrichissement transactions", color: "#f59e0b" },
   { label: "OSM", full: "OpenStreetMap — Points d'intérêt", color: "#a78bfa" },
   { label: "IPS / MEN", full: "Indice de Position Sociale des écoles", color: "#ec4899" },
   { label: "SSMSI", full: "Statistiques de criminalité par commune", color: "#ef4444" },
-  { label: "ENEDIS", full: "Consommation électrique par commune", color: "#eab308" },
+  { label: "BRGM", full: "Géorisques — argile & inondation", color: "#f97316" },
 ];
 
 export default function LandingPage() {
@@ -83,7 +99,7 @@ export default function LandingPage() {
 
   const kpis = [
     {
-      value: stats?.nb_transactions ? stats.nb_transactions.toLocaleString("fr-FR") : "—",
+      value: stats?.nb_transactions ? stats.nb_transactions.toLocaleString("fr-FR") : "~1,9M",
       label: "Transactions DVF",
       icon: "handshake",
       color: "#3c83f6",
@@ -101,9 +117,9 @@ export default function LandingPage() {
       color: "#22c55e",
     },
     {
-      value: "8",
-      label: "Départements IDF",
-      icon: "map",
+      value: "40+",
+      label: "Indicateurs / commune",
+      icon: "equalizer",
       color: "#a78bfa",
     },
   ];
@@ -136,8 +152,8 @@ export default function LandingPage() {
         </h1>
 
         <p className="text-lg text-slate-400 max-w-xl mb-10 leading-relaxed">
-          Visualisez les transactions DVF, comparez les communes sur 7 critères, explorez les isochrones
-          et interrogez notre IA sur le marché immobilier d'Île-de-France.
+          Visualisez 1,9M transactions DVF, timeline animée 2021–2026, Pareto Front multicritère,
+          risques BRGM et IA conversationnelle — 40+ indicateurs sur 1 266 communes IDF.
         </p>
 
         {/* CTAs */}
@@ -149,6 +165,14 @@ export default function LandingPage() {
           >
             <span className="material-symbols-outlined" style={{ fontSize: 20 }}>map</span>
             Explorer la carte
+          </Link>
+          <Link
+            to="/pareto"
+            className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl font-bold text-white text-sm transition-all hover:scale-105 active:scale-95"
+            style={{ background: "#10b981", boxShadow: "0 0 30px rgba(16,185,129,0.35)" }}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>scatter_plot</span>
+            Pareto Front
           </Link>
           <Link
             to="/carte?chat=open"
@@ -172,20 +196,61 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── Timeline preview banner ───────────────────────────────────── */}
+      <section className="px-6 md:px-16 pb-12">
+        <div className="relative rounded-2xl overflow-hidden border border-amber-500/20 p-6 flex flex-col md:flex-row items-center gap-6"
+          style={{ background: "linear-gradient(135deg, rgba(245,158,11,0.07) 0%, rgba(167,139,250,0.05) 100%)" }}>
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="material-symbols-outlined text-amber-400" style={{ fontSize: 20 }}>schedule</span>
+              <span className="text-amber-400 font-bold text-sm">Timeline animée</span>
+            </div>
+            <h3 className="text-xl font-bold text-white mb-2">Évolution des prix 2021 → 2026</h3>
+            <p className="text-sm text-slate-400">
+              Activez la heatmap sur la carte, puis utilisez le slider pour naviguer dans le temps.
+              Données DVF réelles 2021–2024 · Prévisions Prophet 2025–2026.
+            </p>
+          </div>
+          {/* Fake timeline */}
+          <div className="flex items-end gap-2 h-16">
+            {[2021, 2022, 2023, 2024, 2025, 2026].map((y, i) => {
+              const heights = [55, 65, 72, 68, 74, 80];
+              const isForecast = y >= 2025;
+              return (
+                <div key={y} className="flex flex-col items-center gap-1">
+                  <div className="w-8 rounded-t-md transition-all"
+                    style={{
+                      height: heights[i],
+                      background: isForecast
+                        ? "linear-gradient(180deg, #a78bfa 0%, rgba(167,139,250,0.3) 100%)"
+                        : "linear-gradient(180deg, #f59e0b 0%, rgba(245,158,11,0.3) 100%)",
+                      border: `1px solid ${isForecast ? "rgba(167,139,250,0.4)" : "rgba(245,158,11,0.4)"}`,
+                    }} />
+                  <span className={`text-[9px] font-bold ${isForecast ? "text-purple-400" : "text-amber-400"}`}>{y}</span>
+                </div>
+              );
+            })}
+          </div>
+          <Link to="/carte"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-white text-sm transition-all hover:scale-105 shrink-0"
+            style={{ background: "#f59e0b", boxShadow: "0 0 20px rgba(245,158,11,0.3)" }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>play_arrow</span>
+            Animer
+          </Link>
+        </div>
+      </section>
+
       {/* ── Map preview ──────────────────────────────────────────────── */}
       <section className="px-6 md:px-16 pb-20">
         <div className="relative rounded-2xl overflow-hidden border border-primary/15"
           style={{ background: "linear-gradient(135deg, #0a1628 0%, #0d1b2e 100%)", minHeight: 320 }}>
-          {/* Fake map grid */}
           <div className="absolute inset-0 opacity-20"
             style={{ backgroundImage: "radial-gradient(circle at 2px 2px, rgba(60,131,246,0.3) 1px, transparent 0)", backgroundSize: "20px 20px" }} />
-          {/* Glow */}
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="w-64 h-64 rounded-full opacity-15"
               style={{ background: "radial-gradient(circle, #3c83f6 0%, transparent 60%)", filter: "blur(40px)" }} />
           </div>
 
-          {/* Fake transaction markers */}
           {[
             { x: "30%", y: "40%", v: "450 k€", t: "Appt 65 m²" },
             { x: "55%", y: "30%", v: "1,2 M€", t: "Maison 120 m²" },
@@ -204,7 +269,6 @@ export default function LandingPage() {
             </div>
           ))}
 
-          {/* Score badge */}
           <div className="absolute top-6 right-6 px-3 py-2 rounded-xl text-xs font-bold"
             style={{ background: "rgba(16,23,34,0.9)", border: "1px solid rgba(34,197,94,0.3)", color: "#22c55e" }}>
             <div className="flex items-center gap-1.5">
@@ -239,18 +303,25 @@ export default function LandingPage() {
           </p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {FEATURES.map(f => (
-            <div key={f.title}
-              className="p-6 rounded-xl transition-all hover:border-primary/30 group"
-              style={{ background: "rgba(15,23,42,0.6)", border: "1px solid rgba(255,255,255,0.06)" }}>
-              <div className="size-10 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform"
-                style={{ background: `${f.color}18`, border: `1px solid ${f.color}35` }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 20, color: f.color }}>{f.icon}</span>
+          {FEATURES.map(f => {
+            const card = (
+              <div
+                className="p-6 rounded-xl transition-all hover:border-primary/30 group h-full"
+                style={{ background: "rgba(15,23,42,0.6)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                <div className="size-10 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform"
+                  style={{ background: `${f.color}18`, border: `1px solid ${f.color}35` }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 20, color: f.color }}>{f.icon}</span>
+                </div>
+                <h3 className="font-bold text-slate-100 mb-2">{f.title}</h3>
+                <p className="text-sm text-slate-400 leading-relaxed">{f.desc}</p>
               </div>
-              <h3 className="font-bold text-slate-100 mb-2">{f.title}</h3>
-              <p className="text-sm text-slate-400 leading-relaxed">{f.desc}</p>
-            </div>
-          ))}
+            );
+            return f.link ? (
+              <Link key={f.title} to={f.link} className="block">{card}</Link>
+            ) : (
+              <div key={f.title}>{card}</div>
+            );
+          })}
         </div>
       </section>
 
@@ -316,8 +387,8 @@ export default function LandingPage() {
           style={{ background: "linear-gradient(135deg, rgba(60,131,246,0.1) 0%, rgba(167,139,250,0.08) 100%)", border: "1px solid rgba(60,131,246,0.2)" }}>
           <h2 className="text-3xl font-black text-white mb-3">Commencez à explorer</h2>
           <p className="text-slate-400 mb-8">
-            Accédez à l'ensemble des données DVF IDF, comparez 1 266 communes sur 7 critères
-            et interrogez notre assistant IA pour trouver le meilleur investissement.
+            1,9M transactions DVF, timeline animée 2021–2026, Pareto Front multicritère,
+            risques BRGM, villes jumelles et assistant IA — tout en un.
           </p>
           <div className="flex flex-wrap justify-center gap-4">
             <Link
@@ -327,6 +398,14 @@ export default function LandingPage() {
             >
               <span className="material-symbols-outlined" style={{ fontSize: 20 }}>explore</span>
               Lancer HomePedia IDF
+            </Link>
+            <Link
+              to="/pareto"
+              className="inline-flex items-center gap-2 px-8 py-4 rounded-xl font-bold text-white text-sm transition-all hover:scale-105 active:scale-95"
+              style={{ background: "#10b981", boxShadow: "0 0 30px rgba(16,185,129,0.25)" }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: 20 }}>scatter_plot</span>
+              Pareto Front
             </Link>
             <Link
               to="/carte?chat=open"
@@ -348,7 +427,7 @@ export default function LandingPage() {
           <span className="text-sm font-bold text-slate-300">HomePedia IDF</span>
         </div>
         <p className="text-xs text-slate-600">
-          T-DAT-902 · Epitech Paris · 2026 · 7 sources open data officielles
+          T-DAT-902 · Epitech Paris · 2026 · 7 sources open data officielles · API OpenAPI 3.0
         </p>
       </footer>
     </div>
