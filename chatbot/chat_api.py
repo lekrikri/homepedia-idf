@@ -116,6 +116,48 @@ def _confidence(intent: str, nb_results: int, llm_used: bool) -> int:
 
 # ── Fallback textuel sans LLM ────────────────────────────────────────────────
 
+def _commune_detail_card(rows: list) -> str:
+    """Fiche commune structurée — remplace Qwen pour commune_detail."""
+    if not rows:
+        return "Aucune donnée trouvée pour cette commune. Vérifiez le nom ou précisez le département."
+    r = rows[0]
+    nom = r.get("commune", "?")
+    dept = r.get("dept", "")
+    prix = r.get("prix_m2")
+    nb_tx = r.get("nb_transactions")
+    score = r.get("score_global")
+    qv = r.get("qualite_vie")
+    invest = r.get("investissement")
+    rdt = r.get("rendement_pct")
+    loyer = r.get("loyer_m2")
+    dpe = r.get("dpe_score")
+    ips = r.get("ips_ecoles")
+    cam = r.get("cambriolages_pour_mille")
+
+    lines = [f"**{nom}** (département {dept})\n"]
+    if prix:
+        lines.append(f"💰 **Prix médian** : **{int(float(prix)):,} €/m²**".replace(",", " "))
+    if rdt:
+        lines.append(f"📈 **Rendement locatif brut** : **{float(rdt):.2f}%**")
+    if loyer:
+        lines.append(f"🏠 **Loyer médian** : {float(loyer):.0f} €/m²/mois")
+    if qv:
+        lines.append(f"🌳 **Qualité de vie** : **{float(qv):.1f}/100**")
+    if invest:
+        lines.append(f"📊 **Score investissement** : **{float(invest):.1f}/100**")
+    if dpe:
+        lines.append(f"🌿 **Score DPE** : {float(dpe):.2f}")
+    if ips:
+        lines.append(f"🏫 **IPS écoles** : {float(ips):.1f}")
+    if cam is not None:
+        lines.append(f"🛡️ **Cambriolages** : {float(cam):.1f}‰")
+    if score:
+        lines.append(f"\n⭐ **Score global** : **{float(score):.1f}/100**")
+    if nb_tx:
+        lines.append(f"📋 {int(nb_tx):,} transactions DVF 2020-2024".replace(",", " "))
+    return "\n".join(lines)
+
+
 def _forecast_fallback(rows: list) -> str:
     """Réponse structurée pour les prévisions Prophet."""
     if not rows:
@@ -549,8 +591,10 @@ def chat_stream():
         yield f"data: {meta}\n\n"
 
         # Court-circuit : réponses structurées Python directes (pas de Qwen)
-        if intent in ("comparaison", "forecast_prix"):
-            answer = _comparaison_table(rows) if intent == "comparaison" else _forecast_fallback(rows)
+        if intent in ("comparaison", "forecast_prix", "commune_detail"):
+            if intent == "comparaison":       answer = _comparaison_table(rows)
+            elif intent == "forecast_prix":   answer = _forecast_fallback(rows)
+            else:                             answer = _commune_detail_card(rows)
             for word in answer.split(" "):
                 yield f"data: {json.dumps({'chunk': word + ' '})}\n\n"
         elif not DISABLE_LLM and qwen_manager.initialized:
