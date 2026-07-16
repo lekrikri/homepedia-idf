@@ -18,7 +18,8 @@
 |----------|--------|
 | Communes IDF couvertes | **1 266** (100%) |
 | Sources de données intégrées | **7** (DVF, DPE, INSEE, IPS, SSMSI, ENEDIS, OSM) |
-| Transactions DVF indexées | **~500 000** (2020–2024) |
+| Transactions DVF indexées | **~1 900 000** (2019–2024) |
+| IPS écoles agrégé par commune | **989 communes** couvertes |
 | Indicateurs par commune | **40+** |
 | Prévisions Prophet 2025-2026 | **1 274 communes** modélisées |
 | Benchmark chatbot RAG | **12/12 questions** correctes |
@@ -122,10 +123,10 @@
 ## Pipeline de données
 
 ```
-DVF (DGFiP)     → prix/m² médian par commune/année (2020-2024)
-DPE (ADEME)     → performance énergétique A→G, score composite
+DVF (DGFiP)     → prix/m² médian par commune/année (2019-2024), ~1.9M transactions
+DPE (ADEME)     → performance énergétique A→G, score composite communes + enrichissement transactions
 INSEE           → population, revenus médians
-IPS (DEPP)      → indice position sociale par école, agrégé par commune
+IPS (DEPP)      → indice position sociale par école, agrégé par commune (989/1266 communes)
 SSMSI           → taux cambriolages/violence par département
 ENEDIS/GRDF     → conso résidentielle MWh/logement
 OSM (Overpass)  → poi_communes JSONB (restaurants, écoles, transports...)
@@ -167,9 +168,10 @@ Question utilisateur
        ▼
 detect_intent()  [hybride MiniLM + 15 patterns regex]
        │
-       ├── forecast_prix → SQL prix_forecast JOIN communes_agregat → _forecast_fallback()
-       ├── comparaison   → SQL communes_agregat WHERE city = ANY([...]) → _comparaison_table()
-       ├── salutation    → réponse fixe (sans SQL)
+       ├── forecast_prix    → SQL prix_forecast JOIN communes_agregat → _forecast_fallback()
+       ├── comparaison      → SQL communes_agregat WHERE city = ANY([...]) → _comparaison_table()
+       ├── commune_detail   → SQL communes_agregat → _commune_detail_card() (Python pur, sans LLM)
+       ├── salutation       → réponse fixe (sans SQL)
        ├── general/hors_scope → réponse fixe
        │
        └── autres intents → SQL template → Qwen2.5-0.5B Q4_K_M → stream SSE
