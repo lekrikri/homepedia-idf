@@ -1639,6 +1639,8 @@ export default function MapView() {
   const [isoProfile, setIsoProfile] = useState('driving-car');
   const [isoLoading, setIsoLoading] = useState(false);
   const [showHeatmap, setShowHeatmap] = useState(false);
+  const [timelineYear, setTimelineYear] = useState(null); // null = actuel, 2021-2026 = historique/prévision
+  const [timelinePlay, setTimelinePlay] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
   const setTxHoverRef = useRef(null);
   useEffect(() => { setTxHoverRef.current = setTxHover; }, []);
@@ -2133,7 +2135,26 @@ export default function MapView() {
   // Reset isochrone quand on change de commune
   useEffect(() => { setIsoMinutes(null); }, [selectedCommune]);
 
+  // ── Timeline play/pause : incrémente timelineYear automatiquement ───────────
+  useEffect(() => {
+    if (!timelinePlay || !showHeatmap) return;
+    const YEARS = [2021, 2022, 2023, 2024, 2025, 2026];
+    const interval = setInterval(() => {
+      setTimelineYear(prev => {
+        const cur = prev ?? new Date().getFullYear();
+        const idx = YEARS.indexOf(cur);
+        if (idx === -1 || idx === YEARS.length - 1) {
+          setTimelinePlay(false);
+          return YEARS[0];
+        }
+        return YEARS[idx + 1];
+      });
+    }, 1200);
+    return () => clearInterval(interval);
+  }, [timelinePlay, showHeatmap]);
+
   // ── Heatmap IDF globale (centroïdes communes + prix médian) ────────────────
+  // Supporte timelineYear (2021-2026) via ?year= pour la timeline animée
   useEffect(() => {
     if (!map.current || !mapLoaded) return;
     const SRC = 'heatmap-src', LYR = 'heatmap-layer';
@@ -2146,33 +2167,37 @@ export default function MapView() {
     cleanup();
     if (!showHeatmap) return;
     let cancelled = false;
-    axios.get('/api/v1/heatmap').then(r => {
+    const url = timelineYear ? `/api/v1/heatmap?year=${timelineYear}` : '/api/v1/heatmap';
+    axios.get(url).then(r => {
       if (cancelled || !map.current) return;
       try {
-        if (map.current.getSource(SRC)) map.current.removeSource(SRC);
-        map.current.addSource(SRC, { type: 'geojson', data: r.data });
-        map.current.addLayer({
-          id: LYR, type: 'heatmap', source: SRC,
-          paint: {
-            'heatmap-weight': ['interpolate', ['linear'], ['get', 'prix_m2'], 3000, 0, 12000, 1],
-            'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 5, 1, 12, 2.5],
-            'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 5, 18, 12, 35],
-            'heatmap-opacity': 0.72,
-            'heatmap-color': [
-              'interpolate', ['linear'], ['heatmap-density'],
-              0,    'rgba(0,0,0,0)',
-              0.1,  '#3c83f6',
-              0.35, '#10b981',
-              0.6,  '#f59e0b',
-              0.8,  '#ef4444',
-              1,    '#7c3aed'
-            ]
-          }
-        });
+        if (map.current.getSource(SRC)) {
+          map.current.getSource(SRC).setData(r.data);
+        } else {
+          map.current.addSource(SRC, { type: 'geojson', data: r.data });
+          map.current.addLayer({
+            id: LYR, type: 'heatmap', source: SRC,
+            paint: {
+              'heatmap-weight': ['interpolate', ['linear'], ['get', 'prix_m2'], 3000, 0, 12000, 1],
+              'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 5, 1, 12, 2.5],
+              'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 5, 18, 12, 35],
+              'heatmap-opacity': 0.72,
+              'heatmap-color': [
+                'interpolate', ['linear'], ['heatmap-density'],
+                0,    'rgba(0,0,0,0)',
+                0.1,  '#3c83f6',
+                0.35, '#10b981',
+                0.6,  '#f59e0b',
+                0.8,  '#ef4444',
+                1,    '#7c3aed'
+              ]
+            }
+          });
+        }
       } catch {}
     }).catch(() => {});
     return () => { cancelled = true; cleanup(); };
-  }, [showHeatmap, mapLoaded]);
+  }, [showHeatmap, mapLoaded, timelineYear]);
 
   // Garder les refs à jour pour les handlers enregistrés sur la carte
   useEffect(() => { allCommunesRef.current = allCommunes; }, [allCommunes]);
@@ -2755,7 +2780,7 @@ export default function MapView() {
           </div>
 
           <button
-            onClick={() => setShowHeatmap(v => !v)}
+            onClick={() => { setShowHeatmap(v => !v); if (showHeatmap) { setTimelineYear(null); setTimelinePlay(false); } }}
             title={showHeatmap ? "Masquer la heatmap des prix IDF" : "Heatmap des prix par commune (IDF)"}
             className={`size-11 rounded-xl flex items-center justify-center transition-all ${
               showHeatmap ? "text-white shadow-lg" : "glass-panel hover:bg-orange-500/20 text-slate-300"
@@ -2763,6 +2788,45 @@ export default function MapView() {
             style={showHeatmap ? { background: "#f59e0b", boxShadow: "0 4px 20px rgba(245,158,11,0.4)" } : {}}>
             <span className="material-symbols-outlined" style={{ fontSize: 20 }}>thermostat</span>
           </button>
+
+          {/* Timeline animée — visible uniquement quand la heatmap est active */}
+          {showHeatmap && (
+            <div className="glass-panel rounded-xl px-3 py-2 flex flex-col gap-1.5 min-w-[160px]">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-slate-400 font-medium tracking-wide uppercase">Timeline prix</span>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => { setTimelineYear(null); setTimelinePlay(false); }}
+                    title="Revenir au prix actuel"
+                    className={`text-[9px] px-1.5 py-0.5 rounded-full transition-all ${!timelineYear ? 'bg-orange-500 text-white' : 'text-slate-400 hover:text-slate-200'}`}>
+                    Actuel
+                  </button>
+                  <button
+                    onClick={() => { if (!timelineYear) setTimelineYear(2021); setTimelinePlay(v => !v); }}
+                    title={timelinePlay ? "Pause" : "Lecture automatique"}
+                    className="text-slate-300 hover:text-white transition-colors">
+                    <span className="material-symbols-outlined" style={{ fontSize: 14 }}>
+                      {timelinePlay ? 'pause' : 'play_arrow'}
+                    </span>
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range" min={2021} max={2026} step={1}
+                  value={timelineYear ?? 2024}
+                  onChange={e => { setTimelinePlay(false); setTimelineYear(Number(e.target.value)); }}
+                  className="flex-1 h-1 accent-orange-400 cursor-pointer"
+                />
+                <span className="text-[11px] font-bold mono-nums text-orange-400 w-8 text-right">
+                  {timelineYear ?? '—'}
+                </span>
+              </div>
+              {timelineYear && timelineYear >= 2025 && (
+                <span className="text-[9px] text-purple-400">Prévision</span>
+              )}
+            </div>
+          )}
 
           <button
             onClick={() => map.current && map.current.setStyle(

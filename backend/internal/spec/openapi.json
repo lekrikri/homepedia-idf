@@ -1,0 +1,373 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "HomePedia IDF API",
+    "description": "API publique HomePedia — données immobilières et socio-économiques Île-de-France (1266 communes)",
+    "version": "1.0.0",
+    "contact": {
+      "name": "HomePedia",
+      "url": "https://homepedia.org"
+    }
+  },
+  "servers": [
+    { "url": "https://homepedia-backend-714876351060.europe-west1.run.app", "description": "Production" },
+    { "url": "http://localhost:8080", "description": "Développement local" }
+  ],
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "tags": ["Système"],
+        "summary": "Health check",
+        "description": "Vérifie que l'API est en ligne et connectée à la base de données.",
+        "responses": {
+          "200": { "description": "Service opérationnel" }
+        }
+      }
+    },
+    "/api/v1/communes": {
+      "get": {
+        "tags": ["Communes"],
+        "summary": "Liste toutes les communes IDF",
+        "description": "Retourne la liste des 1266 communes d'Île-de-France avec code, nom et département.",
+        "responses": {
+          "200": {
+            "description": "Liste des communes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/CommuneBase" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/communes/{code}": {
+      "get": {
+        "tags": ["Communes"],
+        "summary": "Détail d'une commune",
+        "parameters": [
+          { "name": "code", "in": "path", "required": true, "schema": { "type": "string", "example": "75056" } }
+        ],
+        "responses": {
+          "200": { "description": "Données détaillées de la commune", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Commune" } } } },
+          "404": { "description": "Commune introuvable" }
+        }
+      }
+    },
+    "/api/v1/communes/{code}/agregat": {
+      "get": {
+        "tags": ["Communes"],
+        "summary": "Données agrégées d'une commune",
+        "description": "Prix médian, rendement locatif, scores qualité de vie, investissement, DPE, risques BRGM, IPS, loyer médian.",
+        "parameters": [
+          { "name": "code", "in": "path", "required": true, "schema": { "type": "string", "example": "92051" } }
+        ],
+        "responses": {
+          "200": { "description": "Agrégat commune", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommuneAgregat" } } } }
+        }
+      }
+    },
+    "/api/v1/communes/{code}/prix-historique": {
+      "get": {
+        "tags": ["Communes"],
+        "summary": "Prix historique par année",
+        "description": "Prix médian au m² par année depuis les données DVF (Demande de Valeurs Foncières).",
+        "parameters": [
+          { "name": "code", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Historique des prix", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/PrixAnnuel" } } } } }
+        }
+      }
+    },
+    "/api/v1/communes/{code}/forecast": {
+      "get": {
+        "tags": ["Communes"],
+        "summary": "Prévisions de prix",
+        "description": "Prévisions de prix au m² générées par modèle Prophet (2025-2026) avec intervalles de confiance.",
+        "parameters": [
+          { "name": "code", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Prévisions prix" }
+        }
+      }
+    },
+    "/api/v1/communes/{code}/similaires": {
+      "get": {
+        "tags": ["Communes"],
+        "summary": "Communes similaires",
+        "description": "Retourne jusqu'à 5 communes ayant un profil socio-économique similaire (distance euclidienne sur 5 features normalisées).",
+        "parameters": [
+          { "name": "code", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Liste de communes similaires" }
+        }
+      }
+    },
+    "/api/v1/communes/{code}/jumelles": {
+      "get": {
+        "tags": ["Communes"],
+        "summary": "Villes jumelles (moins chères)",
+        "description": "Communes similaires en termes de qualité de vie mais avec un prix au m² inférieur d'au moins 8%.",
+        "parameters": [
+          { "name": "code", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Liste de villes jumelles" }
+        }
+      }
+    },
+    "/api/v1/communes/{code}/insights": {
+      "get": {
+        "tags": ["Communes"],
+        "summary": "Insights narratifs d'une commune",
+        "parameters": [
+          { "name": "code", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Insights structurés" }
+        }
+      }
+    },
+    "/api/v1/communes/agregat": {
+      "get": {
+        "tags": ["Communes"],
+        "summary": "Données agrégées de toutes les communes",
+        "description": "Retourne les données agrégées (prix, scores, risques) pour les 1266 communes IDF — utile pour les cartes choroplèthes.",
+        "responses": {
+          "200": { "description": "Agrégat toutes communes" }
+        }
+      }
+    },
+    "/api/v1/heatmap": {
+      "get": {
+        "tags": ["Cartographie"],
+        "summary": "Heatmap des prix IDF",
+        "description": "GeoJSON de type FeatureCollection avec les centroïdes des communes et le prix médian au m². Supporte le paramètre ?year= pour la timeline animée.",
+        "parameters": [
+          {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "enum": [2021, 2022, 2023, 2024, 2025, 2026] },
+            "description": "Année pour la timeline historique/prévision. Absente = prix actuel."
+          }
+        ],
+        "responses": {
+          "200": { "description": "GeoJSON FeatureCollection" }
+        }
+      }
+    },
+    "/api/v1/tiles/{z}/{x}/{y}": {
+      "get": {
+        "tags": ["Cartographie"],
+        "summary": "Tuiles vectorielles MVT",
+        "description": "Tuiles vectorielles PostGIS (ST_AsMVT) pour affichage MapLibre. Contient les polygones des communes avec leurs attributs.",
+        "parameters": [
+          { "name": "z", "in": "path", "required": true, "schema": { "type": "integer" } },
+          { "name": "x", "in": "path", "required": true, "schema": { "type": "integer" } },
+          { "name": "y", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Tuile MVT binaire", "content": { "application/x-protobuf": {} } }
+        }
+      }
+    },
+    "/api/v1/pareto": {
+      "get": {
+        "tags": ["Analyse"],
+        "summary": "Données Pareto Front multicritère",
+        "description": "Retourne rendement locatif, score de risque et prix au m² pour les ~1264 communes — utilisé pour le scatter plot Pareto rendement vs risque.",
+        "responses": {
+          "200": {
+            "description": "Points Pareto",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "points": { "type": "array", "items": { "$ref": "#/components/schemas/ParetoPoint" } },
+                    "count": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/poi/{code}": {
+      "get": {
+        "tags": ["POI"],
+        "summary": "Points d'intérêt d'une commune",
+        "description": "Écoles, hôpitaux, commerces, transports — données Overpass pré-ingérées avec cache Supabase (L1 RAM → L2 HTTP → L3 DB).",
+        "parameters": [
+          { "name": "code", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "POI structurés par catégorie" }
+        }
+      }
+    },
+    "/api/v1/transactions": {
+      "get": {
+        "tags": ["Transactions"],
+        "summary": "Liste des transactions DVF",
+        "description": "Données brutes des mutations foncières (DVF) — filtrables par commune, type de bien, période.",
+        "parameters": [
+          { "name": "code", "in": "query", "schema": { "type": "string" }, "description": "Code commune INSEE" },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 50 } },
+          { "name": "offset", "in": "query", "schema": { "type": "integer", "default": 0 } }
+        ],
+        "responses": {
+          "200": { "description": "Liste de transactions" }
+        }
+      }
+    },
+    "/api/v1/stats": {
+      "get": {
+        "tags": ["Analyse"],
+        "summary": "Statistiques globales IDF",
+        "description": "Prix médian IDF, nombre de communes analysées, date de dernière mise à jour, répartition par département.",
+        "responses": {
+          "200": { "description": "Statistiques agrégées" }
+        }
+      }
+    },
+    "/api/v1/rag/query": {
+      "post": {
+        "tags": ["Chatbot RAG"],
+        "summary": "Requête au chatbot HomePedia IA",
+        "description": "Chatbot conversationnel RAG (Qwen2.5-0.5B Q4_K_M + ChromaDB + BM25) spécialisé en immobilier IDF.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query": { "type": "string", "example": "Quel est le prix au m² à Vincennes ?" }
+                },
+                "required": ["query"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Réponse du chatbot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "response": { "type": "string" },
+                    "intent": { "type": "string" },
+                    "sources": { "type": "array", "items": { "type": "string" } }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "tags": ["Système"],
+        "summary": "Spec OpenAPI 3.0",
+        "description": "Ce fichier — la documentation de l'API au format OpenAPI 3.0.3.",
+        "responses": {
+          "200": { "description": "Spec JSON" }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CommuneBase": {
+        "type": "object",
+        "properties": {
+          "code_commune": { "type": "string", "example": "75056" },
+          "city": { "type": "string", "example": "Paris" },
+          "code_departement": { "type": "string", "example": "75" }
+        }
+      },
+      "Commune": {
+        "allOf": [
+          { "$ref": "#/components/schemas/CommuneBase" },
+          {
+            "type": "object",
+            "properties": {
+              "population": { "type": "integer" },
+              "superficie_km2": { "type": "number" },
+              "centroid_lon": { "type": "number" },
+              "centroid_lat": { "type": "number" }
+            }
+          }
+        ]
+      },
+      "CommuneAgregat": {
+        "type": "object",
+        "properties": {
+          "code_commune": { "type": "string" },
+          "city": { "type": "string" },
+          "prix_median_m2": { "type": "number", "description": "Prix médian au m² en euros (DVF)" },
+          "rendement_locatif_brut": { "type": "number", "description": "Rendement locatif brut en %" },
+          "loyer_median_m2": { "type": "number", "description": "Loyer médian mensuel en €/m²" },
+          "score_qualite_vie": { "type": "number", "description": "Score qualité de vie /100" },
+          "score_investissement": { "type": "number", "description": "Score attractivité investissement /100" },
+          "score_securite": { "type": "number", "description": "Score sécurité /100 (cambriolages/1000 hab)" },
+          "score_dpe_moyen": { "type": "number", "description": "Score DPE moyen /100 (A=100, G=0)" },
+          "score_risques": { "type": "number", "description": "Score risques environnementaux /100 (100=sans risque)" },
+          "risque_argile": { "type": "integer", "enum": [0,1,2,3], "description": "Risque retrait-gonflement argile BRGM" },
+          "risque_inondation": { "type": "integer", "enum": [0,1,2,3], "description": "Risque inondation BRGM" },
+          "ips_moyen": { "type": "number", "description": "Indice de Position Sociale écoles (moy. nationale=100)" }
+        }
+      },
+      "PrixAnnuel": {
+        "type": "object",
+        "properties": {
+          "year": { "type": "integer" },
+          "prix_m2": { "type": "number" },
+          "nb_transactions": { "type": "integer" }
+        }
+      },
+      "ParetoPoint": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "string" },
+          "city": { "type": "string" },
+          "dept": { "type": "string" },
+          "rendement": { "type": "number", "description": "Rendement locatif brut %" },
+          "risque": { "type": "number", "description": "Score risques /100 (inversé : 100=risqué)" },
+          "prix_m2": { "type": "number" },
+          "score_invest": { "type": "number" },
+          "score_qv": { "type": "number" }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  },
+  "tags": [
+    { "name": "Communes", "description": "Données communes IDF" },
+    { "name": "Cartographie", "description": "Heatmap et tuiles vectorielles" },
+    { "name": "Analyse", "description": "Statistiques et analyse multicritère" },
+    { "name": "Transactions", "description": "Données DVF brutes" },
+    { "name": "POI", "description": "Points d'intérêt" },
+    { "name": "Chatbot RAG", "description": "IA conversationnelle immobilier IDF" },
+    { "name": "Système", "description": "Health check et meta" }
+  ]
+}

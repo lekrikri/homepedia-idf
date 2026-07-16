@@ -10,6 +10,7 @@ const NAV_PUBLIC = [
   { to: "/transactions", label: "Transactions" },
   { to: "/dashboard",    label: "Dashboard" },
   { to: "/comparer",     label: "Comparer" },
+  { to: "/pareto",       label: "Pareto" },
   { to: "/portfolio",    label: "Portfolio",    icon: "savings" },
 ];
 const NAV_ADMIN = [

@@ -104,11 +104,22 @@ func main() {
 		// Isochrones (proxy ORS)
 		v1.GET("/isochrone", handlers.GetIsochrone)
 		// Heatmap IDF — centroïdes communes + prix médian (cache 30min / 24h)
+		// Supporte ?year=2021..2026 pour timeline animée
 		v1.GET("/heatmap", middleware.HTTPCache(1800, 86400), handlers.GetHeatmapIDF)
+
+		// Pareto Front — rendement vs risque pour scatter plot multicritère
+		v1.GET("/pareto", middleware.HTTPCache(3600, 86400), handlers.GetParetoFront)
 
 		// Tuiles vectorielles MVT (PostGIS ST_AsMVT) — cache 1h navigateur
 		v1.GET("/tiles/:z/:x/:y", middleware.HTTPCache(3600, 86400), handlers.GetTiles)
 	}
+
+	// Spec OpenAPI publique (hors groupe /api/v1)
+	r.GET("/openapi.json", handlers.GetOpenAPISpec)
+	r.GET("/docs", func(c *gin.Context) {
+		host := "https://" + c.Request.Host
+		c.Redirect(http.StatusFound, "https://petstore.swagger.io/?url="+host+"/openapi.json")
+	})
 
 	port := os.Getenv("PORT")
 	if port == "" {

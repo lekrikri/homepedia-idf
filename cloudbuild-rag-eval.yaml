@@ -1,0 +1,82 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Cloud Build — Pipeline MLOps RAG Eval (#39)
+#
+# LLM-as-a-Judge : évalue la qualité des réponses du chatbot HomePedia
+# sur 12 cas de test. Échoue si score < 83% (10/12).
+#
+# Déclenchement manuel :
+#   gcloud builds submit --config cloudbuild-rag-eval.yaml .
+#
+# Peut être ajouté en étape post-déploiement de cloudbuild-chatbot.yaml.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+substitutions:
+  _CHAT_URL: "https://homepedia-chat-714876351060.europe-west1.run.app"
+  _RAG_PASS_THRESHOLD: "0.83"
+  _REPORT_BUCKET: "homepedia-493013_cloudbuild/rag-eval-reports"
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+steps:
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ÉTAPE 1 : Attendre que le chatbot soit chaud (Cold Start Cloud Run)
+  # ─────────────────────────────────────────────────────────────────────────────
+  - name: "gcr.io/cloud-builders/curl"
+    id: warmup-chatbot
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        echo "Warmup chatbot ${_CHAT_URL}..."
+        for i in 1 2 3; do
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "${_CHAT_URL}/health" --max-time 10 || echo "000")
+          echo "Tentative $i: HTTP $STATUS"
+          [ "$STATUS" = "200" ] && break
+          sleep 5
+        done
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ÉTAPE 2 : Exécuter l'évaluation RAG
+  # ─────────────────────────────────────────────────────────────────────────────
+  - name: "python:3.11-slim"
+    id: rag-eval
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        pip install requests --quiet
+        python eval/rag_eval.py \
+          --url "${_CHAT_URL}" \
+          --threshold "${_RAG_PASS_THRESHOLD}" \
+          --output "/workspace/rag_eval_report.json" \
+          --verbose
+    waitFor: [warmup-chatbot]
+    env:
+      - "CHAT_URL=${_CHAT_URL}"
+      - "RAG_PASS_THRESHOLD=${_RAG_PASS_THRESHOLD}"
+      - "RAG_TIMEOUT=30"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ÉTAPE 3 : Archiver le rapport JSON (toujours, même en cas d'échec)
+  # ─────────────────────────────────────────────────────────────────────────────
+  - name: "gcr.io/cloud-builders/gsutil"
+    id: archive-report
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        DATE=$(date -u +%Y%m%d-%H%M%S)
+        DEST="gs://${_REPORT_BUCKET}/report-${DATE}-${COMMIT_SHA:0:8}.json"
+        gsutil cp /workspace/rag_eval_report.json "$$DEST" || true
+        echo "Rapport archivé : $$DEST"
+        # Afficher le score pour les logs
+        python3 -c "
+        import json
+        with open('/workspace/rag_eval_report.json') as f:
+            r = json.load(f)
+        print(f\"Score final : {r['passed']}/{r['total']} ({r['score']:.0%}) — {'PASS' if r['success'] else 'FAIL'}\")
+        " 2>/dev/null || true
+    waitFor: [rag-eval]
