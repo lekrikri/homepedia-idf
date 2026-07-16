@@ -269,12 +269,21 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock, sheetS
       .then(r => setInsights(r.data)).catch(() => setInsights(null));
   }, [codeCommune]);
 
-  // #5 Prix historique par année
+  // #5 Prix historique par année (fallback si forecast absent)
   const [prixHisto, setPrixHisto] = useState([]);
   useEffect(() => {
     if (!codeCommune) { setPrixHisto([]); return; }
     axios.get(`/api/v1/communes/${codeCommune}/prix-historique`)
       .then(r => setPrixHisto(r.data?.data || [])).catch(() => setPrixHisto([]));
+  }, [codeCommune]);
+
+  // #10 Forecast Prophet — historique + prévisions 2025-2026
+  const [forecast, setForecast] = useState(null);
+  useEffect(() => {
+    if (!codeCommune) { setForecast(null); return; }
+    axios.get(`/api/v1/communes/${codeCommune}/forecast`)
+      .then(r => r.data?.available ? setForecast(r.data) : setForecast(null))
+      .catch(() => setForecast(null));
   }, [codeCommune]);
 
   // #25 Accordéon score expliqué
@@ -614,56 +623,147 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock, sheetS
           )}
         </div>
 
-        {/* ── #5 ÉVOLUTION DES PRIX (sparkline) ────────────────────────── */}
-        {prixHisto.length >= 2 && (() => {
-          const maxP = Math.max(...prixHisto.map(p => p.prix_m2));
-          const minP = Math.min(...prixHisto.map(p => p.prix_m2));
-          const W = 220, H = 44, pad = 8;
-          const xScale = i => pad + (i / (prixHisto.length - 1)) * (W - pad * 2);
-          const yScale = v => H - pad - ((v - minP) / (maxP - minP + 1)) * (H - pad * 2);
-          const pts = prixHisto.map((p, i) => `${xScale(i)},${yScale(p.prix_m2)}`).join(" ");
-          const first = prixHisto[0], last = prixHisto[prixHisto.length - 1];
-          const prevLast = prixHisto[prixHisto.length - 2];
-          const cagr = ((last.prix_m2 / first.prix_m2) ** (1 / (last.year - first.year)) - 1) * 100;
-          const yearTrend = ((last.prix_m2 - prevLast.prix_m2) / prevLast.prix_m2) * 100;
+        {/* ── #10 PROPHET FORECAST — historique + prévisions 2025-2026 ─── */}
+        {(() => {
+          // Priorité forecast Prophet ; fallback sparkline simple si non disponible
+          const pts_src = forecast?.data?.length >= 2
+            ? forecast.data.map(p => ({ year: p.annee, prix_m2: p.prix_m2_pred, lower: p.prix_m2_lower, upper: p.prix_m2_upper, isForecast: p.is_forecast }))
+            : prixHisto.length >= 2 ? prixHisto.map(p => ({ year: p.year, prix_m2: p.prix_m2, isForecast: false })) : null;
+          if (!pts_src) return null;
+
+          const W = 220, H = 60, padX = 8, padY = 10;
+          const allPrices = pts_src.flatMap(p => [p.prix_m2, p.lower, p.upper].filter(Boolean));
+          const minP = Math.min(...allPrices) * 0.97;
+          const maxP = Math.max(...allPrices) * 1.03;
+          const xS = i => padX + (i / (pts_src.length - 1)) * (W - padX * 2);
+          const yS = v => H - padY - ((v - minP) / (maxP - minP)) * (H - padY * 2);
+
+          const histPts = pts_src.filter(p => !p.isForecast);
+          const fcstPts = pts_src.filter(p => p.isForecast);
+          // Index de la jonction historique/prévision
+          const junctionIdx = histPts.length - 1;
+
+          const polyHist = histPts.map((p, i) => `${xS(i)},${yS(p.prix_m2)}`).join(" ");
+          // La ligne de prévision part du dernier point historique
+          const polyFcst = [histPts[histPts.length - 1], ...fcstPts]
+            .map((p, i) => `${xS(junctionIdx + i)},${yS(p.prix_m2)}`).join(" ");
+
+          // Zone d'intervalle de confiance
+          let confBand = null;
+          if (fcstPts.length > 0 && fcstPts[0].lower != null) {
+            const upper = [histPts[histPts.length - 1], ...fcstPts].map((p, i) => `${xS(junctionIdx + i)},${yS(p.upper ?? p.prix_m2)}`).join(" ");
+            const lower = [...fcstPts, histPts[histPts.length - 1]].map((p, i, arr) => `${xS(junctionIdx + arr.length - 1 - i)},${yS(p.lower ?? p.prix_m2)}`).join(" ");
+            confBand = `${upper} ${lower}`;
+          }
+
+          const cagrVal = forecast?.cagr_pct ?? (histPts.length >= 2
+            ? ((histPts[histPts.length-1].prix_m2 / histPts[0].prix_m2) ** (1/(histPts[histPts.length-1].year - histPts[0].year)) - 1) * 100
+            : null);
+          const lastHist = histPts[histPts.length - 1];
+          const prevHist = histPts[histPts.length - 2];
+          const yearTrend = prevHist ? ((lastHist.prix_m2 - prevHist.prix_m2) / prevHist.prix_m2) * 100 : null;
+          const hasForecast = fcstPts.length > 0;
+          const lastFcst = hasForecast ? fcstPts[fcstPts.length - 1] : null;
+          const forecastTrend = lastFcst ? ((lastFcst.prix_m2 - lastHist.prix_m2) / lastHist.prix_m2) * 100 : null;
+
           return (
             <div className="rounded-xl p-4" style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(60,131,246,0.12)" }}>
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <span className="material-symbols-outlined text-primary" style={{ fontSize: 13 }}>show_chart</span>
-                  <p className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold">Évolution des prix</p>
+                  <p className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold">
+                    Évolution des prix {hasForecast && <span style={{ color: "#a78bfa" }}>+ prévision</span>}
+                  </p>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className={`text-[10px] font-bold mono-nums px-1.5 py-0.5 rounded-full ${yearTrend >= 0 ? "text-emerald-400" : "text-red-400"}`}
-                    style={{ background: yearTrend >= 0 ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)" }}
-                    title={`Variation ${prevLast.year}→${last.year}`}>
-                    <span className="material-symbols-outlined" style={{ fontSize: 9, verticalAlign: "middle" }}>{yearTrend >= 0 ? "trending_up" : "trending_down"}</span>
-                    {' '}{yearTrend >= 0 ? "+" : ""}{yearTrend.toFixed(1)}%
-                  </span>
-                  <span className="text-[9px] text-slate-600 mono-nums" title="CAGR annuel moyen">{cagr >= 0 ? "+" : ""}{cagr.toFixed(1)}%/an</span>
+                  {yearTrend !== null && (
+                    <span className={`text-[10px] font-bold mono-nums px-1.5 py-0.5 rounded-full ${yearTrend >= 0 ? "text-emerald-400" : "text-red-400"}`}
+                      style={{ background: yearTrend >= 0 ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)" }}
+                      title={`Variation ${prevHist?.year}→${lastHist.year}`}>
+                      {yearTrend >= 0 ? "+" : ""}{yearTrend.toFixed(1)}%
+                    </span>
+                  )}
+                  {cagrVal !== null && (
+                    <span className="text-[9px] text-slate-500 mono-nums" title="CAGR annuel moyen (historique)">
+                      CAGR {cagrVal >= 0 ? "+" : ""}{cagrVal.toFixed(1)}%/an
+                    </span>
+                  )}
                 </div>
               </div>
-              <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 44 }}>
+
+              <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 60 }}>
                 <defs>
-                  <linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#3c83f6" stopOpacity="0.3"/>
+                  <linearGradient id="priceGrad2" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#3c83f6" stopOpacity="0.25"/>
                     <stop offset="100%" stopColor="#3c83f6" stopOpacity="0"/>
                   </linearGradient>
                 </defs>
-                <polygon points={`${xScale(0)},${H} ${pts} ${xScale(prixHisto.length-1)},${H}`} fill="url(#priceGrad)" />
-                <polyline points={pts} fill="none" stroke="#3c83f6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                {prixHisto.map((p, i) => (
-                  <circle key={p.year} cx={xScale(i)} cy={yScale(p.prix_m2)} r="2.5" fill="#3c83f6"/>
+
+                {/* Aire historique */}
+                <polygon
+                  points={`${xS(0)},${H} ${polyHist} ${xS(junctionIdx)},${H}`}
+                  fill="url(#priceGrad2)"
+                />
+
+                {/* Zone de confiance prévision */}
+                {confBand && (
+                  <polygon points={confBand} fill="rgba(167,139,250,0.12)" stroke="none" />
+                )}
+
+                {/* Séparateur historique/prévision */}
+                {hasForecast && (
+                  <line
+                    x1={xS(junctionIdx)} y1={padY / 2} x2={xS(junctionIdx)} y2={H - padY / 2}
+                    stroke="rgba(167,139,250,0.35)" strokeWidth="1" strokeDasharray="3,2"
+                  />
+                )}
+
+                {/* Ligne historique */}
+                <polyline points={polyHist} fill="none" stroke="#3c83f6" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+
+                {/* Ligne prévision (pointillée violette) */}
+                {hasForecast && (
+                  <polyline points={polyFcst} fill="none" stroke="#a78bfa" strokeWidth="1.5"
+                    strokeDasharray="4,3" strokeLinecap="round" strokeLinejoin="round"/>
+                )}
+
+                {/* Points historiques */}
+                {histPts.map((p, i) => (
+                  <circle key={p.year} cx={xS(i)} cy={yS(p.prix_m2)} r="2" fill="#3c83f6"/>
                 ))}
+
+                {/* Points prévision */}
+                {fcstPts.map((p, i) => (
+                  <circle key={p.year} cx={xS(junctionIdx + 1 + i)} cy={yS(p.prix_m2)} r="2" fill="#a78bfa" stroke="#a78bfa" strokeOpacity="0.5"/>
+                ))}
+
+                {/* Label "Prév." */}
+                {hasForecast && lastFcst && (
+                  <text x={xS(pts_src.length - 1)} y={yS(lastFcst.prix_m2) - 5}
+                    fontSize="6" fill="#a78bfa" textAnchor="middle" fontFamily="monospace">
+                    {lastFcst.year}
+                  </text>
+                )}
               </svg>
+
               <div className="flex justify-between mt-1">
-                {prixHisto.map(p => (
+                {pts_src.map((p, i) => (
                   <div key={p.year} className="flex flex-col items-center">
-                    <span className="text-[7px] text-slate-600 mono-nums">{p.year}</span>
-                    <span className="text-[7px] text-slate-500 mono-nums">{Math.round(p.prix_m2/100)/10}k</span>
+                    <span className={`text-[7px] mono-nums ${p.isForecast ? "text-purple-500" : "text-slate-600"}`}>{p.year}</span>
+                    <span className={`text-[7px] mono-nums ${p.isForecast ? "text-purple-400" : "text-slate-500"}`}>{Math.round(p.prix_m2/100)/10}k</span>
                   </div>
                 ))}
               </div>
+
+              {hasForecast && forecastTrend !== null && (
+                <div className="flex items-center gap-1 mt-2 pt-2 border-t" style={{ borderColor: "rgba(60,131,246,0.1)" }}>
+                  <span className="text-[8px] text-slate-500">Prophet 2026 :</span>
+                  <span className={`text-[9px] font-bold mono-nums ${forecastTrend >= 0 ? "text-purple-400" : "text-red-400"}`}>
+                    {forecastTrend >= 0 ? "+" : ""}{forecastTrend.toFixed(1)}% vs {lastHist.year}
+                  </span>
+                  <span className="text-[8px] text-slate-600 ml-auto">~{Math.round(lastFcst.prix_m2).toLocaleString("fr-FR")} €/m²</span>
+                </div>
+              )}
             </div>
           );
         })()}

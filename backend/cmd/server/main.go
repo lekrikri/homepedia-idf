@@ -73,6 +73,7 @@ func main() {
 		v1.GET("/communes/:code/agregat", middleware.HTTPCache(3600, 86400), handlers.GetCommuneAgregat)
 		v1.GET("/communes/:code/insights", middleware.HTTPCache(3600, 86400), handlers.GetCommuneInsights)
 		v1.GET("/communes/:code/prix-historique", middleware.HTTPCache(3600, 86400), handlers.GetCommunePrixHistorique)
+		v1.GET("/communes/:code/forecast", middleware.HTTPCache(3600, 86400), handlers.GetCommuneForecast)
 
 		// POI pré-ingérés (ingest_poi.py) — cache 24h navigateur + ETag + L1 RAM Go
 		v1.GET("/poi/:code", middleware.HTTPCache(86400, 604800), handlers.GetPOI)
