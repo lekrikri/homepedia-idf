@@ -11,6 +11,7 @@ import time
 import logging
 import hashlib
 from datetime import datetime
+from decimal import Decimal
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -452,9 +453,12 @@ def chat_stream():
             merged_params["cities"] = [c.lower() for c in merged_params["cities"]]
         rows = execute_template(template["sql"], merged_params)
 
+    def _json(obj):
+        return float(obj) if isinstance(obj, Decimal) else str(obj)
+
     def generate():
         # Envoyer d'abord les metadata (tableau affiché avant les tokens)
-        meta = json.dumps({"intent": intent, "nb_results": len(rows), "data": rows[:8]})
+        meta = json.dumps({"intent": intent, "nb_results": len(rows), "data": rows[:8]}, default=_json)
         yield f"data: {meta}\n\n"
 
         if not DISABLE_LLM and qwen_manager.initialized:
