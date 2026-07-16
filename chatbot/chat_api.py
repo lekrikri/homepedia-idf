@@ -405,6 +405,16 @@ def chat_stream():
 
     intent, params = detect_intent(question)
 
+    # Résolution contextuelle : "et Bagnolet ?" seul détecté comme salutation/general
+    # → on réessaie avec le contexte conversationnel pour trouver le vrai intent
+    if intent in ("salutation", "general") and context_summary and len(question.split()) <= 6:
+        last_ctx = context_summary.split("|")[-1].strip()
+        expanded = f"{last_ctx} {question}"
+        exp_intent, exp_params = detect_intent(expanded)
+        if exp_intent not in ("salutation", "general", "hors_scope"):
+            intent, params = exp_intent, exp_params
+            logger.info(f"🔗 Co-référence résolue: '{question}' → intent={intent}")
+
     if intent == "hors_scope":
         return _sse_fixed(
             "Je suis spécialisé dans l'immobilier en Île-de-France uniquement. "

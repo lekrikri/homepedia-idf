@@ -116,10 +116,15 @@ export default function ChatWidget() {
     abortRef.current = ctrl;
 
     try {
+      const history = messages
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .slice(-6)
+        .map((m) => ({ role: m.role, content: m.content || "" }));
+
       const res = await fetch(`${CHAT_API}/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: q }),
+        body: JSON.stringify({ question: q, history }),
         signal: ctrl.signal,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
