@@ -129,6 +129,10 @@ class HomepediaQwenManager:
     def _valid_numbers(self, text: str, sql_data: List[Dict]) -> bool:
         if not sql_data:
             return True
+        # Unités fictives → hallucination certaine
+        if re.search(r'\b(millions?|milliards?|milliers?\s+de\s+franc|francs?\b)', text, re.I):
+            logger.warning("⚠️ Unité fictive détectée (millions/francs) → fallback")
+            return False
         valid_vals: List[float] = []
         for row in sql_data:
             for v in row.values():
@@ -212,15 +216,16 @@ class HomepediaQwenManager:
 
     # Hint par intent : quelle(s) colonne(s) mettre en avant dans la réponse
     _INTENT_FOCUS = {
-        "ecoles_ips":       "mets en avant l'IPS et le pourcentage d'écoles favorisées (pct_ecoles_favorisees)",
-        "rendement":        "mets en avant le rendement locatif brut (rendement_pct) et le loyer médian (loyer_m2)",
-        "dpe":              "mets en avant le score DPE (score_dpe) et le pourcentage de bons DPE (pct_bon_dpe)",
-        "securite":         "mets en avant le taux de cambriolages (cambriolages_pour_mille) et le score sécurité",
-        "top_investissement": "mets en avant le score investissement (score_invest) et le rendement (rendement_pct)",
-        "top_qualite_vie":  "mets en avant le score qualité de vie (qualite_vie) et l'IPS écoles",
-        "top_prix":         "mets en avant le prix au m² (prix_m2) et le nombre de transactions",
-        "multi_criteria":   "mets en avant le score global et les critères demandés par l'utilisateur",
-        "comparaison":      "compare les colonnes clés : prix_m2, rendement_pct, ips_ecoles, cambriolages_pour_mille, dpe_score",
+        "ecoles_ips":       "mets en avant l'IPS (ips_moyen) et pct_ecoles_favorisees. Cite chaque commune avec son département entre parenthèses, ex: 'Versailles (78)'",
+        "rendement":        "mets en avant le rendement locatif brut (rendement_pct %) et le loyer médian (loyer_m2)",
+        "dpe":              "mets en avant le score DPE (score_dpe) et pct_bon_dpe. Cite chaque commune avec son département, ex: 'Moussy (77)'",
+        "securite":         "mets en avant le taux de cambriolages (cambriolages_pour_mille) et le score sécurité. Cite chaque commune avec son département",
+        "top_investissement": "mets en avant le score investissement (score_invest) et le rendement (rendement_pct). Cite chaque commune",
+        "top_qualite_vie":  "mets en avant le score qualité de vie (qualite_vie). Cite chaque commune avec son département",
+        "top_prix":         "mets en avant le prix au m² (prix_m2 en €/m²). Cite chaque commune avec son département et son prix",
+        "multi_criteria":   "mets en avant le score global et les critères demandés. Cite chaque commune avec son département",
+        "comparaison":      "compare OBLIGATOIREMENT les prix (prix_m2 en €/m²) de chaque commune. Ex: 'Versailles (78) : 8 500 €/m²'",
+        "commune_detail":   "présente le NOM exact de la commune, puis son prix_m2 (€/m²), rendement_pct (%), score_global",
     }
 
     def _build_messages(self, sql_data: List[Dict], user_query: str, context: str, intent: str = "") -> List[Dict]:
@@ -233,9 +238,10 @@ class HomepediaQwenManager:
             {"role": "system", "content": (
                 "Tu es HomePedia, assistant immobilier IDF. "
                 "RÈGLES : cite UNIQUEMENT les chiffres du JSON fourni. "
+                "Cite toujours le NOM des communes avec leur département entre parenthèses. "
                 f"Pour cette question, {focus}. "
                 "Réponds en français, 2-4 phrases courtes. "
-                "Pas de code ni de LaTeX."
+                "Pas de code, LaTeX, ni unités fictives (millions, francs)."
             )},
             {"role": "user", "content": (
                 f"{context_block}"

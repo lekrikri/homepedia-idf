@@ -51,7 +51,7 @@
   },
   {
     "id": "frais_notaire",
-    "triggers": ["frais notaire", "frais d'acte", "frais acquisition", "frais d'acquisition", "frais achat", "droits mutation"],
+    "triggers": ["frais notaire", "frais de notaire", "frais d'acte", "frais acquisition", "frais d'acquisition", "frais achat", "droits mutation"],
     "answer": "Les **frais de notaire** (appelés aussi droits de mutation) représentent **7 à 8% du prix** dans l'ancien et **2 à 3% dans le neuf**. Pour un appartement à 300 000€ dans l'ancien, comptez ~22 000 à 24 000€ de frais. Ils se décomposent en : droits de mutation (5,8% en IDF), émoluments du notaire (~1%), débours (frais administratifs). On dit souvent «frais de notaire» mais en réalité 80% vont à l'État et aux collectivités. À noter : en Île-de-Seine-Saint-Denis (93), les droits sont légèrement réduits dans certaines communes en politique de la ville."
   },
   {

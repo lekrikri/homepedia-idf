@@ -425,7 +425,9 @@ INTENT_PATTERNS = [
     # Salutation en priorité absolue — évite les faux positifs (merci → commune_detail)
     ("salutation", re.compile(
         r"^(salut|bonjour|bonsoir|hello|coucou|hey|hi|ok|merci|super|g[eé]nial|"
-        r"parfait|cool|bravo|au revoir|bye|à bient[oô]t|bonne\s+\w+)[\s!.?]*$", re.I
+        r"parfait|cool|bravo|au revoir|bye|à bient[oô]t|bonne\s+\w+)[\s!.?]*$|"
+        r"^(tu peux m.aider|vous pouvez m.aider|aide[z-]?[- ]moi|j.ai besoin d.aide|"
+        r"aide moi|peux[- ]tu m.aider|help me)[\s?!.]*$", re.I
     )),
     # Hors périmètre — villes hors IDF ou sujets non-immobiliers
     ("hors_scope", re.compile(
@@ -447,6 +449,9 @@ INTENT_PATTERNS = [
         r"diff[eé]rence entre\s+.{0,60}(m[eé]dian|moyen|rendement|dpe|ips|net|brut|prix\s+au)|"
         # Loi Pinel et dispositifs fiscaux directs
         r"\b(loi\s+)?(pinel|scpi|ptz|robien|borloo|duflot|malraux)\b|"
+        # Termes financiers immobiliers toujours encyclopédiques
+        r"\b(frais (de )?notaire|droits? (de )?mutation|taxe fonci[eè]re|"
+        r"plus[- ]value\s+immobili|vacance\s+locative|\blmnp\b)\b|"
         # Taux de cambriolage encyclopédique
         r"qu.est.ce que.{0,20}taux.{0,10}(cambriolage|criminalit|d[eé]linquance)|"
         # Score composite
@@ -462,7 +467,7 @@ INTENT_PATTERNS = [
     # top_prix avant prix_max : "les moins chères" doit être un classement (ASC), pas un filtre budget
     ("top_prix", re.compile(
         r"plus ch[eè]r|plus [eé]lev[eé]|moins ch[eè]r|top prix|"
-        r"classement prix|rang.*prix|cher.*idf|idf.*cher|les? moins ch", re.I
+        r"classement prix|rang.*prix|cher.*idf|idf.*cher|les? moins ch|les? plus ch", re.I
     )),
     # rendement avant top_investissement : "meilleur rendement locatif" ne doit pas matcher investir
     ("rendement", re.compile(
@@ -587,8 +592,10 @@ def extract_departement(text: str) -> Optional[str]:
     m = re.search(r'\b(75|77|78|91|92|93|94|95)\b', text)
     if m:
         return m.group(1)
+    t = text.lower()
     for name, code in DEPT_MAP.items():
-        if name in text.lower():
+        # Word boundary pour éviter "paris" → "parisienne" ou "sienne" → "essonne"
+        if re.search(r'\b' + re.escape(name) + r'\b', t):
             return code
     return None
 
@@ -745,6 +752,12 @@ def detect_intent(question: str) -> Tuple[str, Dict[str, Any]]:
     if len(communes) == 1:
         return "commune_detail", {"city": communes[0]}
 
+    # 2.5 top_prix explicite — "les plus chères c'est où ?" intercepté avant MiniLM
+    # (après étapes communes pour éviter "Créteil vs Vitry, laquelle est moins chère ?")
+    if re.search(r"\b(plus|moins)\s+ch[eè]r", q, re.I):
+        logger.info("💰 top_prix explicite (plus/moins cher)")
+        return "top_prix", _build_params("top_prix", q)
+
     # 3. Multi-critères (ex: "sûre ET bon DPE ET moins de 4000€")
     criteria = extract_criteria(q)
     n_active = sum([
@@ -765,6 +778,14 @@ def detect_intent(question: str) -> Tuple[str, Dict[str, Any]]:
         if dept_early:
             logger.info(f"🗺️ Département détecté prioritaire: {dept_early}")
             return "departement", {"dept": dept_early, "limit": 5}
+
+    # 3.6 DPE explicite — avant MiniLM qui peut confondre avec departement
+    # Ne s'applique pas si multi-critères a déjà été retourné (step 3)
+    if re.search(r"\bdpe\b|passoire\s+thermique|[eé]cologiqu|"
+                 r"performance\s+[eé]nerg|consommation\s+[eé]nerg|"
+                 r"bilan\s+[eé]nerg|thermique\b", q, re.I):
+        logger.info("🌱 DPE explicite avant sémantique")
+        return "dpe", dict(TEMPLATES["dpe"]["params"])
 
     # 4. Détection sémantique
     sem_intent, sem_score = _semantic_intent(q)

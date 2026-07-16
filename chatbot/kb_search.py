@@ -40,7 +40,17 @@ def _normalize(text: str) -> str:
 # → score minimum 2 requis pour éviter les faux positifs KB
 _SQL_DEMAND = re.compile(
     r"\b(communes?|villes?|top|classement|liste|meilleure?s?|trouver|secteurs?|"
-    r"investir|acheter|o[uù] |o[uù]$|quelle?s? communes?)\b",
+    r"investir|acheter|o[uù] |o[uù]$|quelle?s? communes?|"
+    r"pas cher|abordable|budget|calme|s[uû]re?|s[eé]curis[eé])\b",
+    re.I,
+)
+
+# Si la question est encyclopédique → réduire le seuil même si _SQL_DEMAND déclenche
+# (ex: "La taxe foncière varie selon les communes IDF ?" — théorique malgré "communes")
+_ENCYCLOPEDIC = re.compile(
+    r"\b(c.est quoi|qu.est[- ]ce que|comment (fonctionne|calculer|lire|marche)|"
+    r"pourquoi|d[eé]finition|expliquer?|diff[eé]rent?|"
+    r"vari[ei]\w*|avantage|que signifie|que veut dire)\b",
     re.I,
 )
 
@@ -61,6 +71,9 @@ def search_kb(question: str, min_score: int = 1) -> Optional[Tuple[str, int]]:
     # Heuristique : question "SQL" nécessite un match plus fort pour activer la KB
     if _SQL_DEMAND.search(q):
         min_score = max(min_score, 2)
+        # Exception : formulation encyclopédique malgré les mots SQL → seuil réduit
+        if _ENCYCLOPEDIC.search(q):
+            min_score = max(min_score - 1, 1)
 
     best_score = 0
     best_specificity = 0
