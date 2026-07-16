@@ -182,6 +182,19 @@ INTENT_EXAMPLES: Dict[str, List[str]] = {
         "où les enfants sont bien scolarisés",
         "meilleures communes pour les familles avec enfants",
     ],
+    "forecast_prix": [
+        "quel sera le prix à Montreuil en 2026",
+        "prévision des prix immobiliers à Versailles",
+        "évolution des prix attendue à Créteil",
+        "combien vaudra le m2 à Vincennes dans 2 ans",
+        "forecast immobilier Nanterre",
+        "tendance prix Boulogne-Billancourt 2025 2026",
+        "projection prix immobilier commune IDF",
+        "estimation prix futur commune banlieue",
+        "dans combien de temps les prix vont monter",
+        "quelle commune va le plus augmenter",
+        "prévision hausse prix immobilier IDF",
+    ],
     "general": [
         "qu'est-ce que le DPE",
         "comment fonctionne l'IPS",
@@ -396,6 +409,22 @@ TEMPLATES: Dict[str, Dict] = {
         "response_hint": "communes correspondant à plusieurs critères combinés",
     },
 
+    # Prévision Prophet — SQL sur prix_forecast
+    "forecast_prix": {
+        "sql": """
+            SELECT pf.annee, ROUND(pf.prix_m2_pred::numeric, 0) AS prix_m2_pred,
+                   ROUND(pf.prix_m2_lower::numeric, 0) AS prix_m2_lower,
+                   ROUND(pf.prix_m2_upper::numeric, 0) AS prix_m2_upper,
+                   pf.is_forecast, ca.city AS commune
+            FROM prix_forecast pf
+            JOIN communes_agregat ca ON ca.code_commune = pf.code_commune
+            WHERE LOWER(ca.city) = LOWER(%(city)s)
+            ORDER BY pf.annee
+        """,
+        "params": {"city": ""},
+        "response_hint": "prévision Prophet des prix immobiliers",
+    },
+
     # Pas de SQL — réponse gérée directement dans chat_api.py
     "salutation": {
         "sql": None,
@@ -456,6 +485,12 @@ INTENT_PATTERNS = [
         r"qu.est.ce que.{0,20}taux.{0,10}(cambriolage|criminalit|d[eé]linquance)|"
         # Score composite
         r"(score|indice)\s+composite", re.I
+    )),
+    ("forecast_prix", re.compile(
+        r"pr[eé]vision|pr[eé]voir|forecast|[eé]volution.{0,20}attendue|"
+        r"combien.{0,20}vaudra|dans .{0,10}ans|en 202[5-9]|"
+        r"hausse.{0,20}attendue|projection.{0,15}prix|tendance.{0,15}prix|"
+        r"va .{0,10}(augmenter|baisser|monter)", re.I
     )),
     ("comparaison", re.compile(
         r"compar|versus|vs\.?|diff[eé]rence|entre .+ et .+|.+ ou .+", re.I
@@ -698,7 +733,10 @@ def _regex_intent(question: str) -> Optional[str]:
 
 def _build_params(intent: str, q: str) -> Dict[str, Any]:
     params = dict(TEMPLATES[intent]["params"])
-    if intent == "prix_max":
+    if intent == "forecast_prix":
+        communes = extract_communes(q)
+        params["city"] = communes[0] if communes else ""
+    elif intent == "prix_max":
         params["max_price"] = extract_price(q)
     elif intent == "departement":
         dept = extract_departement(q)

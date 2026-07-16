@@ -116,8 +116,35 @@ def _confidence(intent: str, nb_results: int, llm_used: bool) -> int:
 
 # ── Fallback textuel sans LLM ────────────────────────────────────────────────
 
+def _forecast_fallback(rows: list) -> str:
+    """Réponse structurée pour les prévisions Prophet."""
+    if not rows:
+        return "Aucune prévision disponible pour cette commune. Les données Prophet sont générées pour les communes avec au moins 3 années de transactions DVF."
+    commune = rows[0].get("commune", "?")
+    hist = [r for r in rows if not r.get("is_forecast")]
+    fcst = [r for r in rows if r.get("is_forecast")]
+    lines = [f"**Prévisions Prophet pour {commune}** (modèle Meta, intervalles de confiance 80%) :"]
+    if hist:
+        last = hist[-1]
+        lines.append(f"\n📊 **Historique** — dernier point connu : **{int(last['prix_m2_pred']):,} €/m²** ({last['annee']})".replace(",", " "))
+    for r in fcst:
+        lower = f"{int(r['prix_m2_lower']):,}".replace(",", " ") if r.get("prix_m2_lower") else "?"
+        upper = f"{int(r['prix_m2_upper']):,}".replace(",", " ") if r.get("prix_m2_upper") else "?"
+        lines.append(f"🔮 **{r['annee']}** : ~**{int(r['prix_m2_pred']):,} €/m²**".replace(",", " ") +
+                     f" (fourchette 80% : {lower}–{upper} €/m²)")
+    if hist and fcst:
+        last_known = hist[-1]["prix_m2_pred"]
+        last_fcst = fcst[-1]["prix_m2_pred"]
+        trend = (last_fcst - last_known) / last_known * 100
+        lines.append(f"\n{'📈' if trend >= 0 else '📉'} Tendance prévue : **{'+' if trend >= 0 else ''}{trend:.1f}%** sur la période")
+    lines.append("\n⚠️ *Prévision statistique basée sur les transactions DVF 2019-2024. Pas un conseil en investissement.*")
+    return "\n".join(lines)
+
+
 def fallback_response(rows: list, intent: str, question: str) -> str:
     """Réponse structurée sans LLM si Qwen non disponible."""
+    if intent == "forecast_prix":
+        return _forecast_fallback(rows)
     hint = TEMPLATES.get(intent, {}).get("response_hint", "résultats")
     if not rows:
         return f"Aucune donnée trouvée pour votre question sur {hint}."
