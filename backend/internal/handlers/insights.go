@@ -216,3 +216,47 @@ func GetCommunePrixHistorique(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"data": result})
 }
+
+// GetPrixParType — GET /api/v1/communes/:code/prix-par-type
+// Prix médian/m² par année ET par type de bien (Appartement / Maison).
+func GetPrixParType(c *gin.Context) {
+	code := c.Param("code")
+	ctx := c.Request.Context()
+
+	type TypeYear struct {
+		Year      int     `json:"year"`
+		TypeLocal string  `json:"type"`
+		PrixM2    float64 `json:"prix_m2"`
+		Count     int     `json:"count"`
+	}
+
+	rows, err := db.Pool.Query(ctx, `
+		SELECT
+			date_part('year', date_mutation)::int AS yr,
+			type_local,
+			ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY valeur_fonciere / NULLIF(surface_reelle_bati, 0))::numeric, 0)::float,
+			COUNT(*)::int
+		FROM transactions
+		WHERE code_commune = $1
+		  AND type_local IN ('Appartement', 'Maison')
+		  AND valeur_fonciere IS NOT NULL
+		  AND surface_reelle_bati > 5
+		  AND valeur_fonciere / surface_reelle_bati BETWEEN 500 AND 50000
+		GROUP BY yr, type_local
+		ORDER BY yr, type_local
+	`, code)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	result := []TypeYear{}
+	for rows.Next() {
+		var p TypeYear
+		if rows.Scan(&p.Year, &p.TypeLocal, &p.PrixM2, &p.Count) == nil {
+			result = append(result, p)
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"data": result})
+}

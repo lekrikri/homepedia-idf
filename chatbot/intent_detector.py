@@ -192,6 +192,18 @@ INTENT_EXAMPLES: Dict[str, List[str]] = {
         "où les enfants sont bien scolarisés",
         "meilleures communes pour les familles avec enfants",
     ],
+    "budget_achat": [
+        "j'ai 300 000 euros pour acheter un appartement",
+        "avec 250k€ que puis-je acheter en IDF",
+        "mon budget total est de 350 000€ pour acheter",
+        "j'ai 400 000 euros à investir dans l'immobilier",
+        "pour 280 000€ que puis-je acquérir en banlieue",
+        "j'ai un budget de 320 000 euros pour acheter",
+        "avec 500 000 euros quelle superficie puis-je espérer",
+        "je dispose de 200k€ pour acheter un bien",
+        "acheter avec 300 000€ où aller en IDF",
+        "quelle surface pour 250 000 euros en Île-de-France",
+    ],
     "forecast_prix": [
         "quel sera le prix à Montreuil en 2026",
         "prévision des prix immobiliers à Versailles",
@@ -454,6 +466,23 @@ TEMPLATES: Dict[str, Dict] = {
         "response_hint": "prévision Prophet des prix immobiliers",
     },
 
+    "budget_achat": {
+        "sql": """
+            SELECT city AS commune, TRIM(code_departement) AS dept,
+                   ROUND(prix_median_m2::numeric, 0) AS prix_m2,
+                   ROUND(%(budget)s::numeric / NULLIF(prix_median_m2, 0), 0)::int AS surface_m2_accessible,
+                   ROUND(rendement_locatif_brut::numeric, 2) AS rendement_pct,
+                   ROUND(score_qualite_vie::numeric, 1) AS qualite_vie
+            FROM communes_agregat
+            WHERE prix_median_m2 IS NOT NULL AND prix_median_m2 > 0
+              AND prix_median_m2 <= %(prix_m2_max)s
+            ORDER BY score_qualite_vie DESC NULLS LAST
+            LIMIT %(limit)s
+        """,
+        "params": {"budget": 300000, "prix_m2_max": 7500, "limit": 8},
+        "response_hint": "communes accessibles selon le budget total d'achat avec surface estimée",
+    },
+
     # Pas de SQL — réponse gérée directement dans chat_api.py
     "salutation": {
         "sql": None,
@@ -537,8 +566,14 @@ INTENT_PATTERNS = [
     ("rendement", re.compile(
         r"rendement|rentab(ilit[eé])?|rapport locatif|cash.?flow", re.I
     )),
+    ("budget_achat", re.compile(
+        r"j'?ai\s+\d+[\d\s]*(?:k€|000\s*€|euros?)|"
+        r"avec\s+\d+[\d\s]*(?:k€|000\s*€|euros?).{0,30}(?:acheter|acquérir|investir)|"
+        r"budget\s+(?:total|d.achat|de)\s+\d+[\d\s]*(?:k€|€|euros?)|"
+        r"(?:pour|avec)\s+\d+\s*k€", re.I
+    )),
     ("prix_max", re.compile(
-        r"moins de \d|budget|pas ch[eè]r|abordable|accessible|"
+        r"moins de \d|pas ch[eè]r|abordable|accessible|"
         r"€/m²|euros?/m|inférieur", re.I
     )),
     ("departement", re.compile(
@@ -625,6 +660,24 @@ DEPT_MAP = {
 
 
 # ── Extracteurs d'entités ─────────────────────────────────────────────────────
+
+def extract_budget(text: str) -> int:
+    """Extrait un budget total d'achat (montant en €, typiquement 100k-1M€)."""
+    m = re.search(r"(\d+)\s*k€", text, re.I)
+    if m:
+        return int(m.group(1)) * 1000
+    m = re.search(r"(\d[\d\s]{2,})\s*(?:€|euros?)", text, re.I)
+    if m:
+        val = int(re.sub(r'\s', '', m.group(1)))
+        if val >= 50000:
+            return val
+    m = re.search(r"(\d{2,3})\s*000\b", text, re.I)
+    if m:
+        val = int(m.group(1)) * 1000
+        if val >= 50000:
+            return val
+    return 300000
+
 
 def extract_price(text: str) -> int:
     m = re.search(r"(\d[\d\s]*)\s*(?:€|euros?|k€?|000)?\s*/?\s*m[²2]?", text, re.I)
@@ -769,6 +822,10 @@ def _build_params(intent: str, q: str) -> Dict[str, Any]:
     if intent == "forecast_prix":
         communes = extract_communes(q)
         params["city"] = communes[0] if communes else ""
+    elif intent == "budget_achat":
+        budget = extract_budget(q)
+        params["budget"] = budget
+        params["prix_m2_max"] = budget // 40  # Surface minimale ~40m² visée
     elif intent == "prix_max":
         params["max_price"] = extract_price(q)
     elif intent == "departement":

@@ -286,6 +286,14 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock, sheetS
       .catch(() => setForecast(null));
   }, [codeCommune]);
 
+  // Prix par type (Appartement vs Maison)
+  const [prixParType, setPrixParType] = useState([]);
+  useEffect(() => {
+    if (!codeCommune) { setPrixParType([]); return; }
+    axios.get(`/api/v1/communes/${codeCommune}/prix-par-type`)
+      .then(r => setPrixParType(r.data?.data || [])).catch(() => setPrixParType([]));
+  }, [codeCommune]);
+
   // #25 Accordéon score expliqué
   const [showScoreDetail, setShowScoreDetail] = useState(false);
 
@@ -770,6 +778,56 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock, sheetS
                     {forecastTrend >= 0 ? "+" : ""}{forecastTrend.toFixed(1)}% vs {lastHist.year}
                   </span>
                   <span className="text-[8px] text-slate-600 ml-auto">~{Math.round(lastFcst.prix_m2).toLocaleString("fr-FR")} €/m²</span>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* ── Prix Appartement vs Maison par année ─────────────────────── */}
+        {(() => {
+          const appts   = prixParType.filter(p => p.type === "Appartement").sort((a, b) => a.year - b.year);
+          const maisons = prixParType.filter(p => p.type === "Maison").sort((a, b) => a.year - b.year);
+          if (appts.length < 2 && maisons.length < 2) return null;
+          const years = [...new Set(prixParType.map(p => p.year))].sort((a, b) => a - b);
+          const allP = prixParType.map(p => p.prix_m2);
+          const W = 220, H = 55, padX = 8, padY = 8;
+          const minP = Math.min(...allP) * 0.96;
+          const maxP = Math.max(...allP) * 1.04;
+          const xS = yr => padX + ((yr - years[0]) / Math.max(years[years.length - 1] - years[0], 1)) * (W - padX * 2);
+          const yS = v => H - padY - ((v - minP) / (maxP - minP)) * (H - padY * 2);
+          const polyA = appts.map(p => `${xS(p.year)},${yS(p.prix_m2)}`).join(" ");
+          const polyM = maisons.map(p => `${xS(p.year)},${yS(p.prix_m2)}`).join(" ");
+          const lastA = appts[appts.length - 1];
+          const lastM = maisons[maisons.length - 1];
+          const diff = lastA && lastM ? lastM.prix_m2 - lastA.prix_m2 : null;
+          return (
+            <div className="rounded-xl p-4" style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(60,131,246,0.12)" }}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-slate-400" style={{ fontSize: 13 }}>home_work</span>
+                  <p className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold">Prix par type de bien</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  {appts.length >= 1   && <div className="flex items-center gap-1"><div className="w-3 h-0.5 bg-blue-400 rounded" /><span className="text-[8px] text-slate-500">Appt</span></div>}
+                  {maisons.length >= 1 && <div className="flex items-center gap-1"><div className="w-3 h-0.5 bg-emerald-400 rounded" /><span className="text-[8px] text-slate-500">Maison</span></div>}
+                </div>
+              </div>
+              <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 55 }}>
+                {appts.length >= 2   && <polyline points={polyA} fill="none" stroke="#60a5fa" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />}
+                {maisons.length >= 2 && <polyline points={polyM} fill="none" stroke="#34d399" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />}
+                {appts.map(p   => <circle key={`a${p.year}`} cx={xS(p.year)} cy={yS(p.prix_m2)} r="2" fill="#60a5fa" />)}
+                {maisons.map(p => <circle key={`m${p.year}`} cx={xS(p.year)} cy={yS(p.prix_m2)} r="2" fill="#34d399" />)}
+              </svg>
+              <div className="flex justify-between mt-1">
+                {years.map(yr => <span key={yr} className="text-[7px] text-slate-600 mono-nums">{yr}</span>)}
+              </div>
+              {diff !== null && (
+                <div className="flex items-center justify-between pt-1 mt-1 border-t border-slate-800/40">
+                  <span className="text-[8px] text-slate-500">Écart maison/appt {lastA.year}</span>
+                  <span className={`text-[9px] font-bold mono-nums ${diff >= 0 ? "text-emerald-400" : "text-blue-400"}`}>
+                    {diff >= 0 ? "+" : ""}{Math.round(diff).toLocaleString("fr-FR")} €/m²
+                  </span>
                 </div>
               )}
             </div>

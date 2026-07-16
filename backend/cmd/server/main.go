@@ -73,6 +73,7 @@ func main() {
 		v1.GET("/communes/:code/agregat", middleware.HTTPCache(3600, 86400), handlers.GetCommuneAgregat)
 		v1.GET("/communes/:code/insights", middleware.HTTPCache(3600, 86400), handlers.GetCommuneInsights)
 		v1.GET("/communes/:code/prix-historique", middleware.HTTPCache(3600, 86400), handlers.GetCommunePrixHistorique)
+		v1.GET("/communes/:code/prix-par-type", middleware.HTTPCache(3600, 86400), handlers.GetPrixParType)
 		v1.GET("/communes/:code/forecast", middleware.HTTPCache(3600, 86400), handlers.GetCommuneForecast)
 
 		// POI pré-ingérés (ingest_poi.py) — cache 24h navigateur + ETag + L1 RAM Go
@@ -80,6 +81,7 @@ func main() {
 
 		// Transactions (public read — heavy queries handled by Databricks gold layer)
 		v1.GET("/transactions", handlers.ListTransactions)
+		v1.GET("/transactions/export", handlers.ExportTransactionsCSV)
 		v1.GET("/transactions/:id", handlers.GetTransaction)
 
 		// Stats agrégées

@@ -21,7 +21,7 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-from intent_detector import detect_intent, get_template, TEMPLATES, _get_embedder
+from intent_detector import detect_intent, get_template, TEMPLATES, _get_embedder, extract_communes
 from sql_executor import execute_template, format_for_display, health_check
 from qwen_manager import qwen_manager
 from kb_search import search_kb
@@ -373,6 +373,17 @@ def chat():
     intent, params = detect_intent(question)
     logger.info(f"🎯 Intent: {intent} | params: {list(params.keys())}")
 
+    # Co-référence commune : injecter la dernière commune mentionnée dans l'historique
+    if intent in ("commune_detail", "forecast_prix") and not extract_communes(question):
+        for msg in reversed(history):
+            if not (isinstance(msg, dict) and msg.get("role") == "user"):
+                continue
+            communes_hist = extract_communes(msg.get("content", ""))
+            if communes_hist:
+                params["city"] = communes_hist[0]
+                logger.info(f"🔗 Co-référence commune injectée: {communes_hist[0]}")
+                break
+
     # Court-circuit hors_scope — réponse fixe sans SQL
     if intent == "hors_scope":
         response = {
@@ -533,6 +544,18 @@ def chat_stream():
         if exp_intent not in ("salutation", "general", "hors_scope"):
             intent, params = exp_intent, exp_params
             logger.info(f"🔗 Co-référence résolue: '{question}' → intent={intent}")
+
+    # Co-référence commune : si l'intent nécessite une commune mais la question courante n'en cite pas,
+    # on extrait la dernière commune mentionnée dans l'historique et on l'injecte dans les params
+    if intent in ("commune_detail", "forecast_prix") and not extract_communes(question):
+        for msg in reversed(history):
+            if not (isinstance(msg, dict) and msg.get("role") == "user"):
+                continue
+            communes_hist = extract_communes(msg.get("content", ""))
+            if communes_hist:
+                params["city"] = communes_hist[0]
+                logger.info(f"🔗 Co-référence commune injectée: {communes_hist[0]}")
+                break
 
     if intent == "hors_scope":
         return _sse_fixed(
