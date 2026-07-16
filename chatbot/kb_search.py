@@ -36,6 +36,15 @@ def _normalize(text: str) -> str:
     return text
 
 
+# Si la question contient ces mots → probablement une demande de données SQL, pas théorique
+# → score minimum 2 requis pour éviter les faux positifs KB
+_SQL_DEMAND = re.compile(
+    r"\b(communes?|villes?|top|classement|liste|meilleure?s?|trouver|secteurs?|"
+    r"investir|acheter|o[uù] |o[uù]$|quelle?s? communes?)\b",
+    re.I,
+)
+
+
 def search_kb(question: str, min_score: int = 1) -> Optional[Tuple[str, int]]:
     """
     Cherche la meilleure réponse dans la KB pour une question.
@@ -43,11 +52,15 @@ def search_kb(question: str, min_score: int = 1) -> Optional[Tuple[str, int]]:
     Retourne (answer, score) si au moins `min_score` trigger(s) matchent.
     Retourne None sinon.
 
-    Score = nombre de triggers matchés dans la question.
-    En cas d'égalité, l'entrée avec le plus de triggers (plus spécifique) gagne.
+    Si la question contient des mots SQL (communes, top, meilleur…), le seuil
+    passe à 2 pour éviter d'intercepter des demandes de données.
     """
     kb = _load_kb()
     q = _normalize(question)
+
+    # Heuristique : question "SQL" nécessite un match plus fort pour activer la KB
+    if _SQL_DEMAND.search(q):
+        min_score = max(min_score, 2)
 
     best_score = 0
     best_specificity = 0
