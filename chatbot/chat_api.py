@@ -141,6 +141,56 @@ def _forecast_fallback(rows: list) -> str:
     return "\n".join(lines)
 
 
+def _comparaison_table(rows: list) -> str:
+    """Comparaison structurée emoji-table entre 2 communes."""
+    if len(rows) < 2:
+        return "Données insuffisantes pour comparer. Précisez deux communes d'Île-de-France (ex: 'compare Versailles et Vincennes')."
+    a, b = rows[0], rows[1]
+    na, nb = a.get("commune", "?"), b.get("commune", "?")
+
+    def fmt_prix(v): return f"{int(float(v)):,} €/m²".replace(",", " ") if v else "N/A"
+    def fmt_pct(v):  return f"{float(v):.1f}%" if v else "N/A"
+    def fmt_score(v): return f"{float(v):.0f}/100" if v else "N/A"
+    def fmt_raw(v):  return f"{float(v):.1f}" if v else "N/A"
+
+    ROWS = [
+        ("💰", "Prix au m²",        "prix_m2",               fmt_prix,  False),
+        ("📈", "Rendement locatif", "rendement_pct",         fmt_pct,   True),
+        ("🌳", "Qualité de vie",    "qualite_vie",           fmt_score, True),
+        ("📊", "Score investissement","investissement",      fmt_score, True),
+        ("🌿", "Score DPE",         "dpe_score",             fmt_raw,   True),
+        ("🏫", "IPS écoles",        "ips_ecoles",            fmt_raw,   True),
+        ("🛡️", "Cambriolages",     "cambriolages_pour_mille", lambda v: f"{float(v):.1f}‰", False),
+    ]
+
+    lines = [f"**{na} vs {nb}** — Comparaison détaillée\n"]
+    pts_a = pts_b = 0
+
+    for icon, label, key, formatter, higher_is_better in ROWS:
+        va, vb = a.get(key), b.get(key)
+        if va is None and vb is None:
+            continue
+        fa = formatter(va)
+        fb = formatter(vb)
+        mark_a = mark_b = ""
+        if va is not None and vb is not None:
+            fa_f, fb_f = float(va), float(vb)
+            if higher_is_better:
+                if fa_f > fb_f: mark_a, pts_a = " ✅", pts_a + 1
+                elif fb_f > fa_f: mark_b, pts_b = " ✅", pts_b + 1
+            else:  # lower is better (cambriolages, prix)
+                if key != "prix_m2":  # prix : neutre
+                    if fa_f < fb_f: mark_a, pts_a = " ✅", pts_a + 1
+                    elif fb_f < fa_f: mark_b, pts_b = " ✅", pts_b + 1
+        lines.append(f"{icon} **{label}** : {fa}{mark_a} · {fb}{mark_b}")
+
+    winner = na if pts_a >= pts_b else nb
+    loser  = nb if pts_a >= pts_b else na
+    lines.append(f"\n🏆 **Bilan ({pts_a}-{pts_b})** : **{winner}** l'emporte sur la majorité des critères.")
+    lines.append(f"💡 **{loser}** peut rester intéressant selon vos priorités (prix, proximité, etc.).")
+    return "\n".join(lines)
+
+
 def fallback_response(rows: list, intent: str, question: str) -> str:
     """Réponse structurée sans LLM si Qwen non disponible."""
     if intent == "forecast_prix":
@@ -498,7 +548,12 @@ def chat_stream():
         meta = json.dumps({"intent": intent, "nb_results": len(rows), "data": rows[:8]}, default=_json)
         yield f"data: {meta}\n\n"
 
-        if not DISABLE_LLM and qwen_manager.initialized:
+        # Court-circuit : réponses structurées Python directes (pas de Qwen)
+        if intent in ("comparaison", "forecast_prix"):
+            answer = _comparaison_table(rows) if intent == "comparaison" else _forecast_fallback(rows)
+            for word in answer.split(" "):
+                yield f"data: {json.dumps({'chunk': word + ' '})}\n\n"
+        elif not DISABLE_LLM and qwen_manager.initialized:
             # Vrai streaming token-par-token via llama-cpp
             buffer = ""
             for chunk in qwen_manager.generate_stream(rows, question, intent, context=context_summary):

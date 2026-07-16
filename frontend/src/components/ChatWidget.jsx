@@ -19,10 +19,10 @@ const C = {
 };
 
 const SUGGESTIONS = [
+  "Prévisions prix à Vincennes en 2026 ?",
   "Où investir avec un bon rendement ?",
-  "Communes les plus sûres d'IDF ?",
-  "Meilleur DPE, moins de 4000€/m² ?",
   "Compare Versailles et Vincennes",
+  "Communes sûres, moins de 4500€/m² ?",
 ];
 
 // Rendu markdown minimaliste (**bold** uniquement)
