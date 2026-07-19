@@ -151,7 +151,17 @@ create_secret() {
   fi
 }
 
-create_secret "homepedia-supabase-password" "@fanfan_gwada_971"
+# Le mot de passe n'est jamais écrit dans ce script : il est lu dans
+# l'environnement, ou demandé interactivement s'il est absent.
+if [ -z "${SUPABASE_PASSWORD:-}" ]; then
+  read -rsp "Mot de passe Supabase : " SUPABASE_PASSWORD
+  echo ""
+fi
+if [ -z "$SUPABASE_PASSWORD" ]; then
+  echo "❌ SUPABASE_PASSWORD requis pour créer le secret." >&2
+  exit 1
+fi
+create_secret "homepedia-supabase-password" "$SUPABASE_PASSWORD"
 create_secret "homepedia-jwt-secret" "$(openssl rand -base64 32)"
 echo "✅ Secrets créés"
 echo ""
@@ -198,7 +208,7 @@ cat "$KEY_FILE"
 echo ""
 echo "  (copie TOUT le JSON ci-dessus, y compris les accolades)"
 echo ""
-echo "  2. Optionnel — SUPABASE_PASSWORD = @fanfan_gwada_971"
+echo "  2. Optionnel — SUPABASE_PASSWORD (valeur dans Secret Manager)"
 echo "     (si tu veux aussi pouvoir connecter localement)"
 echo ""
 echo "═══════════════════════════════════════════════════════════"

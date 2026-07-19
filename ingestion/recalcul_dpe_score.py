@@ -14,10 +14,20 @@ Usage:
 import os
 import psycopg2
 from psycopg2.extras import execute_values
+from urllib.parse import quote_plus
+
+# Mot de passe Supabase : jamais en dur, ce dépôt est public.
+_MDP = os.environ.get("SUPABASE_PASSWORD") or os.environ.get("POSTGRES_PASSWORD")
+if not _MDP:
+    raise SystemExit(
+        "SUPABASE_PASSWORD manquant. Exportez-le avant de lancer ce script :\n"
+        "  export SUPABASE_PASSWORD='<mot de passe Supabase>'"
+    )
+_MDP_URL = quote_plus(_MDP)
 
 DB_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://postgres.iugsfmvqddburvufzacy:%40fanfan_gwada_971@aws-0-eu-west-1.pooler.supabase.com:5432/postgres?sslmode=require"
+    f"postgresql://postgres.iugsfmvqddburvufzacy:{_MDP_URL}@aws-0-eu-west-1.pooler.supabase.com:5432/postgres?sslmode=require"
 )
 
 DPE_SCORE = {"A": 100, "B": 85, "C": 65, "D": 45, "E": 25, "F": 10, "G": 0}

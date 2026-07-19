@@ -42,7 +42,7 @@ PG_HOST = os.getenv("POSTGRES_HOST_PROD", "db.iugsfmvqddburvufzacy.supabase.co")
 PG_PORT = int(os.getenv("POSTGRES_PORT_PROD", "5432"))
 PG_DB = os.getenv("POSTGRES_DB_PROD", "postgres")
 PG_USER = os.getenv("POSTGRES_USER_PROD", "postgres")
-PG_PASSWORD = os.getenv("POSTGRES_PASSWORD_PROD", "@fanfan_gwada_971")
+PG_PASSWORD = os.getenv("POSTGRES_PASSWORD_PROD")
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")

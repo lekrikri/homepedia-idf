@@ -32,7 +32,7 @@ DB_DSN = (
     "user=postgres.iugsfmvqddburvufzacy "
     "dbname=postgres "
     "sslmode=require "
-    f"password={os.getenv('POSTGRES_PASSWORD', '@fanfan_gwada_971')}"
+    f"password={os.getenv('POSTGRES_PASSWORD')}"
 )
 
 # Années de prévision à générer (après les données historiques)

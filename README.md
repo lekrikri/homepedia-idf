@@ -29,6 +29,9 @@
 | Pipeline CI/CD | **Cloud Build → Cloud Run** (~3 min) |
 | Modules gestion locative | **Biens · Locataires · Loyers · Quittances PDF · IRL** |
 | Espace locataire | **Portail dédié · invitation · quittances autonomes** |
+| Aide à l'achat | **Recherche multi-communes · estimation au percentile · rapports PDF** |
+| Aide à la location | **Loyer de marché · encadrement des loyers · arbitrage louer/acheter** |
+| Corpus juridique RAG | **64 chunks** (droit du logement + méthode d'achat) |
 
 ---
 
@@ -96,6 +99,35 @@
 ---
 
 ## Fonctionnalités
+
+### Recherche multi-communes (`/dossier`)
+Répond à la question posée avant toute visite : *où chercher ?*
+
+- Classement des communes selon le critère prioritaire de l'utilisateur — prix,
+  performance énergétique du parc, transports, cadre de vie ou sécurité — sous
+  contrainte de budget
+- Seuil de **40 ventes comparables** minimum par commune : en dessous, les
+  percentiles ne sont plus significatifs
+- Signalement des communes dont moins de 2 % du parc est classé A, B ou C
+- Dossier imprimable : sélection, grille de visite et méthode de négociation
+
+### Estimation d'un bien (`/estimation`)
+Répond à la question suivante : *ce prix est-il justifié ?*
+
+- Distribution des ventes comparables (p10 → p90) et position du prix demandé
+- Cible de négociation chiffrée, du prix médian au premier quartile
+- Prévision de prix (Prophet) et risques naturels de la commune
+- Capacité d'emprunt (règle des 35 %, assurance et frais de notaire déduits)
+- Coût des travaux énergétiques, MaPrimeRénov' et CEE déduits
+- Rapport PDF et lecture guidée adaptée au percentile obtenu
+
+### Contrôle de loyer (`/loyer`)
+Pendant locatif de l'estimation, pour le locataire avant signature.
+
+- Loyer de marché pour une surface donnée et positionnement du loyer demandé
+- Signalement de l'encadrement des loyers (Paris, Plaine Commune, Est Ensemble),
+  où un dépassement du loyer de référence majoré est récupérable
+- Comparaison avec une mensualité de crédit pour un bien équivalent
 
 ### Carte interactive
 - **Choroplèthes MVT** : tuiles vectorielles PostGIS (`ST_AsMVT`), couleurs par prix médian ou indicateur
@@ -235,6 +267,9 @@ detect_intent()  [hybride MiniLM + 16 patterns regex]
 | `GET /api/v1/poi/:code` | POI OSM par commune (JSONB) |
 | `GET /openapi.json` | Spec OpenAPI 3.0.3 complète |
 | `GET /docs` | Swagger UI (redirect CDN) |
+| `GET /api/v1/estimation` | Position d'un bien dans les ventes comparables (percentiles, tendance, prévision, risques) |
+| `GET /api/v1/loyer` | Loyer de marché, encadrement des loyers, arbitrage louer/acheter |
+| `GET /api/v1/dossier` | Short-list de communes selon budget et critère prioritaire |
 | `POST /api/v1/rag/query` | Chatbot RAG (JSON) |
 | `POST /api/v1/rag/query/stream` | Chatbot SSE streaming |
 

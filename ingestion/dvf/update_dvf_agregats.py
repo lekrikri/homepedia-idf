@@ -21,7 +21,7 @@ PG_HOST     = os.getenv("SUPABASE_HOST",     "db.iugsfmvqddburvufzacy.supabase.c
 PG_PORT     = int(os.getenv("SUPABASE_PORT", "5432"))
 PG_DB       = os.getenv("SUPABASE_DB",       "postgres")
 PG_USER     = os.getenv("SUPABASE_USER",     "postgres")
-PG_PASSWORD = os.getenv("SUPABASE_PASSWORD", "@fanfan_gwada_971")
+PG_PASSWORD = os.getenv("SUPABASE_PASSWORD")
 
 SQL_UPDATE = """
 WITH agg AS (

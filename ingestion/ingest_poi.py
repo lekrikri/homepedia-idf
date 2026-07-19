@@ -15,10 +15,20 @@ import requests
 import psycopg2
 from psycopg2.extras import Json
 import os
+from urllib.parse import quote_plus
+
+# Mot de passe Supabase : jamais en dur, ce dépôt est public.
+_MDP = os.environ.get("SUPABASE_PASSWORD") or os.environ.get("POSTGRES_PASSWORD")
+if not _MDP:
+    raise SystemExit(
+        "SUPABASE_PASSWORD manquant. Exportez-le avant de lancer ce script :\n"
+        "  export SUPABASE_PASSWORD='<mot de passe Supabase>'"
+    )
+_MDP_URL = quote_plus(_MDP)
 
 DB_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://postgres:%40fanfan_gwada_971@db.iugsfmvqddburvufzacy.supabase.co:5432/postgres"
+    f"postgresql://postgres:{_MDP_URL}@db.iugsfmvqddburvufzacy.supabase.co:5432/postgres"
 )
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 DELAY_S = 1.5  # ~40 req/min — sous le rate-limit Overpass

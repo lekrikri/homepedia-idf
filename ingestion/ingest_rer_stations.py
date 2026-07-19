@@ -36,7 +36,7 @@ LIGNES_IDF = {"A", "B", "C", "D", "E", "H", "J", "K", "L", "N", "P", "R", "U"}
 DB_CONN = {
     "dbname": "postgres",
     "user": "postgres.iugsfmvqddburvufzacy",
-    "password": "@fanfan_gwada_971",
+    "password": os.environ["SUPABASE_PASSWORD"],
     "host": "aws-0-eu-west-1.pooler.supabase.com",
     "port": 5432,
     "sslmode": "require",

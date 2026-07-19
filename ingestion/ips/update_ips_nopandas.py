@@ -16,10 +16,20 @@ from psycopg2.extras import execute_values
 from collections import defaultdict
 import os
 import statistics
+from urllib.parse import quote_plus
+
+# Mot de passe Supabase : jamais en dur, ce dépôt est public.
+_MDP = os.environ.get("SUPABASE_PASSWORD") or os.environ.get("POSTGRES_PASSWORD")
+if not _MDP:
+    raise SystemExit(
+        "SUPABASE_PASSWORD manquant. Exportez-le avant de lancer ce script :\n"
+        "  export SUPABASE_PASSWORD='<mot de passe Supabase>'"
+    )
+_MDP_URL = quote_plus(_MDP)
 
 DB_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://postgres.iugsfmvqddburvufzacy:%40fanfan_gwada_971@"
+    f"postgresql://postgres.iugsfmvqddburvufzacy:{_MDP_URL}@"
     "aws-0-eu-west-1.pooler.supabase.com:5432/postgres?sslmode=require"
 )
 

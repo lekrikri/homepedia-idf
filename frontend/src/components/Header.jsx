@@ -1,30 +1,106 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink, useNavigate, useLocation } from "react-router-dom";
 import LoginModal from "./LoginModal";
 import FavoritesModal from "./FavoritesModal";
 import SettingsModal from "./SettingsModal";
 import GlobalSearch from "./GlobalSearch.jsx";
 
-const NAV_PUBLIC = [
-  { to: "/",             label: "Accueil",        end: true },
-  { to: "/carte",        label: "Carte" },
-  { to: "/transactions", label: "Transactions" },
-  { to: "/dashboard",    label: "Dashboard" },
-  { to: "/comparer",     label: "Comparer" },
-  { to: "/dossier",      label: "Rechercher",     icon: "travel_explore" },
-  { to: "/estimation",   label: "Estimer",        icon: "calculate" },
-  { to: "/loyer",        label: "Loyer",          icon: "key" },
-  { to: "/pareto",       label: "Pareto" },
-  { to: "/portfolio",    label: "Portfolio",      icon: "savings" },
-  { to: "/gestion",      label: "Mon patrimoine", icon: "home_work" },
+// Douze entrées à plat rendaient la barre illisible. Elles sont regroupées par
+// intention : ce que l'utilisateur cherche à faire, pas la façon dont l'app est
+// découpée. "Mon projet" suit le parcours réel — chercher, estimer, financer.
+const NAV_GROUPES = [
+  {
+    label: "Mon projet",
+    icon: "home_work",
+    liens: [
+      { to: "/dossier",    label: "Où chercher ?",       icon: "travel_explore",
+        aide: "Comparer les communes selon vos critères" },
+      { to: "/estimation", label: "Ce prix est-il juste ?", icon: "calculate",
+        aide: "Situer un bien dans les ventes réelles" },
+      { to: "/loyer",      label: "Ce loyer est-il correct ?", icon: "key",
+        aide: "Comparer un loyer au marché local" },
+      { to: "/portfolio",  label: "Simuler un investissement", icon: "savings",
+        aide: "Rendement locatif et cash-flow" },
+    ],
+  },
+  {
+    label: "Explorer",
+    icon: "explore",
+    liens: [
+      { to: "/carte",        label: "Carte",        icon: "map",
+        aide: "1 266 communes, prix au m² et bâtiments 3D" },
+      { to: "/transactions", label: "Transactions", icon: "receipt_long",
+        aide: "Les ventes DVF, filtrables et exportables" },
+      { to: "/dashboard",    label: "Dashboard",    icon: "insights",
+        aide: "Vue d'ensemble du marché francilien" },
+      { to: "/comparer",     label: "Comparer",     icon: "compare_arrows",
+        aide: "Deux communes côte à côte" },
+      { to: "/pareto",       label: "Pareto",       icon: "scatter_plot",
+        aide: "Rendement contre risque" },
+    ],
+  },
 ];
+
+const NAV_ESPACE = { to: "/gestion", label: "Mon patrimoine", icon: "apartment" };
+
 const NAV_LOCATAIRE = [
   { to: "/mon-logement", label: "Mon logement", icon: "house", end: true },
 ];
-const NAV_ADMIN = [
-  ...NAV_PUBLIC,
-  { to: "/pipeline", label: "Pipeline" },
-];
+
+/** Groupe de navigation dépliable, avec une ligne d'aide par destination. */
+function MenuGroupe({ groupe }) {
+  const [ouvert, setOuvert] = useState(false);
+  const ref = useRef(null);
+  const location = useLocation();
+  const actif = groupe.liens.some(l => location.pathname === l.to);
+
+  useEffect(() => { setOuvert(false); }, [location.pathname]);
+
+  useEffect(() => {
+    const handler = e => { if (ref.current && !ref.current.contains(e.target)) setOuvert(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOuvert(o => !o)}
+        aria-expanded={ouvert}
+        className={`flex items-center gap-1.5 font-medium text-sm transition-colors focus:outline-none
+          focus-visible:ring-2 focus-visible:ring-primary/60 rounded px-1 py-0.5
+          ${actif ? "text-primary font-semibold" : "text-slate-400 hover:text-slate-100"}`}
+      >
+        <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{groupe.icon}</span>
+        {groupe.label}
+        <span className="material-symbols-outlined transition-transform"
+          style={{ fontSize: 16, transform: ouvert ? "rotate(180deg)" : "none" }}>
+          expand_more
+        </span>
+      </button>
+
+      {ouvert && (
+        <div className="absolute left-0 top-full mt-2 w-72 rounded-xl shadow-2xl overflow-hidden z-50"
+          style={{ background: "#0d1520", border: "1px solid rgba(60,131,246,0.22)" }}>
+          {groupe.liens.map(l => (
+            <NavLink key={l.to} to={l.to} onClick={() => setOuvert(false)}
+              className={({ isActive }) =>
+                `flex items-start gap-3 px-4 py-3 transition-colors ${
+                  isActive ? "bg-primary/10" : "hover:bg-slate-800/60"
+                }`}>
+              <span className="material-symbols-outlined text-primary mt-0.5 shrink-0"
+                style={{ fontSize: 18 }}>{l.icon}</span>
+              <span className="min-w-0">
+                <span className="block text-sm text-slate-100">{l.label}</span>
+                <span className="block text-[11px] text-slate-500 leading-snug">{l.aide}</span>
+              </span>
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function getInitials(user) {
   if (!user) return "?";
@@ -143,22 +219,52 @@ export default function Header({ onOpenTour, onOpenFavoris, favorisCount = 0 }) 
             </h1>
           </div>
 
-          <nav className="hidden md:flex items-center gap-6">
-            {(user?.role === "admin" ? NAV_ADMIN : user?.role === "locataire" ? NAV_LOCATAIRE : NAV_PUBLIC).map(({ to, label, end, icon }) => (
-              <NavLink
-                key={to}
-                to={to}
-                end={end ?? false}
-                className={({ isActive }) =>
-                  isActive
-                    ? "text-primary font-semibold text-sm border-b-2 border-primary pb-5 mt-5 flex items-center gap-1"
-                    : "text-slate-400 hover:text-slate-100 font-medium text-sm transition-colors flex items-center gap-1"
-                }
-              >
-                {icon && <span className="material-symbols-outlined" style={{ fontSize: 15 }}>{icon}</span>}
-                {label}
-              </NavLink>
-            ))}
+          <nav className="hidden md:flex items-center gap-5">
+            {user?.role === "locataire" ? (
+              NAV_LOCATAIRE.map(({ to, label, end, icon }) => (
+                <NavLink key={to} to={to} end={end ?? false}
+                  className={({ isActive }) =>
+                    isActive
+                      ? "text-primary font-semibold text-sm flex items-center gap-1.5"
+                      : "text-slate-400 hover:text-slate-100 font-medium text-sm transition-colors flex items-center gap-1.5"
+                  }>
+                  {icon && <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{icon}</span>}
+                  {label}
+                </NavLink>
+              ))
+            ) : (
+              <>
+                <NavLink to="/" end
+                  className={({ isActive }) =>
+                    isActive
+                      ? "text-primary font-semibold text-sm"
+                      : "text-slate-400 hover:text-slate-100 font-medium text-sm transition-colors"
+                  }>
+                  Accueil
+                </NavLink>
+
+                {NAV_GROUPES.map(g => <MenuGroupe key={g.label} groupe={g} />)}
+
+                <NavLink to={NAV_ESPACE.to}
+                  className={({ isActive }) =>
+                    `flex items-center gap-1.5 font-medium text-sm transition-colors ${
+                      isActive ? "text-primary font-semibold" : "text-slate-400 hover:text-slate-100"
+                    }`}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{NAV_ESPACE.icon}</span>
+                  {NAV_ESPACE.label}
+                </NavLink>
+
+                {user?.role === "admin" && (
+                  <NavLink to="/pipeline"
+                    className={({ isActive }) =>
+                      `font-medium text-sm transition-colors ${
+                        isActive ? "text-primary font-semibold" : "text-slate-500 hover:text-slate-100"
+                      }`}>
+                    Pipeline
+                  </NavLink>
+                )}
+              </>
+            )}
           </nav>
         </div>
 
@@ -317,16 +423,49 @@ export default function Header({ onOpenTour, onOpenFavoris, favorisCount = 0 }) 
           <nav className="absolute top-16 left-0 right-0 py-2 shadow-2xl"
             style={{ background: "#0b1117", borderBottom: "1px solid rgba(60,131,246,0.2)" }}
             onClick={e => e.stopPropagation()}>
-            {(user?.role === "admin" ? NAV_ADMIN : NAV_PUBLIC).map(({ to, label, end, icon }) => (
-              <NavLink key={to} to={to} end={end ?? false}
-                onClick={() => setShowMobileNav(false)}
+            <NavLink to="/" end onClick={() => setShowMobileNav(false)}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-6 py-3.5 text-sm font-medium transition-colors ${isActive ? "text-primary bg-primary/10 border-l-2 border-primary" : "text-slate-400 hover:text-slate-100 hover:bg-slate-800/50"}`
+              }>
+              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>home</span>
+              Accueil
+            </NavLink>
+
+            {NAV_GROUPES.map(g => (
+              <div key={g.label}>
+                <p className="px-6 pt-3 pb-1 text-[10px] uppercase tracking-widest text-slate-600">
+                  {g.label}
+                </p>
+                {g.liens.map(({ to, label, icon }) => (
+                  <NavLink key={to} to={to} onClick={() => setShowMobileNav(false)}
+                    className={({ isActive }) =>
+                      `flex items-center gap-3 px-6 py-3 text-sm font-medium transition-colors ${isActive ? "text-primary bg-primary/10 border-l-2 border-primary" : "text-slate-400 hover:text-slate-100 hover:bg-slate-800/50"}`
+                    }>
+                    <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{icon}</span>
+                    {label}
+                  </NavLink>
+                ))}
+              </div>
+            ))}
+
+            <div className="border-t border-slate-800 mt-2 pt-1">
+              <NavLink to={NAV_ESPACE.to} onClick={() => setShowMobileNav(false)}
                 className={({ isActive }) =>
                   `flex items-center gap-3 px-6 py-3.5 text-sm font-medium transition-colors ${isActive ? "text-primary bg-primary/10 border-l-2 border-primary" : "text-slate-400 hover:text-slate-100 hover:bg-slate-800/50"}`
                 }>
-                {icon && <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{icon}</span>}
-                {label}
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{NAV_ESPACE.icon}</span>
+                {NAV_ESPACE.label}
               </NavLink>
-            ))}
+              {user?.role === "admin" && (
+                <NavLink to="/pipeline" onClick={() => setShowMobileNav(false)}
+                  className={({ isActive }) =>
+                    `flex items-center gap-3 px-6 py-3.5 text-sm font-medium transition-colors ${isActive ? "text-primary bg-primary/10 border-l-2 border-primary" : "text-slate-500 hover:text-slate-100 hover:bg-slate-800/50"}`
+                  }>
+                  <span className="material-symbols-outlined" style={{ fontSize: 16 }}>account_tree</span>
+                  Pipeline
+                </NavLink>
+              )}
+            </div>
             {/* Barre de recherche dans le drawer mobile */}
             <div className="px-4 pb-4 pt-2 border-t border-slate-800 mt-2">
               <input

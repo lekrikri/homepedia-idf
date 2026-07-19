@@ -9,6 +9,27 @@ const gridBg = {
 
 const FEATURES = [
   {
+    icon: "travel_explore",
+    title: "Où chercher ?",
+    desc: "Comparez les communes sur ce qui compte pour vous — prix, performance énergétique, transports — sous contrainte de budget, et repartez avec un dossier à emporter en visite.",
+    color: "#3c83f6",
+    link: "/dossier",
+  },
+  {
+    icon: "calculate",
+    title: "Ce prix est-il justifié ?",
+    desc: "Situez un bien parmi les ventes réelles comparables : percentile, marge de négociation chiffrée, capacité d'emprunt et coût des travaux énergétiques.",
+    color: "#10b981",
+    link: "/estimation",
+  },
+  {
+    icon: "key",
+    title: "Ce loyer est-il correct ?",
+    desc: "Comparez un loyer au marché local et vérifiez si la commune applique l'encadrement des loyers — un dépassement est récupérable.",
+    color: "#f59e0b",
+    link: "/loyer",
+  },
+  {
     icon: "map",
     title: "Carte interactive MVT",
     desc: "Tuiles vectorielles PostGIS — naviguez sur 1 266 communes IDF avec prix au m² et transactions DVF en temps réel.",

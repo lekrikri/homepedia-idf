@@ -14,7 +14,7 @@ import psycopg2
 DB_CONN = {
     "dbname": "postgres",
     "user": "postgres.iugsfmvqddburvufzacy",
-    "password": "@fanfan_gwada_971",
+    "password": os.environ["SUPABASE_PASSWORD"],
     "host": "aws-0-eu-west-1.pooler.supabase.com",
     "port": 6543,
     "sslmode": "require",
