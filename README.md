@@ -17,8 +17,9 @@
 | Métrique | Valeur |
 |----------|--------|
 | Communes IDF couvertes | **1 266** (100%) |
-| Sources de données intégrées | **7** (DVF, DPE, INSEE, IPS, SSMSI, ENEDIS, OSM) |
-| Transactions DVF indexées | **~1 900 000** (2019–2024) |
+| Sources de données intégrées | **11** (DVF, DPE, INSEE, IPS, SSMSI, ENEDIS, OSM, REI, RNC, Filosofi, encadrement des loyers) |
+| Lignes DVF indexées | **1 899 188** (2021–2025) |
+| Ventes de logements exploitables | **867 877** (prix et surface renseignés) |
 | Transactions enrichies DPE (classe énergie) | **1 899 179** |
 | IPS écoles agrégé par commune | **989 communes** couvertes |
 | Communes avec loyer médian | **1 266 / 1 266** (100%) |
@@ -187,6 +188,41 @@ Portail dédié accessible après invitation du bailleur.
 
 ---
 
+## Sources de données
+
+| Source | Organisme | Apport |
+|---|---|---|
+| **DVF** | DGFiP | 1,9 M de lignes de mutations, dont 868 k ventes de logements exploitables |
+| **DPE** | ADEME | Diagnostics par commune, et par adresse via l'API des 15 M de diagnostics |
+| **IPS** | MEN / DEPP | Indice de position sociale des établissements, 989 communes |
+| **SSMSI** | Ministère de l'Intérieur | Délinquance **à la commune** : 1 215 communes, 67 scores distincts |
+| **REI** | DGFiP via OFGL | Taux de foncier bâti et base d'imposition, 1 266 communes |
+| **RNC** | ANAH | 134 205 copropriétés franciliennes, dont celles sous dispositif d'aide |
+| **Filosofi** | INSEE | Revenu médian par unité de consommation, 1 250 communes |
+| **Encadrement des loyers** | Ville de Paris | 2 560 loyers de référence majorés sur 80 quartiers |
+| **ENEDIS / GRDF** | — | Consommation énergétique par logement |
+| **OSM** | OpenStreetMap | Points d'intérêt, 1 258 communes |
+| **BRGM** | — | Risques d'inondation et de retrait-gonflement des argiles |
+
+### Deux précisions qui comptent
+
+**Sécurité.** Le score provenait des données départementales : les 507 communes de
+Seine-et-Marne partageaient une seule valeur, ce qui ne permettait de départager
+personne. Il est désormais calculé à la commune, sur cinq indicateurs pondérés et
+normalisés par des bornes nationales absolues — une normalisation relative à
+l'Île-de-France ferait passer une commune francilienne médiane pour sûre. Les
+valeurs couvertes par le secret statistique restent nulles plutôt que lues comme
+zéro, qui ferait passer une commune pour exemplaire faute de données.
+
+**Fiabilité déclarée.** Trois indicateurs sont accompagnés d'un drapeau de
+fiabilité, parce qu'une moyenne sur un effectif minuscule induit en erreur : le
+montant de taxe foncière est masqué dans les 68 communes où la base est dominée
+par des locaux professionnels, les proportions de copropriétés ne sont exposées
+qu'au-delà de vingt copropriétés, et les percentiles de prix exigent au moins
+quarante ventes comparables.
+
+---
+
 ## Pipeline de données
 
 ```
@@ -270,6 +306,7 @@ detect_intent()  [hybride MiniLM + 16 patterns regex]
 | `GET /api/v1/estimation` | Position d'un bien dans les ventes comparables (percentiles, tendance, prévision, risques) |
 | `GET /api/v1/loyer` | Loyer de marché, encadrement des loyers, arbitrage louer/acheter |
 | `GET /api/v1/dossier` | Short-list de communes selon budget et critère prioritaire |
+| `GET /api/v1/dpe-adresse` | Diagnostics relevés à une adresse et dans son voisinage (API ADEME) |
 | `POST /api/v1/rag/query` | Chatbot RAG (JSON) |
 | `POST /api/v1/rag/query/stream` | Chatbot SSE streaming |
 

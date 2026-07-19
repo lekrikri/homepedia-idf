@@ -156,7 +156,22 @@ export default function MonLogement() {
     }
     load();
     loadDocs();
-  }, []);
+
+    // Symétrique du côté bailleur : une quittance ou un document déposé par le
+    // propriétaire n'apparaissait qu'après rechargement complet de la page.
+    const auRetour = () => {
+      if (document.visibilityState === "visible") {
+        load();
+        loadDocs();
+      }
+    };
+    document.addEventListener("visibilitychange", auRetour);
+    window.addEventListener("focus", auRetour);
+    return () => {
+      document.removeEventListener("visibilitychange", auRetour);
+      window.removeEventListener("focus", auRetour);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadDocs() {
     setDocsLoading(true);

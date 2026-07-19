@@ -90,7 +90,24 @@ const CLASSES = ["A", "B", "C", "D", "E", "F", "G"];
  * les aides se déduisent, et le reste à charge devient un argument de négociation
  * opposable au vendeur.
  */
-export function coutRenovation({ classeActuelle, classeCible = "D", surface, revenusModestes = false }) {
+// Taux de prise en charge MaPrimeRénov', parcours accompagné. Les quatre
+// catégories dépendent du revenu fiscal de référence et de la composition du
+// foyer, avec un barème distinct en Île-de-France.
+export const TAUX_MAPRIMERENOV = {
+  tres_modestes: 0.80,
+  modestes: 0.60,
+  intermediaires: 0.45,
+  superieurs: 0.10,
+};
+
+export const CATEGORIES_REVENUS = [
+  { value: "tres_modestes", label: "Très modestes", aide: "jusqu'à 80 % des travaux" },
+  { value: "modestes", label: "Modestes", aide: "jusqu'à 60 %" },
+  { value: "intermediaires", label: "Intermédiaires", aide: "jusqu'à 45 %" },
+  { value: "superieurs", label: "Supérieurs", aide: "jusqu'à 10 %" },
+];
+
+export function coutRenovation({ classeActuelle, classeCible = "D", surface, categorieRevenus = "intermediaires" }) {
   const iActuel = CLASSES.indexOf((classeActuelle || "").toUpperCase());
   const iCible = CLASSES.indexOf((classeCible || "").toUpperCase());
   if (iActuel < 0 || iCible < 0 || iActuel <= iCible || surface <= 0) return null;
@@ -108,13 +125,16 @@ export function coutRenovation({ classeActuelle, classeCible = "D", surface, rev
 
   const coutTravaux = postes.reduce((s, p) => s + p.cout, 0);
 
-  // MaPrimeRénov' parcours accompagné : le taux de prise en charge dépend des
-  // revenus du foyer et de l'ampleur du gain de classes.
-  const tauxAide = revenusModestes ? 0.55 : 0.35;
-  const plafondAide = classesAGagner >= 4 ? 70000 : classesAGagner >= 3 ? 55000 : 40000;
-  const maPrimeRenov = Math.round(Math.min(coutTravaux * tauxAide, plafondAide));
+  // MaPrimeRénov' parcours accompagné (rénovation d'ampleur) : le taux de prise
+  // en charge dépend de la catégorie de revenus du foyer, et le plafond de
+  // travaux éligibles du nombre de classes gagnées.
+  const tauxAide = TAUX_MAPRIMERENOV[categorieRevenus] ?? TAUX_MAPRIMERENOV.intermediaires;
+  const plafondTravaux = classesAGagner >= 4 ? 70000 : classesAGagner >= 3 ? 55000 : 40000;
+  const assiette = Math.min(coutTravaux, plafondTravaux);
+  const maPrimeRenov = Math.round(assiette * tauxAide);
 
-  // Certificats d'économies d'énergie, ordre de grandeur.
+  // Certificats d'économies d'énergie : versés par les fournisseurs d'énergie,
+  // les montants varient selon l'opérateur. Ordre de grandeur prudent.
   const cee = Math.round(Math.min(coutTravaux * 0.08, 5000));
 
   const resteACharge = Math.max(0, coutTravaux - maPrimeRenov - cee);
@@ -128,6 +148,11 @@ export function coutRenovation({ classeActuelle, classeCible = "D", surface, rev
     postes,
     coutTravaux,
     maPrimeRenov,
+    tauxAide,
+    plafondTravaux,
+    // Signale que le plafond d'aide est atteint : au-delà, chaque euro de
+    // travaux supplémentaire reste intégralement à la charge de l'acheteur.
+    plafondAtteint: coutTravaux > plafondTravaux,
     cee,
     resteACharge,
     ecoPtzMax,

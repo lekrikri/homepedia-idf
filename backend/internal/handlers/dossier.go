@@ -31,11 +31,13 @@ type CommuneDossier struct {
 	BudgetAuP25 int `json:"budget_au_p25"`
 	BudgetMedian int `json:"budget_median"`
 
-	PctDpeBon   *float64 `json:"pct_dpe_bon,omitempty"`
-	ScoreSecu   *int     `json:"score_securite,omitempty"`
-	ScoreAcces  *int     `json:"score_accessibilite,omitempty"`
-	ScoreVie    *int     `json:"score_qualite_vie,omitempty"`
-	LoyerM2     *float64 `json:"loyer_median_m2,omitempty"`
+	PctDpeBon    *float64 `json:"pct_dpe_bon,omitempty"`
+	ScoreSecu    *int     `json:"score_securite,omitempty"`
+	ScoreAcces   *int     `json:"score_accessibilite,omitempty"`
+	ScoreVie     *int     `json:"score_qualite_vie,omitempty"`
+	LoyerM2      *float64 `json:"loyer_median_m2,omitempty"`
+	TauxTF       *float64 `json:"taux_tf_global,omitempty"`
+	TaxeFonciere *int     `json:"taxe_fonciere_estimee,omitempty"`
 
 	Accessible bool   `json:"accessible_au_p25"`
 	Remarque   string `json:"remarque,omitempty"`
@@ -61,7 +63,7 @@ var criteresValides = map[string]string{
 	"dpe":        "ca.pct_dpe_bon DESC NULLS LAST, v.p25 ASC",
 	"transports": "ca.score_accessibilite DESC NULLS LAST, v.p25 ASC",
 	"cadre_vie":  "ca.score_qualite_vie DESC NULLS LAST, v.p25 ASC",
-	"securite":   "ca.score_securite DESC NULLS LAST, v.p25 ASC",
+	"securite":   "ca.score_securite_commune DESC NULLS LAST, v.p25 ASC",
 }
 
 // GetDossier handles GET /api/v1/dossier
@@ -167,8 +169,12 @@ func communesDossier(c *gin.Context, typeLocal string, pieces int, deps []string
 		)
 		SELECT ca.code_commune, ca.city, TRIM(ca.code_departement),
 		       v.nb, v.p25, v.med, v.p75,
-		       ca.pct_dpe_bon, ca.score_securite::int, ca.score_accessibilite::int,
-		       ca.score_qualite_vie::int, ca.loyer_median_m2
+		       ca.pct_dpe_bon,
+		       COALESCE(ca.score_securite_commune, ca.score_securite::int),
+		       ca.score_accessibilite::int,
+		       ca.score_qualite_vie::int, ca.loyer_median_m2,
+		       ca.taux_tf_global,
+		       CASE WHEN ca.tf_estimation_fiable THEN ca.taxe_fonciere_estimee END
 		FROM ventes v
 		JOIN communes_agregat ca ON ca.code_commune = v.code_commune
 		WHERE 1 = 1 %s
@@ -187,7 +193,8 @@ func communesDossier(c *gin.Context, typeLocal string, pieces int, deps []string
 		var cm CommuneDossier
 		if err := rows.Scan(&cm.CodeCommune, &cm.Ville, &cm.Departement,
 			&cm.NbVentes, &cm.PrixM2P25, &cm.PrixM2Med, &cm.PrixM2P75,
-			&cm.PctDpeBon, &cm.ScoreSecu, &cm.ScoreAcces, &cm.ScoreVie, &cm.LoyerM2); err == nil {
+			&cm.PctDpeBon, &cm.ScoreSecu, &cm.ScoreAcces, &cm.ScoreVie, &cm.LoyerM2,
+			&cm.TauxTF, &cm.TaxeFonciere); err == nil {
 			out = append(out, cm)
 		}
 	}

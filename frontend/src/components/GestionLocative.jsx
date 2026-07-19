@@ -1,16 +1,14 @@
 import { useState, useEffect } from "react";
+import { IRL, TRIMESTRES, IRL_SOURCE, IRL_RELEVE_LE } from "./outils/irl.js";
 
 const API = import.meta.env.VITE_API_URL || "";
 
 const MOIS = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
 const MOIS_LONG = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 
-// IRL (Indice de Référence des Loyers) — source INSEE, mis à jour trimestriellement
-const IRL = {
-  "T1-2023": 138.39, "T2-2023": 140.59, "T3-2023": 142.06, "T4-2023": 143.46,
-  "T1-2024": 144.42, "T2-2024": 145.47, "T3-2024": 146.27, "T4-2024": 147.16,
-  "T1-2025": 148.07, "T2-2025": 149.03,
-};
+// L'IRL vit dans outils/irl.js, adossé à la série INSEE : la table saisie ici
+// était fausse à partir du 3e trimestre 2023 et aurait conduit à des révisions
+// supérieures à ce que la loi autorise.
 
 function authHeaders() {
   const token = localStorage.getItem("hp_token");
@@ -175,7 +173,7 @@ function StatCard({ label, value, sub, color = "#3c83f6" }) {
 
 // ── Calcul indexation IRL ─────────────────────────────────────────────────────
 function IRLCalculator({ loyer }) {
-  const trimestres = Object.keys(IRL).reverse();
+  const trimestres = TRIMESTRES;
   const [refOld, setRefOld] = useState(trimestres[1]);
   const [refNew, setRefNew] = useState(trimestres[0]);
 
@@ -421,6 +419,25 @@ function BienDetail({ bien, onBack, onRefresh }) {
 
   useEffect(() => { fetchPaiements(); }, [annee]);
   useEffect(() => { fetchDocuments(); }, [bien.id]);
+
+  // Les actions locales déclenchent déjà un rechargement, mais rien ne signale
+  // ce qui change côté locataire : un justificatif déposé pendant que la fiche
+  // est ouverte restait invisible jusqu'au prochain changement de bien.
+  // On recharge au retour sur l'onglet plutôt que d'interroger en boucle.
+  useEffect(() => {
+    const auRetour = () => {
+      if (document.visibilityState === "visible") {
+        fetchDocuments();
+        fetchPaiements();
+      }
+    };
+    document.addEventListener("visibilitychange", auRetour);
+    window.addEventListener("focus", auRetour);
+    return () => {
+      document.removeEventListener("visibilitychange", auRetour);
+      window.removeEventListener("focus", auRetour);
+    };
+  }, [bien.id, annee]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function fetchPaiements() {
     const res = await fetch(`${API}/api/v1/gestion/biens/${bien.id}/paiements?annee=${annee}`,

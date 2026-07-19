@@ -134,8 +134,10 @@ export default function LandingPage() {
 
   const kpis = [
     {
-      value: stats?.nb_transactions ? stats.nb_transactions.toLocaleString("fr-FR") : "~1,9M",
-      label: "Transactions DVF",
+      // Ventes de logements exploitables : la base compte 1,9 M de lignes DVF,
+      // mais plus de la moitié sont des dépendances sans surface habitable.
+      value: stats?.nb_transactions ? stats.nb_transactions.toLocaleString("fr-FR") : "~867 000",
+      label: "Ventes de logements",
       icon: "handshake",
       color: "#3c83f6",
     },
@@ -179,35 +181,41 @@ export default function LandingPage() {
 
         {/* Title */}
         <h1 className="text-5xl md:text-6xl font-black tracking-tight text-white mb-4 leading-tight">
-          Explorez le marché<br />
-          <span className="text-primary">immobilier</span>{" "}
+          Savoir quoi proposer<br />
           <span style={{ background: "linear-gradient(90deg, #3c83f6, #a78bfa)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-            francilien
+            avant de signer
           </span>
         </h1>
 
         <p className="text-lg text-slate-400 max-w-xl mb-10 leading-relaxed">
-          Visualisez 1,9M transactions DVF, timeline animée 2021–2026, Pareto Front multicritère,
-          risques BRGM et IA conversationnelle — 40+ indicateurs sur 1 266 communes IDF.
+          Où chercher, si un prix est justifié, si un loyer est correct — répondu à partir
+          de 867 000 ventes de logements réelles sur les 1 266 communes d'Île-de-France.
         </p>
 
         {/* CTAs */}
         <div className="flex flex-wrap items-center justify-center gap-4">
           <Link
-            to="/carte"
+            to="/dossier"
             className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl font-bold text-white text-sm transition-all hover:scale-105 active:scale-95"
             style={{ background: "#3c83f6", boxShadow: "0 0 30px rgba(60,131,246,0.4)" }}
           >
-            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>map</span>
-            Explorer la carte
+            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>travel_explore</span>
+            Où chercher ?
           </Link>
           <Link
-            to="/pareto"
+            to="/estimation"
             className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl font-bold text-white text-sm transition-all hover:scale-105 active:scale-95"
             style={{ background: "#10b981", boxShadow: "0 0 30px rgba(16,185,129,0.35)" }}
           >
-            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>scatter_plot</span>
-            Pareto Front
+            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>calculate</span>
+            Estimer un bien
+          </Link>
+          <Link
+            to="/carte"
+            className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl font-bold text-slate-200 text-sm border border-slate-700 hover:border-primary/50 hover:bg-slate-800 transition-all"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>map</span>
+            Explorer la carte
           </Link>
           <Link
             to="/carte?chat=open"

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import axios from "axios";
 import { CapaciteEmprunt, RenovationDPE } from "./outils/OutilsAchat.jsx";
+import { analyserAnnonce } from "./outils/annonce.js";
 
 /**
  * Estimation — situe un bien dans la distribution réelle des ventes comparables.
@@ -158,6 +159,248 @@ function Tendance({ points, evolution }) {
         <p className="text-[11px] text-emerald-400/80 mt-3">
           Un marché orienté à la baisse renforce votre position : le vendeur pressé fait la concession.
         </p>
+      )}
+    </div>
+  );
+}
+
+// ── Coller une annonce ───────────────────────────────────────────────────────
+
+/**
+ * Pré-remplissage depuis une annonce collée.
+ *
+ * Les portails immobiliers n'exposent pas d'API et interdisent l'extraction
+ * automatisée. L'utilisateur reste donc l'intermédiaire : il colle le texte,
+ * l'application en tire les caractéristiques. Ce qu'elle n'a pas su lire est
+ * annoncé explicitement plutôt que deviné.
+ */
+function CollerAnnonce({ communes, onAppliquer }) {
+  const [ouvert, setOuvert] = useState(false);
+  const [texte, setTexte] = useState("");
+
+  const analyse = useMemo(() => analyserAnnonce(texte), [texte]);
+
+  // Le code postal ne suffit pas à identifier une commune (Paris en compte
+  // vingt) : on cherche d'abord un nom de commune présent dans le texte.
+  const communeTrouvee = useMemo(() => {
+    if (!texte || communes.length === 0) return null;
+    const t = texte.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+    const candidates = communes
+      .filter(c => {
+        const nom = (c.nom || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+        return nom.length >= 4 && t.includes(nom);
+      })
+      .sort((a, b) => (b.nom?.length || 0) - (a.nom?.length || 0));
+    return candidates[0] || null;
+  }, [texte, communes]);
+
+  const c = analyse.champs;
+  const utilisable = c.prix && c.surface && communeTrouvee;
+
+  return (
+    <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4">
+      <button onClick={() => setOuvert(v => !v)}
+        className="w-full flex items-center justify-between gap-3 text-left">
+        <span>
+          <span className="font-semibold text-white text-sm">Coller une annonce</span>
+          <span className="block text-[11px] text-slate-500">
+            Copiez le texte d'une annonce, les champs se remplissent seuls
+          </span>
+        </span>
+        <span className="material-symbols-outlined text-slate-500 transition-transform"
+          style={{ fontSize: 20, transform: ouvert ? "rotate(180deg)" : "none" }}>
+          expand_more
+        </span>
+      </button>
+
+      {ouvert && (
+        <div className="mt-3 space-y-3">
+          <textarea
+            value={texte}
+            onChange={e => setTexte(e.target.value)}
+            rows={5}
+            placeholder={"Appartement 2 pièces 40 m² — 185 000 €\n93300 Aubervilliers\nDPE : D — charges 120 €/mois"}
+            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white
+                       placeholder:text-slate-600 focus:border-blue-500 focus:outline-none resize-y"
+          />
+
+          {!analyse.vide && (
+            <>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  ["Prix", c.prix ? fmtEur(c.prix) : null],
+                  ["Surface", c.surface ? `${c.surface} m²` : null],
+                  ["Pièces", c.pieces],
+                  ["Commune", communeTrouvee?.nom],
+                  ["Type", c.typeLocal],
+                  ["DPE", c.dpe],
+                  ["Charges", c.charges ? `${c.charges} €/mois` : null],
+                ].map(([label, valeur]) => (
+                  <span key={label}
+                    className="text-[11px] px-2 py-1 rounded-md"
+                    style={valeur
+                      ? { background: "rgba(16,185,129,0.15)", color: "#34d399" }
+                      : { background: "rgba(255,255,255,0.04)", color: "#64748b" }}>
+                    {label} {valeur ? `· ${valeur}` : "· non trouvé"}
+                  </span>
+                ))}
+              </div>
+
+              {c.suspect && (
+                <p className="text-[12px] text-amber-400">
+                  Le prix au m² calculé ({fmtM2(c.prixM2)}) sort des valeurs plausibles :
+                  vérifiez que le prix et la surface ont été correctement lus.
+                </p>
+              )}
+
+              {!communeTrouvee && c.codePostal && (
+                <p className="text-[12px] text-amber-400">
+                  Code postal {c.codePostal} détecté, mais la commune n'a pas été
+                  reconnue. Sélectionnez-la manuellement ci-dessous.
+                </p>
+              )}
+
+              {analyse.manquants.length > 0 && (
+                <p className="text-[12px] text-slate-400">
+                  Non trouvé dans le texte : {analyse.manquants.join(", ")}. Complétez à la main.
+                </p>
+              )}
+
+              <button
+                type="button"
+                disabled={!utilisable}
+                onClick={() => {
+                  onAppliquer({
+                    commune: communeTrouvee,
+                    surface: c.surface,
+                    pieces: c.pieces,
+                    typeLocal: c.typeLocal,
+                    prix: c.prix,
+                  });
+                  setOuvert(false);
+                }}
+                className="px-4 py-2 rounded-lg text-sm font-medium transition-all hover:brightness-110 disabled:opacity-40"
+                style={{ background: "linear-gradient(135deg,#10b981,#047857)", color: "white" }}>
+                Utiliser ces informations
+              </button>
+            </>
+          )}
+
+          <p className="text-[11px] text-slate-600">
+            Rien n'est envoyé aux sites d'annonces : le texte est analysé dans votre
+            navigateur. Vérifiez toujours les valeurs reprises avant de conclure.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── DPE à l'adresse ──────────────────────────────────────────────────────────
+
+const COULEUR_DPE = {
+  A: "#319834", B: "#33cc31", C: "#cbfc34", D: "#fbfe06",
+  E: "#fbcc05", F: "#fc9935", G: "#fc0205",
+};
+
+/**
+ * Diagnostics relevés à une adresse et dans son voisinage immédiat.
+ *
+ * La moyenne communale ne dit rien du bien visé : à Aubervilliers, où seul 1 %
+ * du parc est classé A, B ou C, connaître l'étiquette réelle du secteur change
+ * la façon d'aborder une visite.
+ */
+function DpeAdresse({ commune, codePostal }) {
+  const [adresse, setAdresse] = useState("");
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  async function chercher(e) {
+    e?.preventDefault();
+    if (adresse.trim().length < 4) return;
+    setLoading(true);
+    try {
+      const { data } = await axios.get("/api/v1/dpe-adresse", {
+        params: { adresse: adresse.trim(), code_postal: codePostal || undefined },
+      });
+      setData(data);
+    } catch {
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4">
+      <h3 className="font-semibold text-white text-sm mb-1">Le DPE à cette adresse</h3>
+      <p className="text-[11px] text-slate-500 mb-3">
+        Diagnostics réellement enregistrés dans la rue et l'immeuble
+        {commune ? ` — ${commune}` : ""}.
+      </p>
+
+      <form onSubmit={chercher} className="flex flex-wrap gap-2 mb-3">
+        <input value={adresse} onChange={e => setAdresse(e.target.value)}
+          placeholder="12 rue de la Paix"
+          className="flex-1 min-w-[12rem] bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white
+                     focus:border-blue-500 focus:outline-none" />
+        <button type="submit" disabled={loading || adresse.trim().length < 4}
+          className="px-4 py-2 rounded-lg text-sm font-medium transition-all hover:brightness-110 disabled:opacity-40"
+          style={{ background: "rgba(60,131,246,0.2)", border: "1px solid rgba(60,131,246,0.4)", color: "#60a5fa" }}>
+          {loading ? "Recherche…" : "Chercher"}
+        </button>
+      </form>
+
+      {data && (
+        <>
+          {data.nb_diagnostics > 0 ? (
+            <>
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {["A", "B", "C", "D", "E", "F", "G"].map(lettre => {
+                  const n = data.repartition_etiquettes?.[lettre] || 0;
+                  return (
+                    <div key={lettre}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold"
+                      style={{
+                        background: n ? COULEUR_DPE[lettre] : "rgba(255,255,255,0.04)",
+                        color: n ? (["D", "E"].includes(lettre) ? "#1a1a1a" : "#fff") : "#475569",
+                      }}>
+                      {lettre}<span className="font-normal">· {n}</span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <p className="text-[13px] text-slate-300">{data.message}</p>
+
+              <div className="mt-3 pt-3 border-t border-slate-800 space-y-1">
+                {data.resultats.slice(0, 5).map((r, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs">
+                    <span className="w-5 h-5 rounded flex items-center justify-center font-bold shrink-0"
+                      style={{
+                        background: COULEUR_DPE[r.etiquette_dpe] || "#334155",
+                        color: ["D", "E"].includes(r.etiquette_dpe) ? "#1a1a1a" : "#fff",
+                      }}>
+                      {r.etiquette_dpe}
+                    </span>
+                    <span className="text-slate-400 shrink-0">{r.date?.slice(0, 7)}</span>
+                    <span className="text-slate-500 truncate">{r.adresse}</span>
+                    {r.surface_m2 && (
+                      <span className="text-slate-600 shrink-0 ml-auto">{r.surface_m2} m²</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-slate-400">{data.message}</p>
+          )}
+          <p className="text-[11px] text-slate-600 mt-3">
+            Ces diagnostics concernent le voisinage, pas nécessairement le lot visé : deux
+            appartements d'un même immeuble peuvent différer d'une classe. Le DPE du bien
+            est obligatoire dès l'annonce — exigez-le.
+          </p>
+        </>
       )}
     </div>
   );
@@ -471,6 +714,17 @@ ${blocConseils}
         </p>
       </div>
 
+      <CollerAnnonce
+        communes={communes}
+        onAppliquer={({ commune, surface, pieces, typeLocal, prix }) => {
+          if (commune) setCommune(commune);
+          if (surface) setSurface(String(surface));
+          if (pieces) setPieces(pieces);
+          if (typeLocal) setTypeLocal(typeLocal);
+          if (prix) setPrixDemande(String(prix));
+        }}
+      />
+
       <form onSubmit={estimer} className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <ChoixCommune communes={communes} value={commune} onSelect={setCommune} />
@@ -624,6 +878,71 @@ ${blocConseils}
               </p>
             </div>
           )}
+
+          {(data.cout_detention || data.copropriete) && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {data.cout_detention && (
+                <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4">
+                  <h3 className="font-semibold text-white text-sm mb-1">Ce que le bien coûtera ensuite</h3>
+                  <p className="text-[11px] text-slate-500 mb-3">Fiscalité locale de la commune</p>
+
+                  <div className="flex items-baseline gap-2 mb-1">
+                    <span className="text-2xl font-bold text-white">
+                      {data.cout_detention.taux_tf_global} %
+                    </span>
+                    <span className="text-xs text-slate-500">de taux de foncier bâti</span>
+                  </div>
+
+                  {data.cout_detention.taxe_fonciere_estimee ? (
+                    <p className="text-sm text-slate-300 mt-2">
+                      Soit environ <strong className="text-white">
+                        {fmtEur(data.cout_detention.taxe_fonciere_estimee)}</strong> par an
+                      pour un logement moyen de la commune.
+                    </p>
+                  ) : (
+                    <p className="text-sm text-amber-400/80 mt-2">
+                      Montant non estimable dans cette commune.
+                    </p>
+                  )}
+                  <p className="text-[11px] text-slate-600 mt-3">{data.cout_detention.note}</p>
+                </div>
+              )}
+
+              {data.copropriete && (
+                <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4">
+                  <h3 className="font-semibold text-white text-sm mb-1">Le parc en copropriété</h3>
+                  <p className="text-[11px] text-slate-500 mb-3">
+                    {data.copropriete.nombre?.toLocaleString("fr-FR")} copropriétés recensées
+                  </p>
+
+                  {data.copropriete.pct_aidee != null ? (
+                    <>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-2xl font-bold"
+                          style={{ color: data.copropriete.pct_aidee >= 10 ? "#f87171"
+                            : data.copropriete.pct_aidee >= 5 ? "#f59e0b" : "#34d399" }}>
+                          {data.copropriete.pct_aidee} %
+                        </span>
+                        <span className="text-xs text-slate-500">sous dispositif d'aide</span>
+                      </div>
+                      {data.copropriete.pct_avant_1949 != null && (
+                        <p className="text-xs text-slate-400 mt-2">
+                          {data.copropriete.pct_avant_1949} % du parc construit avant 1949
+                          {data.copropriete.taille_moyenne_lots
+                            ? ` · ${data.copropriete.taille_moyenne_lots} lots en moyenne` : ""}
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-sm text-slate-400">Effectif trop faible pour un pourcentage.</p>
+                  )}
+                  <p className="text-[11px] text-slate-600 mt-3">{data.copropriete.note}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DpeAdresse commune={data.ville} codePostal={commune?.code_insee} />
 
           <Conseils blocs={lectureResultat(data, pos)} />
 

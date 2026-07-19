@@ -1,6 +1,16 @@
 #!/usr/bin/env python3
 """
-Ingestion des données Filosofi INSEE 2019 (revenus par commune).
+Ingestion des données Filosofi INSEE (revenus par commune).
+
+MILLÉSIME ACTUELLEMENT EN BASE : 2019.
+
+Pour passer à un millésime plus récent, il faut relever à la main l'identifiant
+de la publication sur insee.fr puis mettre à jour ZIP_URL et les noms de
+fichiers ci-dessous : l'INSEE attribue un identifiant opaque et différent à
+chaque édition, sans schéma d'URL prévisible ni API de résolution. La colonne
+communes_agregat.revenus_millesime doit être mise à jour en conséquence, car
+elle est affichée à l'utilisateur.
+
 Source : INSEE - Indicateurs de structure et de distribution des revenus 2019
          https://www.insee.fr/fr/statistiques/6036907
 

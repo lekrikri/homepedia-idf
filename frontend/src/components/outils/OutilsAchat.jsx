@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { capaciteAchat, coutRenovation, CLASSES_DPE } from "./finance.js";
+import { capaciteAchat, coutRenovation, CLASSES_DPE, CATEGORIES_REVENUS } from "./finance.js";
 
 const fmt = n => (n == null ? "—" : Math.round(n).toLocaleString("fr-FR") + " €");
 
@@ -91,11 +91,21 @@ export function CapaciteEmprunt({ prixCible }) {
         </div>
       )}
 
-      <p className="text-[11px] text-slate-600 mt-3">
-        Votre apport finance d'abord les frais de notaire, qui ne s'empruntent pas :
-        il ne s'ajoute donc pas entièrement à votre budget. Reste à vivre estimé :
-        {" "}{fmt(r.resteAVivre)} par mois.
-      </p>
+      <div className="mt-3 pt-3 border-t border-slate-800 space-y-1.5">
+        <p className="text-[11px] text-slate-500">
+          <strong className="text-slate-400">Le piège de l'apport :</strong> il finance
+          d'abord les frais de notaire, qui ne s'empruntent pas. Sur 20 000 € d'apport,
+          environ 13 500 € y passent — il n'en reste que 6 500 € pour le bien lui-même.
+        </p>
+        <p className="text-[11px] text-slate-500">
+          <strong className="text-slate-400">Le taux</strong> est une valeur indicative,
+          à ajuster : il varie selon la durée, votre apport et votre banque. Demandez
+          plusieurs simulations avant de vous fier à ce calcul.
+        </p>
+        <p className="text-[11px] text-slate-600">
+          Reste à vivre estimé : {fmt(r.resteAVivre)} par mois, une fois la mensualité payée.
+        </p>
+      </div>
     </div>
   );
 }
@@ -110,11 +120,11 @@ export function RenovationDPE({ surfaceInitiale }) {
   const [classeActuelle, setClasseActuelle] = useState("F");
   const [classeCible, setClasseCible] = useState("D");
   const [surface, setSurface] = useState(surfaceInitiale || 40);
-  const [modestes, setModestes] = useState(false);
+  const [categorieRevenus, setCategorieRevenus] = useState("intermediaires");
 
   const r = useMemo(
-    () => coutRenovation({ classeActuelle, classeCible, surface: surface || 0, revenusModestes: modestes }),
-    [classeActuelle, classeCible, surface, modestes]
+    () => coutRenovation({ classeActuelle, classeCible, surface: surface || 0, categorieRevenus }),
+    [classeActuelle, classeCible, surface, categorieRevenus]
   );
 
   return (
@@ -142,13 +152,20 @@ export function RenovationDPE({ surfaceInitiale }) {
         <Champ label="Surface" value={surface} onChange={setSurface} suffixe="m²" />
       </div>
 
-      <label className="flex items-center gap-2 mb-4 cursor-pointer">
-        <input type="checkbox" checked={modestes} onChange={e => setModestes(e.target.checked)}
-          className="accent-blue-500" />
-        <span className="text-xs text-slate-400">
-          Foyer aux revenus modestes ou très modestes (aides majorées)
-        </span>
-      </label>
+      <div className="mb-4">
+        <label className="text-xs text-slate-400 block mb-1">Vos revenus</label>
+        <select value={categorieRevenus} onChange={e => setCategorieRevenus(e.target.value)}
+          className="w-full sm:w-auto bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white">
+          {CATEGORIES_REVENUS.map(c => (
+            <option key={c.value} value={c.value}>{c.label} — {c.aide}</option>
+          ))}
+        </select>
+        <p className="text-[11px] text-slate-500 mt-1.5">
+          MaPrimeRénov' classe les foyers en quatre tranches selon le revenu fiscal
+          de référence. Le barème est plus favorable en Île-de-France — vérifiez
+          votre tranche sur France Rénov'.
+        </p>
+      </div>
 
       {!r ? (
         <p className="text-slate-500 text-xs py-3">
@@ -171,9 +188,17 @@ export function RenovationDPE({ surfaceInitiale }) {
               <span className="text-white font-medium">{fmt(r.coutTravaux)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">MaPrimeRénov'</span>
+              <span className="text-slate-400">
+                MaPrimeRénov' <span className="text-slate-600">({Math.round(r.tauxAide * 100)} %)</span>
+              </span>
               <span className="text-emerald-400">− {fmt(r.maPrimeRenov)}</span>
             </div>
+            {r.plafondAtteint && (
+              <p className="text-[11px] text-amber-400/80">
+                Plafond d'aide atteint : au-delà de {fmt(r.plafondTravaux)} de travaux,
+                le surplus reste entièrement à votre charge.
+              </p>
+            )}
             <div className="flex justify-between">
               <span className="text-slate-400">Certificats d'économies d'énergie</span>
               <span className="text-emerald-400">− {fmt(r.cee)}</span>

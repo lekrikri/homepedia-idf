@@ -84,5 +84,17 @@ func GetRevenusIDF(c *gin.Context) {
 		data = []Row{}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"data": data, "tri": tri})
+	// Le millésime est renvoyé pour être affiché : les revenus Filosofi
+	// accusent plusieurs années de retard, l'utilisateur doit le savoir avant
+	// de comparer une commune à sa situation actuelle.
+	var millesime *int
+	_ = db.Pool.QueryRow(ctx,
+		`SELECT MAX(revenus_millesime) FROM communes_agregat`).Scan(&millesime)
+
+	c.JSON(http.StatusOK, gin.H{
+		"data":      data,
+		"tri":       tri,
+		"millesime": millesime,
+		"source":    "INSEE Filosofi",
+	})
 }

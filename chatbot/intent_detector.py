@@ -5,6 +5,7 @@ Ticket 1 : Embeddings MiniLM-L12-v2 (sémantique) + fallback regex + multi-crit�
 """
 
 import re
+from communes_idf import COMMUNES_IDF, ALIAS_COMMUNES
 import logging
 from typing import Dict, Tuple, Any, List, Optional
 
@@ -826,16 +827,41 @@ def extract_price(text: str) -> int:
 
 
 def extract_communes(text: str) -> list:
-    found = []
-    found_lower = []
+    """Reconnaît les communes citées, sur les 1 266 d'Île-de-France.
+
+    La liste était auparavant écrite à la main et n'en couvrait que 78 : toute
+    question sur une commune absente (Bobigny, Bagnolet, Sevran…) n'était pas
+    reconnue et retombait sur l'intention par défaut, le classement régional.
+    Demander « Bobigny ? » renvoyait Neuilly-sur-Seine.
+
+    Le référentiel complet est parcouru du nom le plus long au plus court, pour
+    que « Saint-Germain-en-Laye » l'emporte sur « Saint-Germain ».
+    """
+    found, found_lower = [], []
     text_low = text.lower()
-    for c in KNOWN_COMMUNES:
-        if re.search(r'\b' + re.escape(c) + r'\b', text_low):
-            # Résoudre le nom complet pour que le SQL matche la base (ex: "ivry" → "Ivry-sur-Seine")
-            full = COMMUNE_FULLNAMES.get(c, c)
-            if full.lower() not in found_lower:
-                found.append(full)
-                found_lower.append(full.lower())
+
+    for commune in COMMUNES_IDF:
+        if re.search(r'\b' + re.escape(commune.lower()) + r'\b', text_low):
+            if commune.lower() not in found_lower:
+                found.append(commune)
+                found_lower.append(commune.lower())
+
+    # Formes courtes usuelles ("ivry", "st denis") absentes du libellé officiel.
+    for alias, officiel in ALIAS_COMMUNES.items():
+        if officiel.lower() in found_lower:
+            continue
+        if re.search(r'\b' + re.escape(alias) + r'\b', text_low):
+            found.append(officiel)
+            found_lower.append(officiel.lower())
+
+    # L'ancien mapping reste consulté pour les fragments historiques.
+    for fragment, officiel in COMMUNE_FULLNAMES.items():
+        if officiel.lower() in found_lower:
+            continue
+        if re.search(r'\b' + re.escape(fragment) + r'\b', text_low):
+            found.append(officiel)
+            found_lower.append(officiel.lower())
+
     return found[:4]
 
 

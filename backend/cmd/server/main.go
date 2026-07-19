@@ -92,6 +92,7 @@ func main() {
 		v1.GET("/estimation", middleware.HTTPCache(1800, 86400), handlers.GetEstimation)
 		v1.GET("/loyer", middleware.HTTPCache(1800, 86400), handlers.GetLoyer)
 		v1.GET("/dossier", middleware.HTTPCache(1800, 86400), handlers.GetDossier)
+		v1.GET("/dpe-adresse", middleware.HTTPCache(86400, 604800), handlers.GetDpeAdresse)
 
 		// Pipeline monitoring
 		v1.GET("/pipeline/runs", handlers.ListPipelineRuns)

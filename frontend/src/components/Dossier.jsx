@@ -76,6 +76,9 @@ export default function Dossier() {
         <td class="n">${fmtEur(c.budget_au_p25)}</td>
         <td class="n">${fmtEur(c.budget_median)}</td>
         <td class="n">${c.score_accessibilite ?? "—"}</td>
+        <td class="n">${c.score_securite ?? "—"}</td>
+        <td class="n">${c.taxe_fonciere_estimee ? fmtEur(c.taxe_fonciere_estimee)
+          : (c.taux_tf_global ? c.taux_tf_global + " %" : "—")}</td>
         <td class="n">${c.nb_ventes}</td>
       </tr>`).join("");
 
@@ -124,7 +127,8 @@ ${alerteDpe.length ? `
   <thead><tr>
     <th>Commune</th><th class="n">Logements A·B·C</th>
     <th class="n">Au 1<sup>er</sup> quartile</th><th class="n">Au prix médian</th>
-    <th class="n">Transports</th><th class="n">Ventes</th>
+    <th class="n">Transports</th><th class="n">Sécurité</th>
+    <th class="n">Taxe foncière</th><th class="n">Ventes</th>
   </tr></thead>
   <tbody>${lignes}</tbody>
 </table>
@@ -274,6 +278,8 @@ proposition orale. Ne révélez jamais votre budget maximum.</p>
                       <th className="text-right font-medium pb-2 px-2">1<sup>er</sup> quartile</th>
                       <th className="text-right font-medium pb-2 px-2">Médian</th>
                       <th className="text-right font-medium pb-2 px-2">Transp.</th>
+                      <th className="text-right font-medium pb-2 px-2">Sécurité</th>
+                      <th className="text-right font-medium pb-2 px-2">Taxe fonc.</th>
                       <th className="text-right font-medium pb-2 pl-2">Ventes</th>
                     </tr>
                   </thead>
@@ -291,6 +297,19 @@ proposition orale. Ne révélez jamais votre budget maximum.</p>
                         <td className="text-right px-2 text-white font-medium">{fmtEur(c.budget_au_p25)}</td>
                         <td className="text-right px-2 text-slate-400">{fmtEur(c.budget_median)}</td>
                         <td className="text-right px-2 text-slate-400">{c.score_accessibilite ?? "—"}</td>
+                        <td className="text-right px-2">
+                          {c.score_securite != null ? (
+                            <span style={{ color: c.score_securite >= 75 ? "#34d399"
+                              : c.score_securite >= 60 ? "#94a3b8" : "#f59e0b" }}>
+                              {c.score_securite}
+                            </span>
+                          ) : <span className="text-slate-600">—</span>}
+                        </td>
+                        <td className="text-right px-2 text-slate-400">
+                          {c.taxe_fonciere_estimee
+                            ? fmtEur(c.taxe_fonciere_estimee)
+                            : c.taux_tf_global ? `${c.taux_tf_global} %` : "—"}
+                        </td>
                         <td className="text-right pl-2 text-slate-500 text-xs">{c.nb_ventes}</td>
                       </tr>
                     ))}

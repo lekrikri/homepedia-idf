@@ -52,9 +52,19 @@ type Positionnement struct {
 }
 
 type CoutAcquisition struct {
-	PrixBien       int `json:"prix_bien"`
-	FraisNotaire   int `json:"frais_notaire"`
+	PrixBien         int `json:"prix_bien"`
+	FraisNotaire     int `json:"frais_notaire"`
 	TotalAcquisition int `json:"total_acquisition"`
+}
+
+// CoutDetention : ce que le logement coûte une fois acheté. Absent jusqu'ici de
+// l'application, alors que l'écart de taxe foncière entre communes voisines
+// dépasse souvent l'écart de prix d'achat sur la durée de détention.
+type CoutDetention struct {
+	TauxTfGlobal   *float64 `json:"taux_tf_global,omitempty"`
+	TaxeFonciere   *int     `json:"taxe_fonciere_estimee,omitempty"`
+	EstimationSure bool     `json:"estimation_fiable"`
+	Note           string   `json:"note,omitempty"`
 }
 
 type PointPrevision struct {
@@ -69,6 +79,19 @@ type Risques struct {
 	Argile      *int `json:"risque_argile,omitempty"`
 	ScoreGlobal *int `json:"score_risques,omitempty"`
 	Commentaire string `json:"commentaire,omitempty"`
+}
+
+// Copropriete décrit la santé du parc collectif de la commune. Un acheteur
+// engage sa signature au-delà de son lot : charges, travaux votés et revente
+// dépendent de l'état de la copropriété.
+type Copropriete struct {
+	Nombre          *int     `json:"nombre,omitempty"`
+	TailleMoyenne   *float64 `json:"taille_moyenne_lots,omitempty"`
+	PctAidee        *float64 `json:"pct_aidee,omitempty"`
+	PctAvant1949    *float64 `json:"pct_avant_1949,omitempty"`
+	PeriodeDominante *string `json:"periode_dominante,omitempty"`
+	Fiable          bool     `json:"statistiques_fiables"`
+	Note            string   `json:"note,omitempty"`
 }
 
 type EstimationResponse struct {
@@ -87,6 +110,9 @@ type EstimationResponse struct {
 	Risques       *Risques         `json:"risques,omitempty"`
 	Position      *Positionnement  `json:"positionnement,omitempty"`
 	Cout          *CoutAcquisition `json:"cout_acquisition,omitempty"`
+	Detention     *CoutDetention   `json:"cout_detention,omitempty"`
+	ScoreSecurite *int             `json:"score_securite,omitempty"`
+	Copro         *Copropriete     `json:"copropriete,omitempty"`
 	Avertissement string           `json:"avertissement,omitempty"`
 }
 
@@ -171,6 +197,8 @@ func GetEstimation(c *gin.Context) {
 	resp.Tendance, resp.EvolutionPct = tendance(ctx, codeCommune, typeLocal, pieces)
 	resp.Prevision = prevision(ctx, codeCommune)
 	resp.Risques = risquesNaturels(ctx, codeCommune)
+	resp.Detention, resp.ScoreSecurite = coutDetention(ctx, codeCommune)
+	resp.Copro = copropriete(ctx, codeCommune)
 
 	if data, err := json.Marshal(resp); err == nil {
 		cache.Global.Set(cacheKey, data, time.Hour)
@@ -310,6 +338,88 @@ func risquesNaturels(ctx context.Context, codeCommune string) *Risques {
 			strings.Join(alertes, ", ") + "."
 	}
 	return &r
+}
+
+// coutDetention lit la fiscalité locale et le score de sécurité communal.
+//
+// Le score renvoyé est celui calculé à la commune (SSMSI) et non la valeur
+// départementale historique, qui attribuait la même note aux 507 communes de
+// Seine-et-Marne.
+func coutDetention(ctx context.Context, codeCommune string) (*CoutDetention, *int) {
+	var taux *float64
+	var montant, secu *int
+	var fiable *bool
+
+	err := db.Pool.QueryRow(ctx, `
+		SELECT taux_tf_global, taxe_fonciere_estimee, tf_estimation_fiable,
+		       COALESCE(score_securite_commune, score_securite::int)
+		FROM communes_agregat WHERE code_commune = $1
+	`, codeCommune).Scan(&taux, &montant, &fiable, &secu)
+	if err != nil {
+		return nil, nil
+	}
+	if taux == nil && montant == nil {
+		return nil, secu
+	}
+
+	d := &CoutDetention{TauxTfGlobal: taux, EstimationSure: fiable != nil && *fiable}
+	if d.EstimationSure {
+		d.TaxeFonciere = montant
+		d.Note = "Estimation pour un local moyen de la commune ; le montant réel dépend " +
+			"de la valeur locative cadastrale du bien. Demandez l'avis de taxe foncière au vendeur."
+	} else {
+		// Dans les communes à forte présence d'entrepôts ou de bureaux, la base
+		// moyenne par local ne représente plus un logement : le taux reste
+		// exploitable, pas le montant.
+		d.Note = "Le taux est fiable, mais le montant n'est pas estimable ici : la base " +
+			"moyenne de la commune est dominée par des locaux professionnels."
+	}
+	return d, secu
+}
+
+// copropriete lit l'état du parc collectif de la commune.
+//
+// Le taux de copropriétés aidées est le signal le plus lisible : il recense
+// celles bénéficiant d'un dispositif public de redressement. Il n'est renvoyé
+// qu'au-delà de vingt copropriétés — en dessous, une seule en difficulté sur
+// trois afficherait 33 %.
+func copropriete(ctx context.Context, codeCommune string) *Copropriete {
+	var c Copropriete
+	var fiable *bool
+	err := db.Pool.QueryRow(ctx, `
+		SELECT nb_coproprietes, taille_copro_moyenne, pct_copro_aidee,
+		       pct_copro_avant_1949, periode_construction_dominante, copro_stats_fiables
+		FROM communes_agregat WHERE code_commune = $1
+	`, codeCommune).Scan(&c.Nombre, &c.TailleMoyenne, &c.PctAidee,
+		&c.PctAvant1949, &c.PeriodeDominante, &fiable)
+	if err != nil || c.Nombre == nil {
+		return nil
+	}
+
+	c.Fiable = fiable != nil && *fiable
+	if !c.Fiable {
+		c.PctAidee = nil
+		c.Note = "Trop peu de copropriétés recensées pour que les proportions aient un sens."
+		return &c
+	}
+
+	switch {
+	case c.PctAidee != nil && *c.PctAidee >= 10:
+		c.Note = "Part élevée de copropriétés sous dispositif public de redressement. " +
+			"Exigez les trois derniers procès-verbaux d'assemblée générale et le taux " +
+			"d'impayés avant toute offre."
+	case c.PctAidee != nil && *c.PctAidee >= 5:
+		c.Note = "Part notable de copropriétés aidées dans la commune : vérifiez la santé " +
+			"financière de l'immeuble visé."
+	default:
+		c.Note = "Parc en copropriété globalement sain à l'échelle de la commune ; " +
+			"cela ne dispense pas d'examiner l'immeuble visé."
+	}
+	if c.PctAvant1949 != nil && *c.PctAvant1949 >= 45 {
+		c.Note += " Près de la moitié du parc date d'avant 1949 : gros travaux et " +
+			"rénovation énergétique sont à anticiper."
+	}
+	return &c
 }
 
 // enrichir calcule les éléments dépendant du bien visé (hors cache commune).

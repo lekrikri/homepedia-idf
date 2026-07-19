@@ -1,18 +1,70 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 
 const STEPS = [
   {
     icon: "domain",
     title: "Bienvenue sur HomePedia IDF",
-    subtitle: "Votre outil d'analyse immobilière en Île-de-France",
+    subtitle: "Trois questions, des données réelles pour y répondre",
     description:
-      "HomePedia centralise 1 266 communes d'IDF, 1,9 million de transactions DVF, les données DPE, loyers, IPS scolaire, risques naturels BRGM et des prévisions Prophet 2025-2026. Tout pour prendre des décisions immobilières éclairées.",
-    tips: ["1 266 communes analysées", "40+ indicateurs par commune", "IA conversationnelle intégrée"],
+      "HomePedia réunit les 1 266 communes d'Île-de-France, 1,9 million de transactions DVF, les DPE, loyers, IPS scolaire, risques naturels et prévisions de prix. De quoi répondre aux trois questions qui comptent vraiment : où chercher, ce prix est-il justifié, et ce loyer est-il correct.",
+    tips: [
+      "Où chercher : comparer les communes selon vos critères",
+      "Ce prix est-il justifié : situer un bien dans les ventes réelles",
+      "Ce loyer est-il correct : vérifier avant de signer",
+    ],
     color: "#3c83f6",
     colorDim: "rgba(60,131,246,0.12)",
     nav: null,
     navLabel: null,
+  },
+  {
+    icon: "travel_explore",
+    title: "Où chercher ?",
+    subtitle: "La première question, avant même de visiter",
+    description:
+      "Indiquez votre budget et ce qui compte le plus pour vous — le prix, la performance énergétique du parc, les transports, le cadre de vie ou la sécurité. HomePedia classe les communes accessibles selon ce critère et vous laisse repartir avec un dossier à emporter en visite.",
+    tips: [
+      "Le critère énergétique change tout : certaines communes n'ont que 1 % de logements bien classés",
+      "Seules les communes avec 40 ventes comparables minimum sont retenues",
+      "Dossier PDF : sélection, grille de visite et méthode de négociation",
+    ],
+    color: "#3c83f6",
+    colorDim: "rgba(60,131,246,0.12)",
+    nav: "/dossier",
+    navLabel: "Lancer une recherche",
+  },
+  {
+    icon: "calculate",
+    title: "Ce prix est-il justifié ?",
+    subtitle: "Situer un bien parmi les ventes réelles",
+    description:
+      "Une annonce en main, HomePedia place son prix dans la distribution des ventes comparables. Vous savez alors si vous êtes au-dessus ou en dessous du marché, et de combien négocier. La médiane donne un chiffre ; le percentile vous dit où viser.",
+    tips: [
+      "Entre le premier et le troisième quartile, l'écart dépasse souvent 30 % du prix",
+      "Cible de négociation chiffrée, du prix médian au premier quartile",
+      "Capacité d'emprunt et coût des travaux énergétiques, aides déduites",
+    ],
+    color: "#10b981",
+    colorDim: "rgba(16,185,129,0.12)",
+    nav: "/estimation",
+    navLabel: "Estimer un bien",
+  },
+  {
+    icon: "key",
+    title: "Ce loyer est-il correct ?",
+    subtitle: "Pour les locataires, avant de signer",
+    description:
+      "Comparez un loyer au marché local et vérifiez si la commune applique l'encadrement des loyers. À Paris, Plaine Commune et Est Ensemble, un loyer supérieur au loyer de référence majoré est contestable — et le trop-perçu récupérable.",
+    tips: [
+      "Le bail doit mentionner le loyer de référence en zone d'encadrement",
+      "Comparaison avec une mensualité de crédit pour un bien équivalent",
+      "Un loyer se juge toujours avec les charges et la classe DPE",
+    ],
+    color: "#f59e0b",
+    colorDim: "rgba(245,158,11,0.12)",
+    nav: "/loyer",
+    navLabel: "Vérifier un loyer",
   },
   {
     icon: "map",
@@ -80,14 +132,14 @@ const STEPS = [
   },
   {
     icon: "compare_arrows",
-    title: "Comparer",
-    subtitle: "Deux communes côte à côte",
+    title: "Comparer et arbitrer",
+    subtitle: "Deux communes côte à côte, ou le front de Pareto",
     description:
-      "Sélectionnez deux communes et comparez leurs indicateurs : prix au m², rendement, DPE, IPS, sécurité. L'URL est partageable (?a=75012&b=94300). Un radar chart multicritère visualise les forces et faiblesses de chaque commune.",
+      "Le comparateur met deux communes face à face sur le prix, le rendement, le DPE, l'IPS et la sécurité, avec une URL partageable. Le front de Pareto va plus loin : il isole les communes où l'on ne peut plus améliorer le rendement sans accepter davantage de risque — les choix objectivement optimaux.",
     tips: [
-      "URL partageable avec ?a=&b=",
-      "Radar chart sur 5 dimensions",
-      "Top 5 communes par critère (investissement, QV...)",
+      "Comparateur : radar sur 5 dimensions, URL partageable ?a=&b=",
+      "Pareto : les points cerclés de blanc forment la frontière efficiente",
+      "Haut-gauche du Pareto = meilleur rendement pour un risque faible",
     ],
     color: "#06b6d4",
     colorDim: "rgba(6,182,212,0.12)",
@@ -95,31 +147,15 @@ const STEPS = [
     navLabel: "Comparer deux communes",
   },
   {
-    icon: "scatter_plot",
-    title: "Pareto Front",
-    subtitle: "Les meilleurs compromis rendement / risque",
-    description:
-      "Le front de Pareto identifie les communes où il est impossible d'améliorer le rendement locatif sans augmenter le risque. Ce sont les choix objectivement optimaux. La ligne pointillée verte est la frontière efficiente.",
-    tips: [
-      "Points gros avec contour blanc = front optimal",
-      "Haut-gauche = meilleur rendement / faible risque",
-      "Filtrez par département pour affiner",
-    ],
-    color: "#a78bfa",
-    colorDim: "rgba(167,139,250,0.12)",
-    nav: "/pareto",
-    navLabel: "Voir le Pareto Front",
-  },
-  {
     icon: "smart_toy",
     title: "HomePedia IA",
-    subtitle: "Posez vos questions en langage naturel",
+    subtitle: "Le marché, vos droits, et la méthode",
     description:
-      "L'assistant IA comprend vos questions sur l'immobilier IDF : budget d'achat, comparaisons de communes, meilleures opportunités par critère, prévisions des prix... Il interroge directement la base de données et génère une réponse en langage naturel.",
+      "L'assistant répond sur les 1 266 communes, mais aussi sur le droit du logement — bail, dépôt de garantie, préavis, aides — et sur la méthode d'achat : comment lire un percentile, quoi vérifier en copropriété, comment négocier. Hors de ce périmètre, il le dit plutôt que d'inventer.",
     tips: [
-      "« j'ai 300 000€, que puis-je acheter ? »",
-      "« Comparer Versailles et Vincennes »",
-      "« Meilleur rendement locatif en Essonne »",
+      "« Quel est le prix immobilier à Vincennes ? »",
+      "« Quel dépôt de garantie pour un meublé ? »",
+      "« Comment négocier le prix d'un appartement ? »",
     ],
     color: "#f97316",
     colorDim: "rgba(249,115,22,0.12)",
@@ -162,11 +198,35 @@ const STEPS = [
 
 export default function OnboardingTour({ open, onClose }) {
   const [step, setStep] = useState(0);
+  const [sommaireOuvert, setSommaireOuvert] = useState(false);
+  const [recherche, setRecherche] = useState("");
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (open) setStep(0);
+    if (open) {
+      setStep(0);
+      setSommaireOuvert(false);
+      setRecherche("");
+    }
   }, [open]);
+
+  // Douze étapes, c'est trop pour être parcouru linéairement quand on cherche
+  // une réponse précise : la recherche porte sur le titre, le sous-titre, la
+  // description et les astuces, pas seulement sur le titre.
+  // Les accents sont retirés des deux côtés : personne ne tape « négociation »
+  // avec son accent dans un champ de recherche.
+  const resultats = useMemo(() => {
+    const sansAccent = t =>
+      (t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+    const q = sansAccent(recherche.trim());
+    if (!q) return STEPS.map((s, i) => ({ ...s, index: i }));
+    return STEPS
+      .map((s, i) => ({ ...s, index: i }))
+      .filter(s =>
+        sansAccent([s.title, s.subtitle, s.description, ...(s.tips || [])].join(" "))
+          .includes(q)
+      );
+  }, [recherche]);
 
   if (!open) return null;
 
@@ -223,14 +283,69 @@ export default function OnboardingTour({ open, onClose }) {
                 <p className="text-[11px] text-slate-400 mt-0.5">{cur.subtitle}</p>
               </div>
             </div>
+            <div className="flex items-start gap-1 shrink-0">
+              <button
+                onClick={() => setSommaireOuvert(v => !v)}
+                title="Chercher une rubrique"
+                aria-expanded={sommaireOuvert}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-white/5 transition-colors mt-0.5"
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: 19 }}>
+                  {sommaireOuvert ? "close_fullscreen" : "search"}
+                </span>
+              </button>
             <button
               onClick={onClose}
               className="shrink-0 p-1 text-slate-500 hover:text-slate-200 transition-colors mt-1"
             >
               <span className="material-symbols-outlined" style={{ fontSize: 18 }}>close</span>
             </button>
+            </div>
           </div>
         </div>
+
+        {/* Sommaire cherchable — accès direct à une rubrique */}
+        {sommaireOuvert && (
+          <div className="border-b border-slate-800" style={{ background: "#0b1220" }}>
+            <div className="px-6 pt-4 pb-3">
+              <input
+                autoFocus
+                value={recherche}
+                onChange={e => setRecherche(e.target.value)}
+                placeholder="Chercher une rubrique : loyer, DPE, négocier, percentile…"
+                className="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white
+                           placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+            <div className="max-h-64 overflow-y-auto pb-2">
+              {resultats.length === 0 ? (
+                <p className="px-6 py-4 text-xs text-slate-500">
+                  Aucune rubrique ne correspond. Essayez « prix », « loyer », « travaux »…
+                </p>
+              ) : (
+                resultats.map(s => (
+                  <button
+                    key={s.index}
+                    onClick={() => { setStep(s.index); setSommaireOuvert(false); setRecherche(""); }}
+                    className={`w-full text-left px-6 py-2.5 flex items-start gap-3 transition-colors ${
+                      s.index === step ? "bg-white/5" : "hover:bg-white/5"
+                    }`}
+                  >
+                    <span className="material-symbols-outlined shrink-0 mt-0.5"
+                      style={{ fontSize: 17, color: s.color }}>{s.icon}</span>
+                    <span className="min-w-0">
+                      <span className="block text-[13px] text-slate-100">{s.title}</span>
+                      <span className="block text-[11px] text-slate-500 truncate">{s.subtitle}</span>
+                    </span>
+                    <span className="ml-auto text-[10px] text-slate-600 shrink-0 mt-1">
+                      {s.index + 1}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Contenu */}
         <div className="px-6 py-5">

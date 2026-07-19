@@ -67,6 +67,10 @@ export default function Loyer() {
   const [commune, setCommune] = useState(null);
   const [surface, setSurface] = useState("");
   const [loyer, setLoyer] = useState("");
+  // Le plafond légal dépend du nombre de pièces et du caractère meublé :
+  // sans ces deux informations, on ne peut donner qu'une fourchette.
+  const [pieces, setPieces] = useState(2);
+  const [meuble, setMeuble] = useState(false);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [erreur, setErreur] = useState(null);
@@ -83,7 +87,13 @@ export default function Loyer() {
     setLoading(true); setErreur(null);
     try {
       const { data } = await axios.get("/api/v1/loyer", {
-        params: { commune: commune.code_insee, surface: surface || undefined, loyer: loyer || undefined },
+        params: {
+          commune: commune.code_insee,
+          surface: surface || undefined,
+          loyer: loyer || undefined,
+          pieces: pieces || undefined,
+          meuble: meuble ? "true" : undefined,
+        },
       });
       setData(data);
     } catch (err) {
@@ -112,10 +122,31 @@ export default function Loyer() {
               className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" />
           </div>
           <div>
-            <label className="text-xs text-slate-400 block mb-1">Loyer demandé (€/mois)</label>
+            <label className="text-xs text-slate-400 block mb-1">
+              Loyer <strong className="text-slate-300">hors charges</strong> (€/mois)
+            </label>
             <input type="number" value={loyer} onChange={e => setLoyer(e.target.value)} placeholder="750"
               className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white" />
+            <p className="text-[10px] text-slate-600 mt-1">
+              Le loyer principal de votre quittance, sans les provisions pour charges.
+            </p>
           </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+          <div>
+            <label className="text-xs text-slate-400 block mb-1">Nombre de pièces</label>
+            <select value={pieces} onChange={e => setPieces(Number(e.target.value))}
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white">
+              {[1, 2, 3, 4].map(p => <option key={p} value={p}>{p} pièce{p > 1 ? "s" : ""}</option>)}
+              <option value={4}>4 pièces et plus</option>
+            </select>
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer pb-2">
+            <input type="checkbox" checked={meuble} onChange={e => setMeuble(e.target.checked)}
+              className="accent-blue-500" />
+            <span className="text-xs text-slate-400">Logement meublé</span>
+          </label>
         </div>
 
         <button type="submit" disabled={loading}
@@ -141,9 +172,21 @@ export default function Loyer() {
               </div>
               <p className="text-slate-300 text-sm">{data.verdict}</p>
               <p className="text-slate-500 text-xs mt-1">
-                {fmtEur(data.loyer_demande)} pour {data.surface_m2} m², soit{" "}
-                {data.loyer_m2_demande} €/m² — médiane locale : {data.loyer_median_m2} €/m².
+                {fmtEur(data.loyer_demande)} hors charges pour {data.surface_m2} m², soit{" "}
+                {data.loyer_m2_demande} €/m². Référence ajustée à cette surface :{" "}
+                {data.loyer_reference_ajuste_m2?.toFixed(1)} €/m²
+                {data.loyer_reference_ajuste_m2 > data.loyer_median_m2 && (
+                  <span className="text-slate-600">
+                    {" "}(la moyenne communale, {data.loyer_median_m2} €/m², couvre toutes
+                    les surfaces — les petits logements se louent plus cher au m²)
+                  </span>
+                )}.
               </p>
+              {data.note_methode && (
+                <p className="text-[11px] text-slate-600 mt-2 pt-2 border-t border-slate-800">
+                  {data.note_methode}
+                </p>
+              )}
             </div>
           )}
 
@@ -176,16 +219,66 @@ export default function Loyer() {
             </p>
           </div>
 
-          {data.encadrement_applicable && (
+          {data.controle_encadrement && (
+            <div className="bg-slate-900/60 border rounded-xl p-4"
+              style={{ borderColor: data.controle_encadrement.depassement
+                ? "rgba(239,68,68,0.45)" : "rgba(52,211,153,0.35)" }}>
+              <div className="flex items-baseline justify-between flex-wrap gap-2 mb-3">
+                <h3 className="font-semibold text-sm"
+                  style={{ color: data.controle_encadrement.depassement ? "#f87171" : "#34d399" }}>
+                  {data.controle_encadrement.depassement
+                    ? "Ce loyer dépasse le plafond légal"
+                    : "Contrôle de l'encadrement des loyers"}
+                </h3>
+                <span className="text-[11px] text-slate-500">
+                  plafonds {data.controle_encadrement.millesime}
+                </span>
+              </div>
+
+              {data.controle_encadrement.depassement_mensuel > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3 pb-3 border-b border-slate-800">
+                  <div>
+                    <p className="text-[11px] text-slate-500">Dépassement mensuel</p>
+                    <p className="text-lg font-bold" style={{ color: "#f87171" }}>
+                      {fmtEur(data.controle_encadrement.depassement_mensuel)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-500">Sur un an</p>
+                    <p className="text-lg font-bold" style={{ color: "#f87171" }}>
+                      {fmtEur(data.controle_encadrement.depassement_annuel)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-500">Récupérable sur 3 ans</p>
+                    <p className="text-lg font-bold text-white">
+                      {fmtEur(data.controle_encadrement.depassement_annuel * 3)}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <p className="text-[13px] text-slate-300">{data.controle_encadrement.message}</p>
+
+              <div className="flex flex-wrap gap-x-5 gap-y-1 mt-3 text-[11px] text-slate-500">
+                <span>Votre loyer : <strong className="text-slate-300">
+                  {data.controle_encadrement.loyer_m2_demande} €/m²</strong></span>
+                <span>Plafonds de la commune : {data.controle_encadrement.loyer_majore_min} à{" "}
+                  {data.controle_encadrement.loyer_majore_max} €/m²</span>
+              </div>
+            </div>
+          )}
+
+          {data.encadrement_applicable && !data.controle_encadrement && (
             <div className="bg-slate-900/60 border rounded-xl p-4" style={{ borderColor: "rgba(52,211,153,0.35)" }}>
               <h3 className="font-semibold text-sm mb-2" style={{ color: "#34d399" }}>
                 Encadrement des loyers applicable — {data.zone_encadrement}
               </h3>
               <p className="text-[13px] text-slate-300">{data.note_encadrement}</p>
               <p className="text-[11px] text-slate-500 mt-2">
-                Le loyer de référence exact dépend du quartier, du nombre de pièces, de
-                l'époque de construction et du caractère meublé : il figure dans l'arrêté
-                préfectoral et doit être inscrit au bail.
+                Les plafonds de cette intercommunalité ne sont pas encore publiés dans un
+                format exploitable : nous ne pouvons pas chiffrer un éventuel dépassement.
+                Le loyer de référence doit figurer dans votre bail — réclamez-le.
               </p>
             </div>
           )}
