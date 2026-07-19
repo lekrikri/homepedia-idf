@@ -27,6 +27,8 @@
 | Benchmark chatbot RAG | **12/12 questions** correctes |
 | Latence API (cache chaud) | **< 50 ms** |
 | Pipeline CI/CD | **Cloud Build → Cloud Run** (~3 min) |
+| Modules gestion locative | **Biens · Locataires · Loyers · Quittances PDF · IRL** |
+| Espace locataire | **Portail dédié · invitation · quittances autonomes** |
 
 ---
 
@@ -68,6 +70,8 @@
 │   MapLibre GL (2D/3D Cesium) · Timeline animée 2021-2026             │
 │   Pareto Front Recharts · Chatbot SSE · Isochrones · Heatmap         │
 │   Risques BRGM · Villes Jumelles · Portfolio · Comparateur           │
+│   Gestion Locative (biens, loyers, quittances PDF, IRL, CSV)         │
+│   Espace Locataire (portail dédié, invitation, téléchargements)      │
 │   Google Cloud Run                                                   │
 └──────────────────────────────────────────────────────────────────────┘
 ```
@@ -127,6 +131,27 @@
 - **Dashboard** : 3 niveaux macro→méso→micro (IDF → département → commune), distribution DPE
 - **Comparateur** : top 5 communes par critère professionnel, scores expliqués côte-à-côte
 - **Portfolio investisseur** : simulateur cash-flow (prix, apport, taux, durée, loyer, charges), graphique SVG 20 ans
+
+### Gestion locative — Mon Patrimoine (`/gestion`)
+Module propriétaire bailleur complet, sans abonnement, sans logiciel.
+
+- **Biens** : ajout/modification/suppression, type, surface, loyer, dépôt de garantie
+- **Locataires** : fiche locataire (prenom, nom, email, type bail, date entrée), modifier/désactiver
+- **Suivi loyers** : grille 12 mois — clic pour marquer payé, clic long pour marquer impayé
+- **Quittances PDF** : génération A4 instantanée conforme à l'art. 21 loi 89-462, impression navigateur
+- **Calcul IRL** : indexation automatique avec valeurs INSEE T1-2023 → T2-2025
+- **Export CSV** : récapitulatif comptable annuel (BOM UTF-8, compatible Excel)
+- **Dashboard** : stats agrégées (nb biens, loyers mensuels, impayés)
+
+### Espace locataire — Mon logement (`/mon-logement`)
+Portail dédié accessible après invitation du bailleur.
+
+- **Invitation** : le proprio génère un mot de passe temporaire depuis la fiche bien (1 clic)
+- **Connexion** : le locataire se connecte et est redirigé automatiquement vers son espace
+- **Fiche logement** : adresse, surface, type de bail, loyer HC + charges + total CC
+- **Historique** : grille 12 mois avec statut payé/non payé
+- **Quittances** : téléchargement PDF autonome pour chaque mois payé
+- **Contact** : email du bailleur accessible directement
 
 ---
 

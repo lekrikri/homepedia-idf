@@ -60,11 +60,11 @@ steps:
       - --platform=managed
       - --allow-unauthenticated
       - --port=8080
-      - --memory=2Gi
+      - --memory=4Gi
       - --cpu=2
       - --min-instances=0
       - --max-instances=2
-      - --set-env-vars=POSTGRES_HOST=aws-0-eu-west-1.pooler.supabase.com,POSTGRES_PORT=5432,POSTGRES_DB=postgres,POSTGRES_USER=postgres.iugsfmvqddburvufzacy,POSTGRES_SSLMODE=require,DISABLE_LLM=false
+      - --set-env-vars=POSTGRES_HOST=aws-0-eu-west-1.pooler.supabase.com,POSTGRES_PORT=6543,POSTGRES_DB=postgres,POSTGRES_USER=postgres.iugsfmvqddburvufzacy,POSTGRES_SSLMODE=require,DISABLE_LLM=false,REDIS_URL=redis://default:AacfAAIgcDEzZjI1NWIxMTg2Yzc0MzI5YmEyYmM0MDg0MzE4Mzc3Yw@flying-vulture-42783.upstash.io:6379
       - --update-secrets=POSTGRES_PASSWORD=homepedia-supabase-password:latest
       - --quiet
     waitFor: [push-chatbot]

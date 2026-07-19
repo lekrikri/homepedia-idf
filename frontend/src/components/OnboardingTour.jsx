@@ -126,6 +126,38 @@ const STEPS = [
     nav: "/carte",
     navLabel: "Ouvrir le chatbot",
   },
+  {
+    icon: "home_work",
+    title: "Mon Patrimoine",
+    subtitle: "Gestion locative sans abonnement",
+    description:
+      "Enregistrez vos biens, associez vos locataires et suivez les loyers mois par mois. Générez des quittances PDF conformes à la loi 89-462, calculez l'indexation IRL et exportez un CSV comptable annuel. 100% gratuit, aucun logiciel à installer.",
+    tips: [
+      "Ajout bien → locataire → suivi loyers en 3 clics",
+      "Clic sur mois payé → quittance A4 prête à imprimer",
+      "Calcul IRL automatique avec valeurs INSEE",
+    ],
+    color: "#8b5cf6",
+    colorDim: "rgba(139,92,246,0.12)",
+    nav: "/gestion",
+    navLabel: "Gérer mon patrimoine",
+  },
+  {
+    icon: "key",
+    title: "Espace Locataire",
+    subtitle: "Portail dédié pour les locataires",
+    description:
+      "Le bailleur invite son locataire en un clic : un compte est créé automatiquement. Le locataire se connecte, consulte sa fiche logement, l'historique des paiements et télécharge ses quittances PDF en toute autonomie — sans déranger son propriétaire.",
+    tips: [
+      "Invitation depuis la fiche bien → mot de passe temporaire",
+      "Connexion → redirigé vers 'Mon logement'",
+      "Quittances téléchargeables pour les 12 derniers mois",
+    ],
+    color: "#06b6d4",
+    colorDim: "rgba(6,182,212,0.12)",
+    nav: "/mon-logement",
+    navLabel: "Voir l'espace locataire",
+  },
 ];
 
 export default function OnboardingTour({ open, onClose }) {

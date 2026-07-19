@@ -1,6 +1,9 @@
 services:
   postgres:
-    image: postgis/postgis:16-3.4
+    # Image PostGIS + pgvector (extension vectorielle pour le chatbot RAG)
+    build:
+      context: ./backend/db
+      dockerfile: Dockerfile
     container_name: homepedia_postgres
     env_file: .env
     environment:
@@ -12,6 +15,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/db/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+      - ./backend/migrations/007_rag_pgvector.sql:/docker-entrypoint-initdb.d/02_rag_pgvector.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
@@ -22,8 +26,10 @@ services:
   redis:
     image: redis:7-alpine
     container_name: homepedia_redis
-    ports:
-      - "6379:6379"
+    # Pas de port publié sur l'hôte : accès uniquement via le réseau Docker
+    # (évite les conflits avec d'autres Redis locaux sur 6379)
+    expose:
+      - "6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -57,12 +63,16 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # Postgres local en Docker : pas de TLS (Supabase prod = require)
+      POSTGRES_SSLMODE: ${POSTGRES_SSLMODE:-disable}
       MONGODB_URI: ${MONGODB_URI}
       REDIS_HOST: ${REDIS_HOST}
       REDIS_PORT: ${REDIS_PORT}
       CHROMADB_HOST: ${CHROMADB_HOST}
       CHROMADB_PORT: ${CHROMADB_PORT}
       JWT_SECRET: ${JWT_SECRET}
+      # Proxy vers le service RAG Python (chatbot)
+      RAG_SERVICE_URL: ${RAG_SERVICE_URL:-http://rag:8002}
     ports:
       - "8080:8080"
     depends_on:
@@ -74,6 +84,32 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Service RAG (FastAPI) — chatbot immobilier. Retrieval pgvector + LLM Ollama.
+  rag:
+    build:
+      context: ./rag
+      dockerfile: Dockerfile
+    container_name: homepedia_rag
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # Ollama tourne sur la machine hôte (modèles locaux CPU/GPU)
+      OLLAMA_URL: http://host.docker.internal:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-gemma4:e4b}
+      OLLAMA_REWRITE_MODEL: ${OLLAMA_REWRITE_MODEL:-qwen2.5:3b}
+      OLLAMA_EMBED_MODEL: ${OLLAMA_EMBED_MODEL:-nomic-embed-text}
+    ports:
+      - "8002:8002"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
   frontend:
     build:
       context: ./frontend
@@ -81,7 +117,8 @@ services:
     container_name: homepedia_frontend
     env_file: .env
     ports:
-      - "3000:80"
+      # nginx écoute sur 8080 dans l'image (compat Cloud Run)
+      - "3000:8080"
     depends_on:
       - backend
     restart: unless-stopped

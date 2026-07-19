@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import ConseillerIA from "./ConseillerIA";
 
 const CHAT_API = import.meta.env.VITE_CHAT_API_URL || "http://localhost:5001";
 
@@ -18,12 +19,26 @@ const C = {
   fabShadow:  "0 0 20px rgba(60,131,246,0.5), 0 4px 16px rgba(0,0,0,0.6)",
 };
 
-const SUGGESTIONS = [
-  "Prévisions prix à Vincennes en 2026 ?",
-  "Où investir avec un bon rendement ?",
-  "Compare Versailles et Vincennes",
-  "Communes sûres, moins de 4500€/m² ?",
+// Tâche 1 — 6 suggestions statiques (chat vide)
+const SUGGESTED_QUESTIONS = [
+  "Meilleures communes pour investir en Essonne ?",
+  "Comparer Vincennes et Montreuil",
+  "Communes avec rendement > 5% près de Paris",
+  "Où acheter avec 300 000 € en IDF ?",
+  "Quels coins ont les meilleures écoles en 78 ?",
+  "Tendance des prix en Seine-Saint-Denis",
 ];
+
+// Tâche 1 — Suggestions contextuelles par intent
+const CONTEXTUAL_SUGGESTIONS = {
+  rendement:        ["Et en Seine-et-Marne ?", "Rendement en 92 ?", "Communes avec loyer > 15 €/m² ?"],
+  top_investissement: ["Et pour une famille ?", "Score DPE de ces communes ?", "Budget 250 000 € ?"],
+  multi_criteria:   ["Comparer les 2 premières", "Prévisions prix de Palaiseau ?", "DPE de ces communes ?"],
+  commune_detail:   ["Et les prévisions pour 2026 ?", "Communes similaires moins chères ?", "Rendement locatif ?"],
+  comparaison:      ["Quelle commune a les meilleures écoles ?", "Et pour investir lequel choisir ?"],
+  budget_achat:     ["Et en 77 ?", "Meilleur rendement dans ce budget ?", "Communes similaires ?"],
+  default:          ["Meilleures communes 93 ?", "Investir à Massy ?", "DPE en 91 ?"],
+};
 
 // Rendu markdown minimaliste (**bold** uniquement)
 function renderText(text) {
@@ -78,6 +93,28 @@ function Message({ msg }) {
   );
 }
 
+// Tâche 1 — Chips de suggestions
+function SuggestionChips({ suggestions, onSelect }) {
+  return (
+    <div className="px-3 pb-2 flex flex-wrap gap-1.5 shrink-0">
+      {suggestions.map((s) => (
+        <button
+          key={s}
+          onClick={() => onSelect(s)}
+          style={{
+            background: "rgba(60,131,246,0.08)",
+            color: "#60a5fa",
+            border: "1px solid rgba(60,131,246,0.2)",
+          }}
+          className="text-[10px] rounded-full px-2.5 py-1 transition-all hover:bg-blue-500/20 hover:border-blue-400/40 hover:text-blue-300"
+        >
+          {s}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function ChatWidget() {
   const [open, setOpen] = useState(() => new URLSearchParams(window.location.search).get("chat") === "open");
   const [messages, setMessages] = useState([
@@ -89,6 +126,8 @@ export default function ChatWidget() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
+  // Tâche 3 — état pour basculer vers ConseillerIA
+  const [showConseiller, setShowConseiller] = useState(false);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const abortRef = useRef(null);
@@ -98,8 +137,17 @@ export default function ChatWidget() {
   }, [messages]);
 
   useEffect(() => {
-    if (open) setTimeout(() => inputRef.current?.focus(), 100);
-  }, [open]);
+    if (open && !showConseiller) setTimeout(() => inputRef.current?.focus(), 100);
+  }, [open, showConseiller]);
+
+  // Tâche 1 — calcul des suggestions à afficher
+  const isEmpty = messages.length <= 1;
+  const lastIntent = !isEmpty
+    ? messages.slice().reverse().find(m => m.role === "assistant" && m.intent)?.intent
+    : null;
+  const contextualSuggestions = lastIntent
+    ? (CONTEXTUAL_SUGGESTIONS[lastIntent] || CONTEXTUAL_SUGGESTIONS.default)
+    : null;
 
   async function sendMessage(question) {
     const q = (question || input).trim();
@@ -187,6 +235,24 @@ export default function ChatWidget() {
     }
   }
 
+  // Tâche 3 — injection résultat ConseillerIA dans l'historique chat
+  function handleConseillerResult({ question, answer, data }) {
+    if (question) {
+      setMessages(prev => [
+        ...prev,
+        { role: "user", content: question },
+        { role: "assistant", content: answer || "", data: data || [], streaming: false },
+      ]);
+    }
+    setShowConseiller(false);
+  }
+
+  // Tâche 1 — click chip : injecter dans input ET envoyer
+  function handleChipClick(text) {
+    setInput(text);
+    sendMessage(text);
+  }
+
   return (
     <>
       {/* Bouton FAB */}
@@ -219,74 +285,87 @@ export default function ChatWidget() {
             <div style={{ background: "rgba(60,131,246,0.2)", border: `1px solid ${C.border}` }} className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold" >
               <span style={{ color: "#93C5FD" }}>HP</span>
             </div>
-            <div>
+            <div className="flex-1">
               <div className="text-sm font-semibold" style={{ color: C.text }}>HomePedia IA</div>
               <div className="text-xs flex items-center gap-1" style={{ color: C.textMuted }}>
                 <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
                 Immobilier Île-de-France
               </div>
             </div>
-          </div>
-
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-3" style={{ scrollbarWidth: "thin", scrollbarColor: `${C.border} transparent` }}>
-            {messages.map((msg, i) => (
-              <Message key={i} msg={msg} />
-            ))}
-            <div ref={bottomRef} />
-          </div>
-
-          {/* Suggestions */}
-          {messages.length <= 1 && (
-            <div className="px-3 pb-2 flex flex-wrap gap-1 shrink-0">
-              {SUGGESTIONS.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => sendMessage(s)}
-                  style={{
-                    background: "rgba(60,131,246,0.12)",
-                    color: "#93C5FD",
-                    border: `1px solid rgba(60,131,246,0.25)`,
-                  }}
-                  className="text-xs rounded-full px-2 py-1 transition-all hover:bg-blue-600 hover:text-white"
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Input */}
-          <div style={{ borderTop: `1px solid ${C.border}`, background: C.headerBg }} className="p-3 flex gap-2 shrink-0">
-            <input
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
-              onFocus={() => setInputFocused(true)}
-              onBlur={() => setInputFocused(false)}
-              placeholder="Posez votre question..."
-              disabled={loading}
-              style={{
-                background: C.inputBg,
-                color: "#F1F5F9",
-                border: `1px solid ${inputFocused ? C.borderFocus : C.border}`,
-                outline: "none",
-                caretColor: C.accent,
-              }}
-              className="flex-1 text-sm rounded-xl px-3 py-2 disabled:opacity-50 transition-colors placeholder:text-slate-500"
-            />
+            {/* Tâche 3 — Bouton Conseiller IA */}
             <button
-              onClick={() => sendMessage()}
-              disabled={loading || !input.trim()}
-              style={{ background: input.trim() && !loading ? C.accent : "rgba(60,131,246,0.3)" }}
-              className="text-white rounded-xl px-3 py-2 transition-all hover:scale-105 active:scale-95 disabled:cursor-not-allowed"
+              onClick={() => setShowConseiller(v => !v)}
+              title="Conseiller IA"
+              style={{
+                background: showConseiller ? "rgba(60,131,246,0.25)" : "rgba(60,131,246,0.08)",
+                border: `1px solid ${showConseiller ? "rgba(60,131,246,0.6)" : "rgba(60,131,246,0.2)"}`,
+                color: showConseiller ? "#93c5fd" : "#60a5fa",
+              }}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium transition-all hover:bg-blue-500/20 shrink-0"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-              </svg>
+              <span className="material-symbols-outlined" style={{ fontSize: 14 }}>auto_awesome</span>
+              <span className="hidden sm:inline">Conseiller</span>
             </button>
           </div>
+
+          {/* Tâche 3 — Vue ConseillerIA ou vue Chat */}
+          {showConseiller ? (
+            <div className="flex-1 overflow-hidden flex flex-col">
+              <ConseillerIA
+                onResult={handleConseillerResult}
+                onClose={() => setShowConseiller(false)}
+              />
+            </div>
+          ) : (
+            <>
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto p-3 space-y-3" style={{ scrollbarWidth: "thin", scrollbarColor: `${C.border} transparent` }}>
+                {messages.map((msg, i) => (
+                  <Message key={i} msg={msg} />
+                ))}
+                <div ref={bottomRef} />
+              </div>
+
+              {/* Tâche 1 — Suggestions chips */}
+              {isEmpty ? (
+                <SuggestionChips suggestions={SUGGESTED_QUESTIONS} onSelect={handleChipClick} />
+              ) : contextualSuggestions ? (
+                <SuggestionChips suggestions={contextualSuggestions} onSelect={handleChipClick} />
+              ) : null}
+
+              {/* Input */}
+              <div style={{ borderTop: `1px solid ${C.border}`, background: C.headerBg }} className="p-3 flex gap-2 shrink-0">
+                <input
+                  ref={inputRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
+                  onFocus={() => setInputFocused(true)}
+                  onBlur={() => setInputFocused(false)}
+                  placeholder="Posez votre question..."
+                  disabled={loading}
+                  style={{
+                    background: C.inputBg,
+                    color: "#F1F5F9",
+                    border: `1px solid ${inputFocused ? C.borderFocus : C.border}`,
+                    outline: "none",
+                    caretColor: C.accent,
+                  }}
+                  className="flex-1 text-sm rounded-xl px-3 py-2 disabled:opacity-50 transition-colors placeholder:text-slate-500"
+                />
+                <button
+                  onClick={() => sendMessage()}
+                  disabled={loading || !input.trim()}
+                  style={{ background: input.trim() && !loading ? C.accent : "rgba(60,131,246,0.3)" }}
+                  className="text-white rounded-xl px-3 py-2 transition-all hover:scale-105 active:scale-95 disabled:cursor-not-allowed"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
     </>

@@ -42,6 +42,65 @@ type User struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// ── Gestion locative ─────────────────────────────────────────────────────────
+
+type GestionBien struct {
+	ID              string   `json:"id"`
+	UserID          string   `json:"user_id"`
+	Adresse         string   `json:"adresse"`
+	CodePostal      *string  `json:"code_postal,omitempty"`
+	Ville           *string  `json:"ville,omitempty"`
+	CodeInsee       *string  `json:"code_insee,omitempty"`
+	TypeBien        string   `json:"type_bien"`
+	SurfaceM2       *float64 `json:"surface_m2,omitempty"`
+	NbPieces        *int     `json:"nb_pieces,omitempty"`
+	Etage           *int     `json:"etage,omitempty"`
+	LoyerNu         *float64 `json:"loyer_nu,omitempty"`
+	Charges         *float64 `json:"charges,omitempty"`
+	DepotGarantie   *float64 `json:"depot_garantie,omitempty"`
+	DateAcquisition *string  `json:"date_acquisition,omitempty"`
+	PrixAcquisition *float64 `json:"prix_acquisition,omitempty"`
+	CreatedAt       string   `json:"created_at"`
+	// Champs calculés (join)
+	Locataire       *GestionLocataire `json:"locataire,omitempty"`
+}
+
+type GestionLocataire struct {
+	ID                    string   `json:"id"`
+	UserID                string   `json:"user_id"`
+	BienID                *string  `json:"bien_id,omitempty"`
+	Prenom                string   `json:"prenom"`
+	Nom                   string   `json:"nom"`
+	Email                 *string  `json:"email,omitempty"`
+	Telephone             *string  `json:"telephone,omitempty"`
+	DateEntree            *string  `json:"date_entree,omitempty"`
+	DateFinBail           *string  `json:"date_fin_bail,omitempty"`
+	TypeBail              string   `json:"type_bail"`
+	LoyerMensuel          *float64 `json:"loyer_mensuel,omitempty"`
+	ChargesMensuelles     *float64 `json:"charges_mensuelles,omitempty"`
+	DepotGarantie         *float64 `json:"depot_garantie,omitempty"`
+	DepotGarantieRestitue bool     `json:"depot_garantie_restitue"`
+	Actif                 bool     `json:"actif"`
+	LocataireUserID       *string  `json:"locataire_user_id,omitempty"`
+	CreatedAt             string   `json:"created_at"`
+}
+
+type GestionPaiement struct {
+	ID             string   `json:"id"`
+	BienID         string   `json:"bien_id"`
+	LocataireID    string   `json:"locataire_id"`
+	UserID         string   `json:"user_id"`
+	Mois           int      `json:"mois"`
+	Annee          int      `json:"annee"`
+	MontantLoyer   float64  `json:"montant_loyer"`
+	MontantCharges float64  `json:"montant_charges"`
+	DatePaiement   *string  `json:"date_paiement,omitempty"`
+	Statut         string   `json:"statut"`
+	MontantRecu    *float64 `json:"montant_recu,omitempty"`
+	Note           *string  `json:"note,omitempty"`
+	CreatedAt      string   `json:"created_at"`
+}
+
 // CommuneGold représente une commune avec ses métriques Gold agrégées depuis les transactions.
 type CommuneGold struct {
 	CodeInsee       string   `json:"code_insee"`
@@ -111,6 +170,11 @@ type CommuneAgregat struct {
 	LoyerMedianM2         *float64 `json:"loyer_median_m2,omitempty"`         // €/m²/mois
 	ZoneTendue            *bool    `json:"zone_tendue,omitempty"`             // encadrement des loyers
 	RendementLocatifBrut  *float64 `json:"rendement_locatif_brut,omitempty"`  // % annuel brut
+	// Revenus Filosofi INSEE 2019
+	RevenuMedianUC        *int64   `json:"revenu_median_uc,omitempty"`   // Revenu médian disponible par UC (€)
+	TauxPauvrete          *float64 `json:"taux_pauvrete,omitempty"`      // Taux de pauvreté à 60% (%)
+	RevenuD1              *int64   `json:"revenu_d1,omitempty"`          // 1er décile revenu (€)
+	RevenuD9              *int64   `json:"revenu_d9,omitempty"`          // 9e décile revenu (€)
 }
 
 // ScoreIris représente les agrégats calculés pour une zone IRIS.

@@ -217,6 +217,41 @@ INTENT_EXAMPLES: Dict[str, List[str]] = {
         "quelle commune va le plus augmenter",
         "prévision hausse prix immobilier IDF",
     ],
+    "commune_similaire": [
+        "quelle ville ressemble à Versailles",
+        "commune similaire à Montreuil",
+        "alternative moins chère à Boulogne",
+        "ville comme Versailles mais moins chère",
+        "alternative à Vincennes",
+        "ville jumelle de Créteil",
+        "commune proche en profil de Nanterre",
+        "alternative abordable à Neuilly",
+        "quelle ville est similaire à Cergy",
+        "quelque chose de proche de Massy mais moins cher",
+    ],
+    "isochrone_paris": [
+        "où habiter à moins de 30 minutes de Paris",
+        "communes accessibles en 45 min de Paris",
+        "30 min de Paris en voiture",
+        "banlieue proche de Paris moins de 20 minutes",
+        "accessible depuis Paris en 30 minutes",
+        "communes à 45 minutes de Paris",
+        "pas trop loin de Paris en transport",
+        "proche de Paris 30 minutes",
+        "quelle commune à 30 min de Paris",
+    ],
+    "tendance_prix": [
+        "est-ce que les prix baissent en Essonne",
+        "évolution des prix depuis 2021",
+        "quelle commune a le plus augmenté",
+        "hausse ou baisse des prix à Versailles",
+        "communes où les prix ont le plus progressé",
+        "où les prix ont le plus baissé en IDF",
+        "tendance des prix immobiliers IDF depuis 2021",
+        "quelle ville a vu ses prix le plus augmenter",
+        "baisse des prix en Seine-et-Marne",
+        "marché immobilier en hausse ou baisse",
+    ],
     "general": [
         "qu'est-ce que le DPE",
         "comment fonctionne l'IPS",
@@ -466,11 +501,77 @@ TEMPLATES: Dict[str, Dict] = {
         "response_hint": "prévision Prophet des prix immobiliers",
     },
 
+    "commune_similaire": {
+        "sql": """
+            WITH ref AS (
+                SELECT COALESCE(prix_median_m2,0)/15000.0 AS p,
+                       COALESCE(score_investissement,50)/100.0 AS si,
+                       COALESCE(score_qualite_vie,50)/100.0 AS sqv,
+                       COALESCE(score_securite,50)/100.0 AS ss,
+                       (COALESCE(ips_moyen,100)-60)/100.0 AS ips,
+                       code_commune AS ref_code,
+                       prix_median_m2 AS ref_prix
+                FROM communes_agregat WHERE LOWER(city) = LOWER(%(city)s) LIMIT 1
+            )
+            SELECT c2.city AS commune, TRIM(c2.code_departement) AS dept,
+                   ROUND(c2.prix_median_m2::numeric, 0) AS prix_m2,
+                   ROUND(c2.score_qualite_vie::numeric, 1) AS qualite_vie,
+                   ROUND(c2.score_investissement::numeric, 1) AS investissement,
+                   ROUND(c2.rendement_locatif_brut::numeric, 2) AS rendement_pct
+            FROM communes_agregat c2, ref
+            WHERE c2.code_commune != ref.ref_code
+              AND c2.prix_median_m2 IS NOT NULL
+              AND c2.score_investissement IS NOT NULL
+            ORDER BY SQRT(
+                POWER(COALESCE(c2.prix_median_m2,0)/15000.0 - ref.p, 2) +
+                POWER(COALESCE(c2.score_investissement,50)/100.0 - ref.si, 2) +
+                POWER(COALESCE(c2.score_qualite_vie,50)/100.0 - ref.sqv, 2) +
+                POWER(COALESCE(c2.score_securite,50)/100.0 - ref.ss, 2) +
+                POWER((COALESCE(c2.ips_moyen,100)-60)/100.0 - ref.ips, 2)
+            ) ASC
+            LIMIT %(limit)s
+        """,
+        "params": {"city": "", "limit": 5},
+        "response_hint": "communes similaires à une commune de référence (profil prix, investissement, qualité de vie)",
+    },
+
+    "isochrone_paris": {
+        "sql": """
+            SELECT city AS commune, TRIM(code_departement) AS dept,
+                   ROUND(prix_median_m2::numeric, 0) AS prix_m2,
+                   ROUND(score_qualite_vie::numeric, 1) AS qualite_vie,
+                   ROUND(rendement_locatif_brut::numeric, 2) AS rendement_pct,
+                   ROUND((2 * 6371 * ASIN(SQRT(
+                       POWER(SIN(RADIANS((centroid_lat - 48.8566)/2)), 2) +
+                       COS(RADIANS(48.8566)) * COS(RADIANS(centroid_lat)) *
+                       POWER(SIN(RADIANS((centroid_lon - 2.3488)/2)), 2)
+                   )))::numeric, 1)::float AS distance_km
+            FROM communes_agregat
+            WHERE centroid_lon IS NOT NULL AND centroid_lat IS NOT NULL
+              AND prix_median_m2 IS NOT NULL
+              AND 2 * 6371 * ASIN(SQRT(
+                  POWER(SIN(RADIANS((centroid_lat - 48.8566)/2)), 2) +
+                  COS(RADIANS(48.8566)) * COS(RADIANS(centroid_lat)) *
+                  POWER(SIN(RADIANS((centroid_lon - 2.3488)/2)), 2)
+              )) <= %(rayon_km)s
+            ORDER BY score_qualite_vie DESC NULLS LAST
+            LIMIT %(limit)s
+        """,
+        "params": {"rayon_km": 21.0, "limit": 8},
+        "response_hint": "communes accessibles depuis Paris en X minutes — données RER/Transilien réelles si table rer_stations peuplée, sinon haversine",
+    },
+
+    "tendance_prix": {
+        "sql": None,  # construit dynamiquement dans _build_params
+        "params": {"limit": 6},
+        "response_hint": "évolution des prix immobiliers depuis 2021 (données Prophet historiques)",
+    },
+
     "budget_achat": {
         "sql": """
             SELECT city AS commune, TRIM(code_departement) AS dept,
                    ROUND(prix_median_m2::numeric, 0) AS prix_m2,
-                   ROUND(%(budget)s::numeric / NULLIF(prix_median_m2, 0), 0)::int AS surface_m2_accessible,
+                   ROUND(%(budget)s::numeric / NULLIF(prix_median_m2::numeric, 0), 0)::int AS surface_m2_accessible,
                    ROUND(rendement_locatif_brut::numeric, 2) AS rendement_pct,
                    ROUND(score_qualite_vie::numeric, 1) AS qualite_vie
             FROM communes_agregat
@@ -543,6 +644,23 @@ INTENT_PATTERNS = [
         r"qu.est.ce que.{0,20}taux.{0,10}(cambriolage|criminalit|d[eé]linquance)|"
         # Score composite
         r"(score|indice)\s+composite", re.I
+    )),
+    ("commune_similaire", re.compile(
+        r"similaire?\s+[àa]\s+\w|ressemble\s+[àa]|alternative\s+[àa]|"
+        r"comme\s+\w+\s+(mais|en)\s+moins|ville\s+jumelle|"
+        r"proche\s+en\s+profil|m[eê]me\s+profil", re.I
+    )),
+    ("isochrone_paris", re.compile(
+        r"\d+\s*(?:min(?:utes?)?|mn)\s+(?:de\s+)?paris|"
+        r"(?:de\s+)?paris\s+(?:en\s+)?\d+\s*(?:min|mn)|"
+        r"(?:accessible|proche|[àa]\s+proximit[eé])\s+(?:de\s+)?paris\b|"
+        r"moins\s+(?:de\s+)?\d+\s*(?:min|mn)\s+(?:de\s+)?paris", re.I
+    )),
+    ("tendance_prix", re.compile(
+        r"tendance|[eé]volution\s+(?:des\s+)?prix\s+(?:depuis|depuis\s+\d{4})|"
+        r"(?:les\s+)?prix\s+(?:baiss|augment|progress|diminu|montent|descend)|"
+        r"(?:plus|moins)\s+augment[eé]|hausse\s+des\s+prix|baisse\s+des\s+prix|"
+        r"march[eé]\s+(?:en\s+)?hausse|march[eé]\s+(?:en\s+)?baisse", re.I
     )),
     ("forecast_prix", re.compile(
         r"pr[eé]vision|pr[eé]voir|forecast|[eé]volution.{0,20}attendue|"
@@ -677,6 +795,18 @@ def extract_budget(text: str) -> int:
         if val >= 50000:
             return val
     return 300000
+
+
+def extract_minutes(text: str) -> int:
+    """Extrait les minutes depuis Paris (approximation isochrone)."""
+    m = re.search(r"(\d+)\s*(?:min(?:utes?)?)", text, re.I)
+    if m:
+        return int(m.group(1))
+    if re.search(r"une?\s+heure\b", text, re.I):
+        return 60
+    if re.search(r"demi[- ]?heure\b", text, re.I):
+        return 30
+    return 30
 
 
 def extract_price(text: str) -> int:
@@ -826,6 +956,98 @@ def _build_params(intent: str, q: str) -> Dict[str, Any]:
         budget = extract_budget(q)
         params["budget"] = budget
         params["prix_m2_max"] = budget // 40  # Surface minimale ~40m² visée
+    elif intent == "commune_similaire":
+        communes = extract_communes(q)
+        params["city"] = communes[0] if communes else ""
+        moins_cher = bool(re.search(r"moins ch[eè]r|pas cher|moins \w+\s+qu[e']|abordable|jumelle?", q, re.I))
+        if moins_cher:
+            params["_sql"] = """
+                WITH ref AS (
+                    SELECT COALESCE(prix_median_m2,0)/15000.0 AS p,
+                           COALESCE(score_qualite_vie,50)/100.0 AS sqv,
+                           COALESCE(score_investissement,50)/100.0 AS si,
+                           COALESCE(score_securite,50)/100.0 AS ss,
+                           (COALESCE(ips_moyen,100)-60)/100.0 AS ips,
+                           code_commune AS ref_code,
+                           prix_median_m2 AS ref_prix
+                    FROM communes_agregat WHERE LOWER(city) = LOWER(%(city)s) LIMIT 1
+                )
+                SELECT c2.city AS commune, TRIM(c2.code_departement) AS dept,
+                       ROUND(c2.prix_median_m2::numeric, 0) AS prix_m2,
+                       ROUND(c2.score_qualite_vie::numeric, 1) AS qualite_vie,
+                       ROUND(c2.score_investissement::numeric, 1) AS investissement,
+                       ROUND(((c2.prix_median_m2 - ref.ref_prix) / NULLIF(ref.ref_prix,0) * 100)::numeric, 1)::float AS ecart_prix_pct
+                FROM communes_agregat c2, ref
+                WHERE c2.code_commune != ref.ref_code
+                  AND c2.prix_median_m2 IS NOT NULL
+                  AND c2.prix_median_m2 < ref.ref_prix * 0.92
+                  AND c2.score_qualite_vie IS NOT NULL
+                ORDER BY SQRT(
+                    POWER(COALESCE(c2.prix_median_m2,0)/15000.0 - ref.p, 2) +
+                    POWER(COALESCE(c2.score_investissement,50)/100.0 - ref.si, 2) +
+                    POWER(COALESCE(c2.score_qualite_vie,50)/100.0 - ref.sqv, 2) +
+                    POWER(COALESCE(c2.score_securite,50)/100.0 - ref.ss, 2) +
+                    POWER((COALESCE(c2.ips_moyen,100)-60)/100.0 - ref.ips, 2)
+                ) ASC
+                LIMIT %(limit)s
+            """
+    elif intent == "isochrone_paris":
+        minutes = extract_minutes(q)
+        params["rayon_km"] = round(minutes * 0.7, 1)
+        params["minutes"] = minutes
+        params["_sql_rer"] = """
+            WITH stations_accessibles AS (
+                SELECT nom AS gare, lat AS gare_lat, lon AS gare_lon, lignes,
+                       temps_paris_min,
+                       (%(minutes)s - temps_paris_min) * 0.08 AS rayon_marche_km
+                FROM rer_stations
+                WHERE temps_paris_min IS NOT NULL AND temps_paris_min < %(minutes)s
+            )
+            SELECT DISTINCT ON (ca.code_commune)
+                ca.city AS commune,
+                TRIM(ca.code_departement) AS dept,
+                ROUND(ca.prix_median_m2::numeric, 0)::int AS prix_m2,
+                ROUND(ca.score_qualite_vie::numeric, 1)::float AS qualite_vie,
+                ROUND(ca.rendement_locatif_brut::numeric, 2)::float AS rendement_pct,
+                sa.gare,
+                sa.lignes,
+                sa.temps_paris_min
+            FROM stations_accessibles sa
+            JOIN communes_agregat ca ON ca.centroid_lat IS NOT NULL
+                AND ca.prix_median_m2 IS NOT NULL
+                AND 2 * 6371 * ASIN(SQRT(
+                    POWER(SIN(RADIANS((ca.centroid_lat - sa.gare_lat)/2)), 2) +
+                    COS(RADIANS(sa.gare_lat)) * COS(RADIANS(ca.centroid_lat)) *
+                    POWER(SIN(RADIANS((ca.centroid_lon - sa.gare_lon)/2)), 2)
+                )) <= sa.rayon_marche_km
+            ORDER BY ca.code_commune, sa.temps_paris_min
+            LIMIT %(limit)s
+        """
+    elif intent == "tendance_prix":
+        dept = extract_departement(q)
+        communes = extract_communes(q)
+        order = "ASC" if re.search(r"baiss|diminu|recul|chute|moins cher|d[eé]clin", q, re.I) else "DESC"
+        dept_cond = "AND TRIM(ca.code_departement) = %(dept_val)s" if dept else ""
+        city_cond = "AND LOWER(ca.city) = LOWER(%(city_val)s)" if communes else ""
+        params["dept_val"] = dept or ""
+        params["city_val"] = communes[0] if communes else ""
+        params["_sql"] = f"""
+            SELECT ca.city AS commune, TRIM(ca.code_departement) AS dept,
+                   ROUND(pf_debut.prix_m2_pred::numeric, 0) AS prix_2021,
+                   ROUND(pf_fin.prix_m2_pred::numeric, 0) AS prix_2024,
+                   ROUND(((pf_fin.prix_m2_pred - pf_debut.prix_m2_pred) /
+                          NULLIF(pf_debut.prix_m2_pred, 0) * 100)::numeric, 1)::float AS evolution_pct
+            FROM communes_agregat ca
+            JOIN prix_forecast pf_debut ON pf_debut.code_commune = ca.code_commune
+                 AND pf_debut.annee = 2021 AND NOT pf_debut.is_forecast
+            JOIN prix_forecast pf_fin ON pf_fin.code_commune = ca.code_commune
+                 AND pf_fin.annee = 2024 AND NOT pf_fin.is_forecast
+            WHERE ca.prix_median_m2 IS NOT NULL
+            {dept_cond}
+            {city_cond}
+            ORDER BY evolution_pct {order}
+            LIMIT %(limit)s
+        """
     elif intent == "prix_max":
         params["max_price"] = extract_price(q)
     elif intent == "departement":
@@ -876,6 +1098,13 @@ def detect_intent(question: str) -> Tuple[str, Dict[str, Any]]:
     if len(communes) >= 2:
         return "comparaison", {"cities": communes}
 
+    # 1.5 Forecast prix — checker AVANT commune_detail sinon "prévisions pour Vincennes" → commune_detail
+    _forecast_re = INTENT_PATTERNS[[n for n,_ in INTENT_PATTERNS].index("forecast_prix")][1]
+    if _forecast_re.search(q):
+        params = _build_params("forecast_prix", q)
+        logger.info(f"🔮 forecast_prix détecté (commune={params.get('city','?')})")
+        return "forecast_prix", params
+
     # 2. Commune unique → fiche détaillée
     if len(communes) == 1:
         return "commune_detail", {"city": communes[0]}
@@ -885,6 +1114,24 @@ def detect_intent(question: str) -> Tuple[str, Dict[str, Any]]:
     if re.search(r"\b(plus|moins)\s+ch[eè]r", q, re.I):
         logger.info("💰 top_prix explicite (plus/moins cher)")
         return "top_prix", _build_params("top_prix", q)
+
+    # 2.6 commune_similaire explicite — avant sémantique
+    _sim_re = INTENT_PATTERNS[[n for n,_ in INTENT_PATTERNS].index("commune_similaire")][1]
+    if _sim_re.search(q) and communes:
+        logger.info(f"🔗 commune_similaire détecté ({communes[0]})")
+        return "commune_similaire", _build_params("commune_similaire", q)
+
+    # 2.7 isochrone_paris explicite
+    _iso_re = INTENT_PATTERNS[[n for n,_ in INTENT_PATTERNS].index("isochrone_paris")][1]
+    if _iso_re.search(q):
+        logger.info("🗺️ isochrone_paris détecté")
+        return "isochrone_paris", _build_params("isochrone_paris", q)
+
+    # 2.8 tendance_prix explicite
+    _tend_re = INTENT_PATTERNS[[n for n,_ in INTENT_PATTERNS].index("tendance_prix")][1]
+    if _tend_re.search(q):
+        logger.info("📈 tendance_prix détecté")
+        return "tendance_prix", _build_params("tendance_prix", q)
 
     # 3. Multi-critères (ex: "sûre ET bon DPE ET moins de 4000€")
     criteria = extract_criteria(q)

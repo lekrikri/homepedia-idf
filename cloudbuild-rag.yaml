@@ -1,0 +1,108 @@
+# Pipeline dédié au build et déploiement du service RAG pgvector (03_rag_server.py).
+# Inclut sentence-transformers (nomic-embed-text-v1.5) + Qwen2.5-0.5B via llama-cpp.
+#
+# Déclencher MANUELLEMENT quand rag/ est modifié :
+#   gcloud builds submit --config cloudbuild-rag.yaml .
+#
+# Machine E2_HIGHCPU_8 pour compiler llama-cpp-python.
+
+substitutions:
+  _REGION: europe-west1
+  _REGISTRY: europe-west1-docker.pkg.dev/homepedia-493013/homepedia
+  _RAG_SERVICE: homepedia-rag
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+
+timeout: 2400s
+
+steps:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ÉTAPE 1 : Télécharger le modèle Qwen depuis GCS (même que chatbot OLD)
+  # ─────────────────────────────────────────────────────────────────────────────
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    id: download-qwen
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        mkdir -p ./rag/models
+        gsutil cp gs://homepedia-datalake/models/qwen2.5-0.5b-instruct-q4_k_m.gguf \
+          ./rag/models/qwen2.5-0.5b.gguf
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ÉTAPE 2 : Build image RAG (sentence-transformers nomic pré-chargé + Qwen GGUF)
+  # ─────────────────────────────────────────────────────────────────────────────
+  - name: gcr.io/cloud-builders/docker
+    id: build-rag
+    args:
+      - build
+      - -f
+      - ./rag/Dockerfile.prod
+      - -t
+      - ${_REGISTRY}/rag:latest
+      - --cache-from
+      - ${_REGISTRY}/rag:latest
+      - ./rag
+    waitFor: [download-qwen]
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ÉTAPE 3 : Push image RAG
+  # ─────────────────────────────────────────────────────────────────────────────
+  - name: gcr.io/cloud-builders/docker
+    id: push-rag
+    args: [push, "${_REGISTRY}/rag:latest"]
+    waitFor: [build-rag]
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ÉTAPE 4 : Déployer le service RAG sur Cloud Run
+  # ─────────────────────────────────────────────────────────────────────────────
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    id: deploy-rag
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_RAG_SERVICE}
+      - --image=${_REGISTRY}/rag:latest
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated
+      - --port=8002
+      - --memory=4Gi
+      - --cpu=4
+      - --min-instances=0
+      - --max-instances=2
+      - --timeout=300
+      - --set-env-vars=USE_LOCAL_EMBED=true,USE_LOCAL_LLM=true,LLM_MODEL_PATH=/app/models/qwen2.5-0.5b.gguf,LLM_THREADS=4,POSTGRES_HOST=aws-0-eu-west-1.pooler.supabase.com,POSTGRES_PORT=6543,POSTGRES_DB=postgres,POSTGRES_USER=postgres.iugsfmvqddburvufzacy,POSTGRES_SSLMODE=require
+      - --update-secrets=POSTGRES_PASSWORD=homepedia-supabase-password:latest
+      - --quiet
+    waitFor: [push-rag]
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # ÉTAPE 5 : Récupérer l'URL du service RAG et afficher le résumé
+  # ─────────────────────────────────────────────────────────────────────────────
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    id: summary
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        RAG_URL=$$(gcloud run services describe ${_RAG_SERVICE} \
+          --region=${_REGION} --format='value(status.url)' 2>/dev/null || echo "N/A")
+        echo "==================================="
+        echo "  RAG DEPLOYE"
+        echo "==================================="
+        echo "  Service : ${_RAG_SERVICE}"
+        echo "  URL     : $$RAG_URL"
+        echo "  Health  : $$RAG_URL/rag/health"
+        echo "  Embed   : sentence-transformers nomic-embed-text-v1.5"
+        echo "  LLM     : Qwen2.5-0.5B (llama-cpp)"
+        echo "==================================="
+        echo ""
+        echo "Mettre à jour le backend avec RAG_SERVICE_URL=$$RAG_URL"
+    waitFor: [deploy-rag]
+
+images:
+  - ${_REGISTRY}/rag:latest

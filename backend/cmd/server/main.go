@@ -74,6 +74,9 @@ func main() {
 		v1.GET("/communes/:code/insights", middleware.HTTPCache(3600, 86400), handlers.GetCommuneInsights)
 		v1.GET("/communes/:code/prix-historique", middleware.HTTPCache(3600, 86400), handlers.GetCommunePrixHistorique)
 		v1.GET("/communes/:code/prix-par-type", middleware.HTTPCache(3600, 86400), handlers.GetPrixParType)
+		v1.GET("/communes/:code/prix-par-pieces", middleware.HTTPCache(3600, 86400), handlers.GetPrixParPieces)
+		v1.GET("/communes/:code/dpe-evolution", middleware.HTTPCache(3600, 86400), handlers.GetDpeEvolution)
+		v1.GET("/communes/:code/demographie", middleware.HTTPCache(3600, 86400), handlers.GetDemographie)
 		v1.GET("/communes/:code/forecast", middleware.HTTPCache(3600, 86400), handlers.GetCommuneForecast)
 
 		// POI pré-ingérés (ingest_poi.py) — cache 24h navigateur + ETag + L1 RAM Go
@@ -86,6 +89,9 @@ func main() {
 
 		// Stats agrégées
 		v1.GET("/stats", middleware.HTTPCache(1800, 86400), handlers.GetStats)
+		v1.GET("/estimation", middleware.HTTPCache(1800, 86400), handlers.GetEstimation)
+		v1.GET("/loyer", middleware.HTTPCache(1800, 86400), handlers.GetLoyer)
+		v1.GET("/dossier", middleware.HTTPCache(1800, 86400), handlers.GetDossier)
 
 		// Pipeline monitoring
 		v1.GET("/pipeline/runs", handlers.ListPipelineRuns)
@@ -103,18 +109,58 @@ func main() {
 		// Villes jumelles — similaires mais moins chères (−8% mini)
 		v1.GET("/communes/:code/jumelles", middleware.HTTPCache(1800, 86400), handlers.GetVillesJumelles)
 
-		// Isochrones (proxy ORS)
+		// Isochrones (proxy ORS) + transport en commun Navitia (fallback haversine)
 		v1.GET("/isochrone", handlers.GetIsochrone)
+		v1.GET("/isochrone/transit", handlers.GetIsochroneTransit)
+		v1.GET("/isochrone/rer", middleware.HTTPCache(1800, 3600), handlers.GetIsochroneRER)
 		// Heatmap IDF — centroïdes communes + prix médian (cache 30min / 24h)
 		// Supporte ?year=2021..2026 pour timeline animée
 		v1.GET("/heatmap", middleware.HTTPCache(1800, 86400), handlers.GetHeatmapIDF)
+		v1.GET("/choropleth", middleware.HTTPCache(1800, 86400), handlers.GetChoropleth)
 
 		// Pareto Front — rendement vs risque pour scatter plot multicritère
 		v1.GET("/pareto", middleware.HTTPCache(3600, 86400), handlers.GetParetoFront)
 
+		// Revenus Filosofi INSEE — top communes par revenu médian / taux pauvreté
+		v1.GET("/revenus", middleware.HTTPCache(3600, 86400), handlers.GetRevenusIDF)
+
 		// Tuiles vectorielles MVT (PostGIS ST_AsMVT) — cache 1h navigateur
 		v1.GET("/tiles/:z/:x/:y", middleware.HTTPCache(3600, 86400), handlers.GetTiles)
+
+		// ── Gestion locative (propriétaires bailleurs) ────────────────────────
+		gestion := v1.Group("/gestion")
+		gestion.Use(middleware.Auth())
+		{
+			gestion.GET("/dashboard", handlers.GetGestionDashboard)
+			gestion.GET("/biens", handlers.GetGestionBiens)
+			gestion.POST("/biens", handlers.CreateGestionBien)
+			gestion.PUT("/biens/:id", handlers.UpdateGestionBien)
+			gestion.DELETE("/biens/:id", handlers.DeleteGestionBien)
+			gestion.POST("/biens/:id/locataire", handlers.CreateGestionLocataire)
+			gestion.PUT("/locataires/:id", handlers.UpdateGestionLocataire)
+			gestion.DELETE("/locataires/:id", handlers.DeleteGestionLocataire)
+			gestion.POST("/locataires/:id/inviter", handlers.InviterLocataire)
+			gestion.DELETE("/paiements/:id", handlers.DeleteGestionPaiement)
+			gestion.GET("/biens/:id/paiements", handlers.GetGestionPaiements)
+			gestion.POST("/paiements", handlers.CreateGestionPaiement)
+
+			// Documents locatifs (proprio)
+			gestion.POST("/biens/:id/documents", handlers.UploadDocument)
+			gestion.GET("/biens/:id/documents", handlers.ListDocuments)
+			gestion.DELETE("/documents/:id", handlers.DeleteDocument)
+		}
+
+		// ── Espace locataire (locataires connectés) ───────────────────────────
+		v1.GET("/mon-logement", middleware.Auth(), handlers.GetMonLogement)
+		v1.GET("/mon-logement/documents", middleware.Auth(), handlers.ListDocumentsLocataire)
+		v1.POST("/mon-logement/documents/upload", middleware.Auth(), handlers.UploadDocumentLocataire)
+
+		// Documents (download accessible proprio + locataire selon droits)
+		v1.GET("/documents/:id/download", middleware.Auth(), handlers.DownloadDocument)
 	}
+
+	// Sitemap XML — hors groupe /api/v1, indexable par les moteurs
+	r.GET("/sitemap.xml", handlers.GetSitemap)
 
 	// Spec OpenAPI publique (hors groupe /api/v1)
 	r.GET("/openapi.json", handlers.GetOpenAPISpec)

@@ -1,5 +1,6 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
+import BreakEvenCalculator from "./BreakEvenCalculator.jsx";
 
 const terminalGridStyle = {
   backgroundImage: "radial-gradient(circle at 2px 2px, rgba(60,131,246,0.05) 1px, transparent 0)",
@@ -146,8 +147,15 @@ function CashflowChart({ data, breakEvenYear }) {
 }
 
 export default function Portfolio() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+
+  // Helper pour lire un param URL avec fallback
+  const getParam = (key, fallback, isInt = false) => {
+    const v = searchParams.get(key);
+    if (!v) return fallback;
+    return isInt ? (parseInt(v) || fallback) : (parseFloat(v) || fallback);
+  };
 
   // Initialisation depuis query params (?prix=X&loyer=Y&commune=NOM&surface=S)
   const communeLabel = searchParams.get('commune') || null;
@@ -156,19 +164,50 @@ export default function Portfolio() {
   // Si prix/m² passé + surface, on calcule le total ; sinon on prend prix direct
   const prixInit = prixParam
     ? (surfaceParam && prixParam < 50000 ? Math.round(prixParam * surfaceParam) : prixParam)
-    : 350000;
+    : getParam("prix", 350000, true);
 
   const [prix, setPrix] = useState(Math.min(Math.max(prixInit, 50000), 2000000));
-  const [apportPct, setApportPct] = useState(20);
-  const [taux, setTaux] = useState(3.5);
-  const [duree, setDuree] = useState(20);
+  const [apportPct, setApportPct] = useState(() => getParam("apport", 20));
+  const [taux, setTaux] = useState(() => getParam("taux", 3.5));
+  const [duree, setDuree] = useState(() => getParam("duree", 20, true));
   const [loyer, setLoyer] = useState(() => {
+    const fromUrl = getParam("loyer", 0, true);
+    if (fromUrl > 0) return Math.min(Math.max(fromUrl, 200), 8000);
     const l = Number(searchParams.get('loyer'));
     return l > 0 ? Math.min(Math.max(l, 200), 8000) : 1200;
   });
-  const [charges, setCharges] = useState(2400);
-  const [taxeFonciere, setTaxeFonciere] = useState(1800);
-  const [vacance, setVacance] = useState(5);
+  const [charges, setCharges] = useState(() => getParam("charges", 2400, true));
+  const [taxeFonciere, setTaxeFonciere] = useState(() => getParam("taxe", 1800, true));
+  const [vacance, setVacance] = useState(() => getParam("vacance", 5));
+  const [regime, setRegime] = useState(() => searchParams.get("regime") || "micro"); // "micro" | "reel"
+  const [tmi, setTmi] = useState(() => getParam("tmi", 30, true)); // 0 | 11 | 30 | 41 | 45
+  const [copied, setCopied] = useState(false);
+  const [activeTab, setActiveTab] = useState("simulation"); // "simulation" | "breakeven"
+
+  // Synchroniser l'URL quand les valeurs changent
+  useEffect(() => {
+    const params = {
+      prix: String(prix),
+      loyer: String(loyer),
+      apport: String(apportPct),
+      taux: String(taux),
+      duree: String(duree),
+      charges: String(charges),
+      vacance: String(vacance),
+      taxe: String(taxeFonciere),
+      regime,
+      tmi: String(tmi),
+    };
+    if (communeLabel) params.commune = communeLabel;
+    setSearchParams(params, { replace: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prix, loyer, apportPct, taux, duree, charges, vacance, taxeFonciere, regime, tmi]);
+
+  const copyLink = useCallback(() => {
+    navigator.clipboard.writeText(window.location.href);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, []);
 
   const calc = useMemo(() => {
     const apport = prix * (apportPct / 100);
@@ -190,6 +229,31 @@ export default function Portfolio() {
     const rendementBrut = (loyer * 12 / prix) * 100;
     const rendementNet = (loyerNetAnnuel / coutTotal) * 100;
     const effortMensuel = (mensualite - loyerNetAnnuel / 12) > 0 ? mensualite - loyerNetAnnuel / 12 : 0;
+
+    // Fiscalité immobilière
+    const loyerBrutAnnuel = loyer * 12;
+    const interetsAnnuels = (() => {
+      // Intérêts de la 1ère année (approximation)
+      const capital = prix * (1 - apportPct / 100);
+      return capital * (taux / 100);
+    })();
+
+    let revenus_imposables = 0;
+    if (regime === "micro") {
+      revenus_imposables = loyerBrutAnnuel * 0.70; // abattement 30%
+    } else {
+      // Régime réel : on déduit intérêts, charges, taxe foncière
+      revenus_imposables = loyerBrutAnnuel - interetsAnnuels - charges - taxeFonciere;
+    }
+
+    const impot = Math.max(0, revenus_imposables) * (tmi / 100 + 0.172);
+    // Déficit foncier au régime réel : imputable sur revenu global max 10 700€/an
+    const deficit = revenus_imposables < 0 ? Math.min(Math.abs(revenus_imposables), 10700) : 0;
+    const economie_deficit = deficit * (tmi / 100); // économie d'impôt sur revenu global
+
+    const loyerNetNetAnnuel = loyerNetAnnuel - impot + economie_deficit;
+    const rendementNetNet = (loyerNetNetAnnuel / coutTotal) * 100;
+    const cashflowNetNet = loyerNetNetAnnuel / 12 - mensualite;
 
     const plusValue2pct10ans = prix * (Math.pow(1.02, 10) - 1);
     const cashflowsCumul10ans = cashflowMensuel * 12 * 10;
@@ -234,15 +298,48 @@ export default function Portfolio() {
       roi10ans,
       chartData,
       breakEvenYear,
+      revenus_imposables,
+      impot,
+      loyerNetNetAnnuel,
+      rendementNetNet,
+      cashflowNetNet,
+      regime_hint: regime === "micro" ? "Abattement forfaitaire 30%" : "Déduction réelle (intérêts + charges)",
     };
-  }, [prix, apportPct, taux, duree, loyer, charges, taxeFonciere, vacance]);
+  }, [prix, apportPct, taux, duree, loyer, charges, taxeFonciere, vacance, regime, tmi]);
 
   const fmtEur = v => `${Math.round(v).toLocaleString("fr-FR")} €`;
   const fmtPct = v => `${v.toFixed(2)} %`;
   const cashflowColor = calc.cashflowMensuel >= 0 ? "green" : "red";
 
   return (
-    <div className="h-full overflow-y-auto bg-background-dark" style={terminalGridStyle}>
+    <div className="h-full flex flex-col bg-background-dark" style={terminalGridStyle}>
+      {/* Onglets */}
+      <div className="flex gap-1 px-6 pt-4 border-b border-slate-800 shrink-0">
+        {[
+          { key: "simulation", label: "Simulateur rendement", icon: "calculate" },
+          { key: "breakeven", label: "Achat vs Location", icon: "balance" },
+        ].map(tab => (
+          <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-t-lg text-sm font-medium transition-all"
+            style={{
+              background: activeTab === tab.key ? "rgba(60,131,246,0.12)" : "transparent",
+              borderBottom: activeTab === tab.key ? "2px solid #3c83f6" : "2px solid transparent",
+              color: activeTab === tab.key ? "#3c83f6" : "#64748b",
+            }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{tab.icon}</span>
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "breakeven" && (
+        <div className="flex-1 min-h-0">
+          <BreakEvenCalculator />
+        </div>
+      )}
+
+      {activeTab === "simulation" && (
+      <div className="flex-1 overflow-y-auto">
       <div className="w-full p-6 md:px-10 space-y-8">
 
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-slate-800 pb-6">
@@ -266,9 +363,23 @@ export default function Portfolio() {
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-xl px-4 py-2">
-            <span className="material-symbols-outlined text-primary" style={{ fontSize: 16 }}>info</span>
-            <span className="text-xs text-slate-400">Simulation 100% locale · aucune donnée envoyée</span>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-xl px-4 py-2">
+              <span className="material-symbols-outlined text-primary" style={{ fontSize: 16 }}>info</span>
+              <span className="text-xs text-slate-400">Simulation 100% locale · aucune donnée envoyée</span>
+            </div>
+            <button onClick={copyLink}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs transition-all"
+              style={{
+                background: copied ? "rgba(16,185,129,0.12)" : "rgba(30,41,59,0.6)",
+                border: `1px solid ${copied ? "rgba(16,185,129,0.3)" : "rgba(30,41,59,0.8)"}`,
+                color: copied ? "#10b981" : "#64748b",
+              }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 14 }}>
+                {copied ? "check" : "link"}
+              </span>
+              {copied ? "Copié !" : "Partager"}
+            </button>
           </div>
         </div>
 
@@ -407,6 +518,75 @@ export default function Portfolio() {
                 </div>
               </div>
             </div>
+
+            {/* Section Fiscalité */}
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                  <span className="material-symbols-outlined text-amber-400" style={{ fontSize: 18 }}>receipt</span>
+                </div>
+                <h2 className="font-bold text-white text-lg">Fiscalité</h2>
+              </div>
+
+              {/* Régime */}
+              <div>
+                <p className="text-xs text-slate-400 uppercase tracking-wider mb-2">Régime d'imposition</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[["micro", "Micro-foncier", "Abattement 30%"], ["reel", "Régime réel", "Déductions réelles"]].map(([val, label, sub]) => (
+                    <button key={val} onClick={() => setRegime(val)}
+                      className="p-2.5 rounded-lg text-left transition-all"
+                      style={{
+                        background: regime === val ? "rgba(245,158,11,0.12)" : "rgba(15,23,36,0.6)",
+                        border: `1px solid ${regime === val ? "rgba(245,158,11,0.4)" : "rgba(30,41,59,0.8)"}`,
+                      }}>
+                      <p className={`text-xs font-bold ${regime === val ? "text-amber-400" : "text-slate-400"}`}>{label}</p>
+                      <p className="text-[10px] text-slate-600 mt-0.5">{sub}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* TMI */}
+              <div>
+                <div className="flex justify-between items-baseline mb-2">
+                  <p className="text-xs text-slate-400 uppercase tracking-wider">Tranche marginale d'imposition</p>
+                  <span className="text-sm font-bold text-amber-400">{tmi} %</span>
+                </div>
+                <div className="flex gap-1.5">
+                  {[0, 11, 30, 41, 45].map(t => (
+                    <button key={t} onClick={() => setTmi(t)}
+                      className="flex-1 py-1.5 rounded-lg text-xs font-bold transition-all"
+                      style={{
+                        background: tmi === t ? "rgba(245,158,11,0.2)" : "rgba(15,23,36,0.6)",
+                        border: `1px solid ${tmi === t ? "rgba(245,158,11,0.5)" : "rgba(30,41,59,0.8)"}`,
+                        color: tmi === t ? "#f59e0b" : "#475569",
+                      }}>
+                      {t}%
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Résumé fiscal */}
+              <div className="pt-2 border-t border-slate-800 space-y-1.5">
+                <div className="flex justify-between text-xs">
+                  <span className="text-slate-500">Revenus imposables</span>
+                  <span className={`font-bold mono-nums ${calc.revenus_imposables >= 0 ? "text-slate-300" : "text-emerald-400"}`}>
+                    {calc.revenus_imposables >= 0 ? fmtEur(calc.revenus_imposables) : `Déficit ${fmtEur(-calc.revenus_imposables)}`}
+                  </span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-slate-500">Impôt + prélèvements sociaux</span>
+                  <span className="font-bold mono-nums text-red-400">−{fmtEur(calc.impot)}</span>
+                </div>
+                <div className="flex justify-between text-xs font-bold">
+                  <span className="text-slate-400">Loyer net net annuel</span>
+                  <span className={`mono-nums ${calc.loyerNetNetAnnuel >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                    {fmtEur(calc.loyerNetNetAnnuel)}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Colonne droite — Résultats */}
@@ -441,6 +621,13 @@ export default function Portfolio() {
                 color={calc.rendementNet >= 3.5 ? "green" : calc.rendementNet >= 2 ? "neutral" : "red"}
                 icon="show_chart"
                 sub="Loyer net / coût total"
+              />
+              <ResultCard
+                label="Rendement net-net"
+                value={fmtPct(calc.rendementNetNet)}
+                color={calc.rendementNetNet >= 2.5 ? "green" : calc.rendementNetNet >= 1 ? "neutral" : "red"}
+                icon="account_balance"
+                sub={`TMI ${tmi}% + 17.2% prélèv. soc. · ${regime === "micro" ? "Micro-foncier" : "Réel"}`}
               />
               <ResultCard
                 label="Effort mensuel"
@@ -525,6 +712,8 @@ export default function Portfolio() {
           </div>
         </div>
       </div>
+      </div>
+      )}
     </div>
   );
 }

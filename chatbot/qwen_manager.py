@@ -31,19 +31,19 @@ logger = logging.getLogger(__name__)
 
 
 class HomepediaQwenManager:
-    """Qwen2.5-0.5B GGUF — Cloud Run CPU + génération réponses immobilières FR."""
+    """Qwen2.5-1.5B GGUF — Cloud Run CPU + génération réponses immobilières FR."""
 
-    def __init__(self, model_path: str = "./models/qwen2.5-0.5b.gguf"):
+    def __init__(self, model_path: str = "./models/qwen2.5-1.5b.gguf"):
         self.model_path = model_path
         self.model: Optional[Any] = None
         self.initialized = False
-        self.model_repo = "Qwen/Qwen2.5-0.5B-Instruct-GGUF"
-        self.gguf_filename = "qwen2.5-0.5b-instruct-q4_k_m.gguf"
+        self.model_repo = "Qwen/Qwen2.5-1.5B-Instruct-GGUF"
+        self.gguf_filename = "qwen2.5-1.5b-instruct-q4_k_m.gguf"
 
         n_threads = min(os.cpu_count() or 2, int(os.getenv("QWEN_MAX_THREADS", "4")))
         self.llama_config = {
-            "n_ctx": 1024,        # réduit pour accélérer le prefill
-            "n_batch": 512,       # batch plus grand = prefill plus rapide
+            "n_ctx": 1536,
+            "n_batch": 1024,   # prefill plus rapide
             "n_threads": n_threads,
             "use_mmap": True,
             "use_mlock": False,
@@ -214,45 +214,100 @@ class HomepediaQwenManager:
 
     # ── Helpers prompt ─────────────────────────────────────────────────────────
 
-    # Hint par intent : quelle(s) colonne(s) mettre en avant dans la réponse
+    # Références IDF
+    _IDF_REF = "prix moyen IDF 4 300 euros/m2, rendement moyen 4,2%, score moyen 55/100"
+
+    # Instructions analytiques par intent (sans emojis)
     _INTENT_FOCUS = {
-        "ecoles_ips":       "mets en avant l'IPS (ips_moyen) et pct_ecoles_favorisees. Cite chaque commune avec son département entre parenthèses, ex: 'Versailles (78)'",
-        "rendement":        "mets en avant le rendement locatif brut (rendement_pct %) et le loyer médian (loyer_m2)",
-        "dpe":              "mets en avant le score DPE (score_dpe) et pct_bon_dpe. Cite chaque commune avec son département, ex: 'Moussy (77)'",
-        "securite":         "mets en avant le taux de cambriolages (cambriolages_pour_mille) et le score sécurité. Cite chaque commune avec son département",
-        "top_investissement": "mets en avant le score investissement (score_invest) et le rendement (rendement_pct). Cite chaque commune",
-        "top_qualite_vie":  "mets en avant le score qualité de vie (qualite_vie). Cite chaque commune avec son département",
-        "top_prix":         "mets en avant le prix au m² (prix_m2 en €/m²). Cite chaque commune avec son département et son prix",
-        "multi_criteria":   "mets en avant le score global et les critères demandés. Cite chaque commune avec son département",
-        "comparaison":      "compare OBLIGATOIREMENT les prix (prix_m2 en €/m²) de chaque commune. Ex: 'Versailles (78) : 8 500 €/m²'",
-        "commune_detail":   "présente le NOM exact de la commune, puis son prix_m2 (€/m²), rendement_pct (%), score_global",
+        "ecoles_ips": (
+            "Cite l'IPS (ips_moyen) et le % d'ecoles favorisees pour chaque commune. "
+            "Moyenne IDF : IPS 103. Indique si la commune depasse ce seuil. "
+            "Exemple : 'Versailles (78) : IPS 127, 89% ecoles favorisees'."
+        ),
+        "rendement": (
+            "Cite le rendement brut (rendement_pct %), le loyer (loyer_m2 euros/m2/mois) et le prix pour chaque commune. "
+            "Moyenne IDF : 4,2% de rendement. Explique pourquoi le rendement est eleve ou faible. "
+            "Exemple : 'Grigny (91) : 7,8% — loyer 13 euros/m2, prix 1 680 euros/m2'."
+        ),
+        "dpe": (
+            "Cite le score DPE et le % de bons DPE (A/B/C) pour chaque commune. "
+            "Un bon DPE reduit les charges et la vacance locative."
+        ),
+        "securite": (
+            "Cite le taux de cambriolages (en pour mille) et le score securite. "
+            "Moyenne IDF : 5,5 pour mille. Indique si la commune est au-dessus ou en dessous."
+        ),
+        "top_investissement": (
+            "Cite le score investissement, le rendement et le prix pour chaque commune. "
+            "Explique le ratio risque/rendement. Donne un exemple chiffre concret pour les 2 meilleures."
+        ),
+        "top_qualite_vie": (
+            "Cite le score qualite de vie (/100) et le prix pour chaque commune. "
+            "Compare au score moyen IDF (55/100)."
+        ),
+        "top_prix": (
+            "Cite le prix au m2 avec le departement. Dis si la commune est chere ou abordable vs 4 300 euros/m2."
+        ),
+        "budget_achat": (
+            "Cite le prix au m2, le rendement et le score. "
+            "Calcule la surface achetable pour un T2 (40-50 m2) avec le budget indique."
+        ),
+        "multi_criteria": (
+            "Cite prix, rendement et qualite de vie pour chaque commune. "
+            "Explique pourquoi chaque commune correspond a la demande. "
+            "Donne un verdict : quelle commune recommandes-tu en premier et pourquoi."
+        ),
+        "comparaison": (
+            "Compare les deux communes sur prix, rendement, qualite de vie, score global. "
+            "Dis laquelle gagne sur chaque critere. "
+            "Conclus avec une recommandation selon le profil (investisseur ou famille)."
+        ),
+        "commune_detail": (
+            "Presente le prix, rendement, loyer et score global. "
+            "Compare a la moyenne IDF. Dis si c'est abordable et si c'est un bon investissement."
+        ),
+        "commune_similaire": (
+            "Explique en quoi chaque commune ressemble a la reference et en quoi elle s'en distingue. "
+            "Cite prix_m2, rendement_pct, qualite_vie."
+        ),
+        "tendance_prix": (
+            "Cite l'evolution des prix (%) entre 2021 et 2024 pour chaque commune. "
+            "Indique si la hausse ou baisse est significative. "
+            "Exemple : 'Saclay (91) : +18% entre 2021 et 2024'."
+        ),
+        "isochrone_paris": (
+            "Cite la distance ou le temps de trajet, le prix et le score qualite de vie. "
+            "Souligne les meilleures opportunites : communes proches ET abordables."
+        ),
     }
 
     def _build_messages(self, sql_data: List[Dict], user_query: str, context: str, intent: str = "") -> List[Dict]:
-        # Convertir Decimal → float pour que Qwen voie des nombres (pas des strings)
-        data_json = json.dumps(sql_data[:6], ensure_ascii=False,
+        data_json = json.dumps(sql_data[:5], ensure_ascii=False,
                                default=lambda v: float(v) if isinstance(v, Decimal) else str(v))
-        context_block = f"Historique : {context}\n" if context.strip() else ""
-        focus = self._INTENT_FOCUS.get(intent, "mets en avant les données les plus pertinentes pour la question")
+        context_block = f"Contexte : {context}\n" if context.strip() else ""
+        focus = self._INTENT_FOCUS.get(intent,
+            "Mets en avant les chiffres pertinents. Compare a la moyenne IDF. Ne liste pas seulement, analyse.")
         return [
             {"role": "system", "content": (
-                "Tu es HomePedia, assistant immobilier IDF. "
-                "RÈGLES : cite UNIQUEMENT les chiffres du JSON fourni. "
-                "Cite toujours le NOM des communes avec leur département entre parenthèses. "
-                f"Pour cette question, {focus}. "
-                "Réponds en français, 2-4 phrases courtes. "
-                "Pas de code, LaTeX, ni unités fictives (millions, francs)."
+                "Tu es HomePedia, assistant immobilier Ile-de-France. "
+                "Cite UNIQUEMENT les chiffres du JSON fourni. "
+                "Toujours citer le nom de la commune avec son departement entre parentheses, ex: Versailles (78). "
+                f"References IDF : {self._IDF_REF}. "
+                f"{focus} "
+                "Reponds en francais, 3 a 5 phrases concises et analytiques. "
+                "Pas d'emojis. Pas de code. Pas d'unites fictives."
             )},
             {"role": "user", "content": (
                 f"{context_block}"
-                f"Données : {data_json}\nQuestion : {user_query}"
+                f"Donnees : {data_json}\n"
+                f"Question : {user_query}"
             )},
         ]
 
     def _llm_params(self) -> Dict:
         return dict(
-            max_tokens=120,
-            temperature=0.1,
+            max_tokens=180,
+            temperature=0.15,
             top_p=0.9,
             top_k=40,
             repeat_penalty=1.1,

@@ -78,6 +78,20 @@ const FEATURES = [
     color: "#f59e0b",
     link: "/portfolio",
   },
+  {
+    icon: "home_work",
+    title: "Gestion locative DIY",
+    desc: "Gérez vos biens, suivez les loyers mois par mois, générez les quittances PDF et calculez l'indexation IRL — sans abonnement.",
+    color: "#8b5cf6",
+    link: "/gestion",
+  },
+  {
+    icon: "key",
+    title: "Espace locataire",
+    desc: "Portail dédié aux locataires : fiche logement, historique des paiements et téléchargement des quittances PDF en autonomie.",
+    color: "#06b6d4",
+    link: "/mon-logement",
+  },
 ];
 
 const SOURCES = [

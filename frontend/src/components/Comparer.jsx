@@ -447,15 +447,25 @@ export default function Comparer() {
   }, []);
 
   const handleSelectA = (c) => {
-    setCommuneA(c);
-    if (c) setSearchParams(p => { p.set("a", c.code_insee || c.code_commune); return p; });
-    else setSearchParams(p => { p.delete("a"); return p; });
+    if (c) {
+      const code = c.code_insee || c.code_commune;
+      setSearchParams(p => { p.set("a", code); return p; });
+      loadFromCode(code, setCommuneA, setLoadingA);
+    } else {
+      setCommuneA(null);
+      setSearchParams(p => { p.delete("a"); return p; });
+    }
   };
 
   const handleSelectB = (c) => {
-    setCommuneB(c);
-    if (c) setSearchParams(p => { p.set("b", c.code_insee || c.code_commune); return p; });
-    else setSearchParams(p => { p.delete("b"); return p; });
+    if (c) {
+      const code = c.code_insee || c.code_commune;
+      setSearchParams(p => { p.set("b", code); return p; });
+      loadFromCode(code, setCommuneB, setLoadingB);
+    } else {
+      setCommuneB(null);
+      setSearchParams(p => { p.delete("b"); return p; });
+    }
   };
 
   const A = communeA;
@@ -503,12 +513,24 @@ export default function Comparer() {
 
       {/* En-têtes communes */}
       <div className="flex gap-0">
-        <CommuneHeader data={A} color="text-blue-400" side="left" />
+        {loadingA ? (
+          <div className="flex-1 mr-2 rounded-2xl border border-slate-800 p-6 flex items-center justify-center">
+            <span className="material-symbols-outlined animate-spin text-blue-400" style={{ fontSize: 28 }}>progress_activity</span>
+          </div>
+        ) : (
+          <CommuneHeader data={A} color="text-blue-400" side="left" />
+        )}
         <div className="flex items-center justify-center w-12 shrink-0">
           <div className="w-px h-full bg-slate-700/50" />
           <span className="absolute bg-slate-800 text-slate-400 text-xs font-bold px-2 py-1 rounded-full border border-slate-700">VS</span>
         </div>
-        <CommuneHeader data={B} color="text-violet-400" side="right" />
+        {loadingB ? (
+          <div className="flex-1 ml-2 rounded-2xl border border-slate-800 p-6 flex items-center justify-center">
+            <span className="material-symbols-outlined animate-spin text-violet-400" style={{ fontSize: 28 }}>progress_activity</span>
+          </div>
+        ) : (
+          <CommuneHeader data={B} color="text-violet-400" side="right" />
+        )}
       </div>
 
       {/* Comparaisons */}

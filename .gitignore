@@ -89,3 +89,19 @@ dvf_full_log.txt
 /kickoff*
 /message*
 /project*
+
+# Environnements virtuels nommés (le pattern .venv/ ne les couvre pas)
+ingestion/.venv*/
+
+# dbt — artefacts de build et profil local
+homepedia_dbt/target/
+homepedia_dbt/dbt_packages/
+homepedia_dbt/logs/
+homepedia_dbt/.user.yml
+
+# Modèles LLM (plusieurs centaines de Mo, téléchargés au build Docker)
+chatbot/models/
+rag/models/
+
+# Config MCP locale
+.mcp.json

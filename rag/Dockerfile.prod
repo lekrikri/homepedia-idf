@@ -1,0 +1,37 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 build-essential cmake \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# sentence-transformers pour les embeddings (sans Ollama en prod)
+# einops est requis par le code distant de nomic-embed-text-v1.5 (trust_remote_code)
+RUN pip install --no-cache-dir \
+    sentence-transformers==3.3.1 \
+    llama-cpp-python==0.3.4 \
+    einops==0.8.0
+
+# Pré-télécharger le modèle d'embedding nomic (768 dims, identique à Ollama nomic-embed-text)
+RUN python -c "from sentence_transformers import SentenceTransformer; \
+    SentenceTransformer('nomic-ai/nomic-embed-text-v1.5', trust_remote_code=True)"
+
+COPY 03_rag_server.py .
+COPY corpus.json legal_corpus.json mock_gold.json ./
+COPY 01_build_corpus.py 02_index_pgvector.py 05_index_legal_prod.py ./
+
+# Le modèle Qwen est copié depuis rag/models/ (rempli par gsutil dans cloudbuild-rag.yaml)
+COPY models/ /app/models/
+
+EXPOSE 8002
+
+ENV USE_LOCAL_EMBED=true
+ENV USE_LOCAL_LLM=true
+ENV LLM_MODEL_PATH=/app/models/qwen2.5-0.5b.gguf
+ENV LLM_THREADS=4
+
+CMD ["python", "03_rag_server.py"]

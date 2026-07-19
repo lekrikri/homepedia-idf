@@ -1,0 +1,38 @@
+# Contexte envoyé à Cloud Build (sans ce fichier, gcloud retombe sur .gitignore).
+# Objectif : ne uploader que les sources utiles aux builds backend / frontend / rag.
+
+.git/
+.gitignore
+
+# Environnements virtuels et dépendances (plusieurs centaines de Mo)
+**/.venv/
+**/.venv*/
+**/node_modules/
+**/__pycache__/
+*.pyc
+
+# Artefacts de build
+frontend/dist/
+frontend/.next/
+backend/bin/
+backend/server
+
+# dbt
+homepedia_dbt/target/
+homepedia_dbt/dbt_packages/
+homepedia_dbt/logs/
+
+# Modèles LLM — récupérés depuis GCS pendant le build
+chatbot/models/
+rag/models/
+
+# Tests E2E et notebooks, inutiles au runtime
+e2e/
+databricks/
+*.ipynb
+
+# Données brutes et exports
+data/
+*.csv
+*.parquet
+*.gz

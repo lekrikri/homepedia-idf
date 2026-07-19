@@ -100,7 +100,7 @@ steps:
       - --cpu=1
       - --min-instances=0
       - --max-instances=5
-      - --set-env-vars=GIN_MODE=release,POSTGRES_HOST=aws-0-eu-west-1.pooler.supabase.com,POSTGRES_PORT=5432,POSTGRES_DB=postgres,POSTGRES_USER=postgres.iugsfmvqddburvufzacy,POSTGRES_SSLMODE=require
+      - --set-env-vars=GIN_MODE=release,POSTGRES_HOST=aws-0-eu-west-1.pooler.supabase.com,POSTGRES_PORT=5432,POSTGRES_DB=postgres,POSTGRES_USER=postgres.iugsfmvqddburvufzacy,POSTGRES_SSLMODE=require,RAG_SERVICE_URL=https://homepedia-rag-714876351060.europe-west1.run.app
       - --update-secrets=POSTGRES_PASSWORD=homepedia-supabase-password:latest,JWT_SECRET=homepedia-jwt-secret:latest
       - --quiet
     waitFor: [push-backend]
@@ -123,27 +123,19 @@ steps:
     waitFor: ['-']
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # ÉTAPE 2b : Déployer Chatbot sur Cloud Run (image :latest existante)
+  # ÉTAPE 2b : Récupérer l'URL du chatbot existant (pas de redeploy)
+  # Le chatbot prend 10-15 min à compiler + 60s à démarrer (Qwen) → pipeline
+  # séparé : cloudbuild-chatbot.yaml. Ici on lit juste l'URL du service existant.
   # ─────────────────────────────────────────────────────────────────────────────
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
     id: deploy-chatbot
-    entrypoint: gcloud
+    entrypoint: bash
     args:
-      - run
-      - deploy
-      - ${_CHATBOT_SERVICE}
-      - --image=${_REGISTRY}/chat:latest
-      - --region=${_REGION}
-      - --platform=managed
-      - --allow-unauthenticated
-      - --port=8080
-      - --memory=2Gi
-      - --cpu=2
-      - --min-instances=0
-      - --max-instances=2
-      - --set-env-vars=POSTGRES_HOST=aws-0-eu-west-1.pooler.supabase.com,POSTGRES_PORT=5432,POSTGRES_DB=postgres,POSTGRES_USER=postgres.iugsfmvqddburvufzacy,POSTGRES_SSLMODE=require,DISABLE_LLM=false
-      - --update-secrets=POSTGRES_PASSWORD=homepedia-supabase-password:latest
-      - --quiet
+      - -c
+      - |
+        gcloud run services describe ${_CHATBOT_SERVICE} \
+          --region=${_REGION} \
+          --format='value(status.url)' 2>/dev/null || true
     waitFor: [tag-chatbot]
 
   # ─────────────────────────────────────────────────────────────────────────────

@@ -3,15 +3,23 @@ import { NavLink, useNavigate } from "react-router-dom";
 import LoginModal from "./LoginModal";
 import FavoritesModal from "./FavoritesModal";
 import SettingsModal from "./SettingsModal";
+import GlobalSearch from "./GlobalSearch.jsx";
 
 const NAV_PUBLIC = [
-  { to: "/",             label: "Accueil",      end: true },
+  { to: "/",             label: "Accueil",        end: true },
   { to: "/carte",        label: "Carte" },
   { to: "/transactions", label: "Transactions" },
   { to: "/dashboard",    label: "Dashboard" },
   { to: "/comparer",     label: "Comparer" },
+  { to: "/dossier",      label: "Rechercher",     icon: "travel_explore" },
+  { to: "/estimation",   label: "Estimer",        icon: "calculate" },
+  { to: "/loyer",        label: "Loyer",          icon: "key" },
   { to: "/pareto",       label: "Pareto" },
-  { to: "/portfolio",    label: "Portfolio",    icon: "savings" },
+  { to: "/portfolio",    label: "Portfolio",      icon: "savings" },
+  { to: "/gestion",      label: "Mon patrimoine", icon: "home_work" },
+];
+const NAV_LOCATAIRE = [
+  { to: "/mon-logement", label: "Mon logement", icon: "house", end: true },
 ];
 const NAV_ADMIN = [
   ...NAV_PUBLIC,
@@ -27,7 +35,7 @@ function getInitials(user) {
   return user.email?.[0]?.toUpperCase() || "?";
 }
 
-export default function Header({ onOpenTour }) {
+export default function Header({ onOpenTour, onOpenFavoris, favorisCount = 0 }) {
   const navigate = useNavigate();
   const [search,       setSearch]       = useState("");
   const [suggestions,  setSuggestions]  = useState([]);
@@ -88,6 +96,13 @@ export default function Header({ onOpenTour }) {
     } catch {}
   }, []);
 
+  // Écouter l'événement global pour ouvrir la modal de connexion
+  useEffect(() => {
+    const handler = () => setShowLogin(true);
+    document.addEventListener("hp:open-login", handler);
+    return () => document.removeEventListener("hp:open-login", handler);
+  }, []);
+
   // Close dropdown when clicking outside
   useEffect(() => {
     const handler = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setShowMenu(false); };
@@ -97,6 +112,9 @@ export default function Header({ onOpenTour }) {
 
   const handleLogin = (userData) => {
     setUser(userData);
+    if (userData?.role === "locataire") {
+      navigate("/mon-logement");
+    }
   };
 
   const handleLogout = () => {
@@ -126,7 +144,7 @@ export default function Header({ onOpenTour }) {
           </div>
 
           <nav className="hidden md:flex items-center gap-6">
-            {(user?.role === "admin" ? NAV_ADMIN : NAV_PUBLIC).map(({ to, label, end, icon }) => (
+            {(user?.role === "admin" ? NAV_ADMIN : user?.role === "locataire" ? NAV_LOCATAIRE : NAV_PUBLIC).map(({ to, label, end, icon }) => (
               <NavLink
                 key={to}
                 to={to}
@@ -145,8 +163,9 @@ export default function Header({ onOpenTour }) {
         </div>
 
         {/* Search — masqué sur mobile */}
-        <div className="hidden md:block flex-1 max-w-md px-10">
-          <div className="relative group" ref={searchRef}>
+        <div className="hidden md:flex flex-1 items-center gap-3 max-w-2xl px-6">
+          <GlobalSearch />
+          <div className="relative group flex-1" ref={searchRef}>
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors" style={{ fontSize: 18 }}>
               {loading ? "sync" : "search"}
             </span>
@@ -191,6 +210,18 @@ export default function Header({ onOpenTour }) {
 
         {/* Right actions */}
         <div className="flex items-center gap-2 md:gap-4">
+          <button
+            onClick={onOpenFavoris}
+            title="Favoris"
+            className="hidden md:flex relative items-center justify-center size-9 rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-800 transition-colors"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>favorite</span>
+            {favorisCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-red-500 text-[9px] font-bold text-white flex items-center justify-center">
+                {favorisCount > 9 ? "9+" : favorisCount}
+              </span>
+            )}
+          </button>
           <button
             onClick={onOpenTour}
             title="Didacticiel — découvrir HomePedia"

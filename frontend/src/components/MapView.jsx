@@ -294,6 +294,14 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock, sheetS
       .then(r => setPrixParType(r.data?.data || [])).catch(() => setPrixParType([]));
   }, [codeCommune]);
 
+  // Prix par nombre de pièces (T1/T2/T3/T4+)
+  const [prixParPieces, setPrixParPieces] = useState([]);
+  useEffect(() => {
+    if (!codeCommune) { setPrixParPieces([]); return; }
+    axios.get(`/api/v1/communes/${codeCommune}/prix-par-pieces`)
+      .then(r => setPrixParPieces(r.data?.data || [])).catch(() => setPrixParPieces([]));
+  }, [codeCommune]);
+
   // #25 Accordéon score expliqué
   const [showScoreDetail, setShowScoreDetail] = useState(false);
 
@@ -834,6 +842,32 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock, sheetS
           );
         })()}
 
+        {/* ── Prix médian par typologie (T1/T2/T3/T4+) ────────────────── */}
+        {prixParPieces.length > 1 && (() => {
+          const max = Math.max(...prixParPieces.map(d => d.prix_median_m2));
+          const COLORS = { "T1": "#f97316", "T2": "#60a5fa", "T3": "#34d399", "T4+": "#a78bfa" };
+          return (
+            <div className="rounded-xl p-4" style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(60,131,246,0.12)" }}>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="material-symbols-outlined text-slate-400" style={{ fontSize: 13 }}>apartment</span>
+                <p className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold">Prix médian par typologie</p>
+              </div>
+              <div className="flex items-end gap-1.5" style={{ height: 52 }}>
+                {prixParPieces.filter(d => d.type !== "Autre").map(d => {
+                  const h = Math.round((d.prix_median_m2 / max) * 44);
+                  return (
+                    <div key={d.type} className="flex flex-col items-center gap-0.5 flex-1">
+                      <span className="text-[7px] text-slate-500 mono-nums">{Math.round(d.prix_median_m2 / 1000)}k</span>
+                      <div className="w-full rounded-t-sm" style={{ height: h, background: COLORS[d.type] ?? "#64748b", opacity: 0.85 }} />
+                      <span className="text-[8px] font-bold" style={{ color: COLORS[d.type] ?? "#64748b" }}>{d.type}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* ── #27 POURQUOI CETTE COMMUNE ? ─────────────────────────────── */}
         {insights?.insights?.length > 0 && (
           <div className="rounded-xl p-4" style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.18)" }}>
@@ -964,6 +998,41 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock, sheetS
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* ── REVENUS FILOSOFI INSEE 2019 ──────────────────────────────── */}
+        {agregat?.revenu_median_uc != null && (
+          <div className="rounded-xl p-4" style={{ background: "rgba(22,32,48,0.8)", border: "1px solid rgba(60,131,246,0.12)" }}>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="material-symbols-outlined text-emerald-400" style={{ fontSize: 13 }}>euro</span>
+              <p className="text-[9px] uppercase tracking-widest text-slate-500 font-semibold">Revenus des ménages</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-1">
+                <p className="text-[9px] text-slate-500 mb-0.5">Revenu médian / UC</p>
+                <p className="text-base font-bold mono-nums text-slate-100">
+                  {Math.round(agregat.revenu_median_uc).toLocaleString("fr-FR")} €
+                </p>
+                {agregat.taux_pauvrete != null && (
+                  <p className="text-[9px]" style={{ color: agregat.taux_pauvrete > 20 ? "#ef4444" : agregat.taux_pauvrete > 12 ? "#f59e0b" : "#10b981" }}>
+                    Taux pauvreté : {Number(agregat.taux_pauvrete).toFixed(1)} %
+                  </p>
+                )}
+              </div>
+              {agregat.revenu_d1 != null && agregat.revenu_d9 != null && (
+                <div className="flex flex-col gap-1">
+                  <p className="text-[9px] text-slate-500 mb-0.5">Écart D1 → D9</p>
+                  <p className="text-[10px] font-semibold mono-nums text-slate-300">
+                    {Math.round(agregat.revenu_d1).toLocaleString("fr-FR")} €
+                  </p>
+                  <p className="text-[10px] font-semibold mono-nums text-slate-300">
+                    {Math.round(agregat.revenu_d9).toLocaleString("fr-FR")} €
+                  </p>
+                </div>
+              )}
+            </div>
+            <p className="text-[8px] text-slate-600 mt-2">Source : INSEE Filosofi 2019</p>
           </div>
         )}
 
@@ -1697,6 +1766,7 @@ export default function MapView() {
   const [isoProfile, setIsoProfile] = useState('driving-car');
   const [isoLoading, setIsoLoading] = useState(false);
   const [showHeatmap, setShowHeatmap] = useState(false);
+  const [choroScore, setChoroScore] = useState(null); // null = désactivé
   const [timelineYear, setTimelineYear] = useState(null); // null = actuel, 2021-2026 = historique/prévision
   const [timelinePlay, setTimelinePlay] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -2065,7 +2135,7 @@ export default function MapView() {
         .slice(0, 30)
         .forEach(el => {
           const type = el.tags?.amenity;
-          const cfg = type === "kindergarten" ? { letter: "M", bg: "#fbbf24" }
+          const cfg = type === "kindergarten" ? { letter: "Ma", bg: "#fbbf24" }
                     : type === "university" || type === "college" ? { letter: "U", bg: "#3b82f6" }
                     : { letter: "É", bg: "#0ea5e9" };
           schoolMarkersRef.current.push(
@@ -2104,9 +2174,9 @@ export default function MapView() {
         .slice(0, 25)
         .forEach(el => {
           const type = el.tags?.leisure;
-          const cfg = type === "playground" ? { letter: "J", bg: "#22c55e" }
-                    : type === "nature_reserve" ? { letter: "N", bg: "#15803d" }
-                    : { letter: "P", bg: "#84cc16" };
+          const cfg = type === "playground" ? { letter: "J",  bg: "#22c55e" }
+                    : type === "nature_reserve" ? { letter: "Na", bg: "#15803d" }
+                    : { letter: "Pa", bg: "#84cc16" };
           parkMarkersRef.current.push(
             new maplibregl.Marker({ element: createPOIMkr(cfg.letter, cfg.bg, el.tags?.name || "Parc"), anchor: "center" })
               .setLngLat([el.lon, el.lat]).addTo(map.current)
@@ -2143,9 +2213,9 @@ export default function MapView() {
         .slice(0, 30)
         .forEach(el => {
           const type = el.tags?.shop;
-          const cfg = type === "supermarket" || type === "mall" ? { letter: "S", bg: "#7c3aed" }
-                    : type === "bakery" ? { letter: "B", bg: "#d97706" }
-                    : { letter: "C", bg: "#a855f7" };
+          const cfg = type === "supermarket" || type === "mall" ? { letter: "S",  bg: "#7c3aed" }
+                    : type === "bakery" ? { letter: "Bo", bg: "#d97706" }
+                    : { letter: "C",  bg: "#a855f7" };
           shopMarkersRef.current.push(
             new maplibregl.Marker({ element: createPOIMkr(cfg.letter, cfg.bg, el.tags?.name || "Commerce"), anchor: "center" })
               .setLngLat([el.lon, el.lat]).addTo(map.current)
@@ -2262,6 +2332,40 @@ export default function MapView() {
     }).catch(() => {});
     return () => { cancelled = true; cleanup(); };
   }, [showHeatmap, mapLoaded, timelineYear]);
+
+  // Choroplèthe — cercles colorés par score
+  useEffect(() => {
+    if (!mapLoaded || !map.current) return;
+    const SRC = 'choro-src', LYR = 'choro-layer';
+
+    // Nettoyage
+    if (map.current.getLayer(LYR)) map.current.removeLayer(LYR);
+    if (map.current.getSource(SRC)) map.current.removeSource(SRC);
+    if (!choroScore) return;
+
+    axios.get(`/api/v1/choropleth?score=${choroScore}`).then(r => {
+      if (!map.current) return;
+      map.current.addSource(SRC, { type: 'geojson', data: r.data });
+      map.current.addLayer({
+        id: LYR, type: 'circle', source: SRC,
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 4, 9, 7, 12, 10],
+          'circle-opacity': 0.85,
+          'circle-stroke-width': 0.5,
+          'circle-stroke-color': 'rgba(0,0,0,0.3)',
+          'circle-color': [
+            'interpolate', ['linear'], ['get', 'val'],
+            0,  '#dc2626',
+            25, '#f97316',
+            45, '#f59e0b',
+            60, '#84cc16',
+            75, '#10b981',
+            90, '#3b82f6',
+          ],
+        },
+      });
+    }).catch(() => {});
+  }, [choroScore, mapLoaded]);
 
   // Garder les refs à jour pour les handlers enregistrés sur la carte
   useEffect(() => { allCommunesRef.current = allCommunes; }, [allCommunes]);
@@ -2717,27 +2821,6 @@ export default function MapView() {
 
         {/* Contrôles droite */}
         <div className="absolute bottom-20 right-4 z-10 flex flex-col gap-2">
-          {/* Toggle 3D */}
-          <button
-            onClick={() => {
-            if (!is3D && map.current) {
-              const { lng, lat } = map.current.getCenter();
-              const zoom = map.current.getZoom();
-              setCesiumInitCenter({ lng, lat, zoom });
-            }
-            setIs3D(v => !v);
-          }}
-            title={is3D ? "Passer en vue 2D" : "Passer en vue 3D"}
-            className={`size-11 rounded-xl flex items-center justify-center transition-all ${
-              is3D
-                ? "bg-primary text-white shadow-lg shadow-primary/40"
-                : "glass-panel hover:bg-primary/20 text-slate-300"
-            }`}>
-            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>
-              {is3D ? "map" : "3d_rotation"}
-            </span>
-          </button>
-
           {/* Toggles couches OSM — désactivés en vue 3D (marqueurs MapLibre non visibles) */}
           <div className={`flex flex-col gap-2 ${is3D ? "opacity-40 pointer-events-none" : ""}`}>
           {/* Toggle sécurité */}
@@ -2914,6 +2997,32 @@ export default function MapView() {
             </div>
           )}
 
+          {/* Choroplèthe par score */}
+          <div className="glass-panel rounded-xl p-1.5 flex flex-col gap-1">
+            <p className="text-[8px] text-slate-500 uppercase tracking-wide px-1">Score</p>
+            {[
+              ["global",         "⭐", "Global"],
+              ["investissement", "📈", "Invest."],
+              ["qualite_vie",    "🏡", "Qualité vie"],
+              ["securite",       "🛡️", "Sécurité"],
+              ["dpe",            "🌱", "DPE"],
+              ["rendement",      "💰", "Rendement"],
+            ].map(([key, emoji, label]) => (
+              <button
+                key={key}
+                onClick={() => setChoroScore(prev => prev === key ? null : key)}
+                className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[9px] font-medium transition-all"
+                style={{
+                  background: choroScore === key ? "rgba(60,131,246,0.2)" : "transparent",
+                  color: choroScore === key ? "#3c83f6" : "#64748b",
+                }}
+              >
+                <span>{emoji}</span>
+                {label}
+              </button>
+            ))}
+          </div>
+
           {!is3D && (
             <div className="flex flex-col glass-panel rounded-xl overflow-hidden divide-y divide-primary/10">
               {[["add", () => map.current?.zoomIn()], ["remove", () => map.current?.zoomOut()]].map(([icon, fn]) => (
@@ -2958,118 +3067,114 @@ export default function MapView() {
           </button>
         )}
 
-        {/* Légendes empilées — sécurité en bas, transport au dessus, puis POI (masquées en vue 3D) */}
+        {/* Légende POI unifiée — un seul panneau, toutes catégories actives */}
         {(showTransports || showSecurity || showRestaurants || showSchools || showParks || showShops) && !is3D && (
-          <div className="absolute bottom-10 left-[72px] z-10 flex flex-col gap-1.5">
-            {showSecurity && (
-              <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl"
-                style={{ background: "rgba(10,16,28,0.92)", border: "1px solid rgba(30,64,175,0.3)", backdropFilter: "blur(8px)" }}>
-                {[
-                  { letter: "P",  bg: "#1e40af", label: "Police" },
-                  { letter: "F",  bg: "#dc2626", label: "Pompiers" },
-                  { letter: "H",  bg: "#db2777", label: "Hôpital" },
-                  { letter: "Rx", bg: "#059669", label: "Pharmacie" },
-                ].map(({ letter, bg, label }) => (
-                  <div key={letter} className="flex items-center gap-1">
-                    <span className="flex items-center justify-center font-black text-white"
-                      style={{ width: 14, height: 14, fontSize: 6, background: bg, borderRadius: "50%", border: "1.5px solid rgba(255,255,255,0.7)" }}>
-                      {letter}
-                    </span>
-                    <span className="text-[9px] text-slate-400">{label}</span>
+          <div className="absolute bottom-10 left-[72px] z-10">
+            <div className="rounded-xl p-3" style={{
+              background: "rgba(8,13,24,0.96)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              backdropFilter: "blur(10px)",
+              boxShadow: "0 4px 24px rgba(0,0,0,0.5)",
+              minWidth: 200, maxWidth: 270,
+            }}>
+              <p className="text-[7px] font-bold text-slate-500 uppercase tracking-widest mb-2.5">Légende POI</p>
+
+              {/* Catégorie helper */}
+              {[
+                {
+                  show: showTransports, emoji: "🚇", label: "Transport",
+                  items: [
+                    { letter: "M",  bg: "#3c83f6", name: "Métro", square: false },
+                    { letter: "R",  bg: "#10b981", name: "RER",   square: false },
+                    { letter: "T",  bg: "#a78bfa", name: "Tram",  square: false },
+                    { letter: "Bu", bg: "#f59e0b", name: "Bus",   square: true  },
+                  ],
+                },
+                {
+                  show: showSecurity, emoji: "🏥", label: "Santé & Sécurité",
+                  items: [
+                    { letter: "Pl", bg: "#1e40af", name: "Police"   },
+                    { letter: "F",  bg: "#dc2626", name: "Pompiers" },
+                    { letter: "H",  bg: "#db2777", name: "Hôpital"  },
+                    { letter: "Ph", bg: "#059669", name: "Pharmacie"},
+                  ],
+                },
+                {
+                  show: showRestaurants, emoji: "🍽", label: "Restauration",
+                  items: [
+                    { letter: "R", bg: "#f97316", name: "Restaurant / Café" },
+                  ],
+                },
+                {
+                  show: showSchools, emoji: "🎓", label: "Éducation",
+                  items: [
+                    { letter: "É",  bg: "#0ea5e9", name: "École"      },
+                    { letter: "U",  bg: "#3b82f6", name: "Université" },
+                    { letter: "Ma", bg: "#fbbf24", name: "Maternelle" },
+                  ],
+                },
+                {
+                  show: showParks, emoji: "🌿", label: "Nature & Loisirs",
+                  items: [
+                    { letter: "Pa", bg: "#84cc16", name: "Parc/Jardin" },
+                    { letter: "J",  bg: "#22c55e", name: "Jeux"        },
+                    { letter: "Na", bg: "#15803d", name: "Nature"      },
+                  ],
+                },
+                {
+                  show: showShops, emoji: "🛒", label: "Commerces",
+                  items: [
+                    { letter: "S",  bg: "#7c3aed", name: "Supermarché" },
+                    { letter: "Bo", bg: "#d97706", name: "Boulangerie" },
+                    { letter: "C",  bg: "#a855f7", name: "Commerce"    },
+                  ],
+                },
+              ].filter(cat => cat.show).map((cat, ci, arr) => (
+                <div key={cat.label} className={ci < arr.length - 1 ? "mb-2.5 pb-2 border-b border-slate-800" : ""}>
+                  <p className="text-[7px] text-slate-600 uppercase tracking-wide mb-1.5">
+                    {cat.emoji} {cat.label}
+                  </p>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1.5">
+                    {cat.items.map(({ letter, bg, name, square }) => (
+                      <div key={name} className="flex items-center gap-1">
+                        <span style={{
+                          width: 14, height: 14,
+                          fontSize: letter.length > 1 ? 5 : 7,
+                          fontWeight: 900,
+                          background: bg,
+                          borderRadius: square ? 3 : "50%",
+                          border: "1.5px solid rgba(255,255,255,0.65)",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          color: "#fff", flexShrink: 0,
+                        }}>
+                          {letter}
+                        </span>
+                        <span className="text-[9px] text-slate-400">{name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Légende choroplèthe */}
+        {choroScore && (
+          <div className="absolute bottom-10 right-[72px] z-10">
+            <div className="glass-panel rounded-xl px-3 py-2" style={{ width: 120 }}>
+              <p className="text-[8px] text-slate-500 uppercase tracking-wide mb-1.5">
+                Score {choroScore === "qualite_vie" ? "qualité vie" : choroScore}
+              </p>
+              <div className="flex flex-col gap-0.5">
+                {[["90-100", "#3b82f6"], ["75-90", "#10b981"], ["60-75", "#84cc16"], ["45-60", "#f59e0b"], ["25-45", "#f97316"], ["0-25", "#dc2626"]].map(([range, color]) => (
+                  <div key={range} className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded-full shrink-0" style={{ background: color }} />
+                    <span className="text-[9px] text-slate-400 mono-nums">{range}</span>
                   </div>
                 ))}
               </div>
-            )}
-            {showTransports && (
-              <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl"
-                style={{ background: "rgba(10,16,28,0.92)", border: "1px solid rgba(255,255,255,0.08)", backdropFilter: "blur(8px)" }}>
-                {[
-                  { letter: "M", bg: "#3c83f6", label: "Métro" },
-                  { letter: "R", bg: "#10b981", label: "RER" },
-                  { letter: "T", bg: "#a78bfa", label: "Tram" },
-                  { letter: "B", bg: "#f59e0b", label: "Bus", square: true },
-                ].map(({ letter, bg, label, square }) => (
-                  <div key={letter} className="flex items-center gap-1">
-                    <span className="flex items-center justify-center text-[8px] font-black text-white"
-                      style={{ width: 14, height: 14, background: bg, borderRadius: square ? 3 : "50%", border: "1.5px solid rgba(255,255,255,0.7)" }}>
-                      {letter}
-                    </span>
-                    <span className="text-[9px] text-slate-400">{label}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            {showRestaurants && (
-              <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl"
-                style={{ background: "rgba(10,16,28,0.92)", border: "1px solid rgba(249,115,22,0.3)", backdropFilter: "blur(8px)" }}>
-                {[
-                  { letter: "R", bg: "#f97316", label: "Restaurant" },
-                  { letter: "R", bg: "#f97316", label: "Café/Bar" },
-                ].map(({ letter, bg, label }, i) => (
-                  <div key={i} className="flex items-center gap-1">
-                    <span className="flex items-center justify-center font-black text-white"
-                      style={{ width: 14, height: 14, fontSize: 7, background: bg, borderRadius: "50%", border: "1.5px solid rgba(255,255,255,0.7)" }}>
-                      {letter}
-                    </span>
-                    <span className="text-[9px] text-slate-400">{label}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            {showSchools && (
-              <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl"
-                style={{ background: "rgba(10,16,28,0.92)", border: "1px solid rgba(14,165,233,0.3)", backdropFilter: "blur(8px)" }}>
-                {[
-                  { letter: "É", bg: "#0ea5e9", label: "École" },
-                  { letter: "U", bg: "#3b82f6", label: "Université" },
-                  { letter: "M", bg: "#fbbf24", label: "Maternelle" },
-                ].map(({ letter, bg, label }) => (
-                  <div key={label} className="flex items-center gap-1">
-                    <span className="flex items-center justify-center font-black text-white"
-                      style={{ width: 14, height: 14, fontSize: 6, background: bg, borderRadius: "50%", border: "1.5px solid rgba(255,255,255,0.7)" }}>
-                      {letter}
-                    </span>
-                    <span className="text-[9px] text-slate-400">{label}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            {showParks && (
-              <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl"
-                style={{ background: "rgba(10,16,28,0.92)", border: "1px solid rgba(132,204,22,0.3)", backdropFilter: "blur(8px)" }}>
-                {[
-                  { letter: "P", bg: "#84cc16", label: "Parc/Jardin" },
-                  { letter: "J", bg: "#22c55e", label: "Jeux" },
-                  { letter: "N", bg: "#15803d", label: "Nature" },
-                ].map(({ letter, bg, label }) => (
-                  <div key={label} className="flex items-center gap-1">
-                    <span className="flex items-center justify-center font-black text-white"
-                      style={{ width: 14, height: 14, fontSize: 7, background: bg, borderRadius: "50%", border: "1.5px solid rgba(255,255,255,0.7)" }}>
-                      {letter}
-                    </span>
-                    <span className="text-[9px] text-slate-400">{label}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            {showShops && (
-              <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl"
-                style={{ background: "rgba(10,16,28,0.92)", border: "1px solid rgba(168,85,247,0.3)", backdropFilter: "blur(8px)" }}>
-                {[
-                  { letter: "S", bg: "#7c3aed", label: "Supermarché" },
-                  { letter: "B", bg: "#d97706", label: "Boulangerie" },
-                  { letter: "C", bg: "#a855f7", label: "Commerce" },
-                ].map(({ letter, bg, label }) => (
-                  <div key={label} className="flex items-center gap-1">
-                    <span className="flex items-center justify-center font-black text-white"
-                      style={{ width: 14, height: 14, fontSize: 6, background: bg, borderRadius: "50%", border: "1.5px solid rgba(255,255,255,0.7)" }}>
-                      {letter}
-                    </span>
-                    <span className="text-[9px] text-slate-400">{label}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+            </div>
           </div>
         )}
 

@@ -128,5 +128,80 @@
     "id": "hors_scope_agence",
     "triggers": ["agence immobilière", "agent immobilier", "trouver agence", "contacter agence"],
     "answer": "Je suis un outil d'analyse de marché IDF, pas un annuaire d'agences. Pour trouver une agence immobilière, consultez **SeLoger**, **Logic-Immo**, **PAP** ou **Google Maps** avec votre commune cible. Ce que je fais en revanche : analyser le marché de n'importe quelle commune IDF (prix, rendement, qualité de vie, DPE, sécurité) pour vous aider à choisir où chercher. Quelle commune vous intéresse ?"
+  },
+  {
+    "id": "bail_types_duree",
+    "triggers": ["bail", "type bail", "durée bail", "contrat location", "bail meublé", "bail vide", "bail mobilité", "renouvellement bail", "bail 3 ans", "bail 1 an", "tacite reconduction"],
+    "answer": "Il existe 3 types de baux d'habitation. **Bail vide (nu)** : durée minimale **3 ans** (6 ans si le bailleur est une personne morale — société, SCI). **Bail meublé** : **1 an** minimum, renouvelable tacitement ; **9 mois** non renouvelable pour les étudiants. **Bail mobilité** : de **1 à 10 mois**, non renouvelable, réservé aux personnes en formation, mutation professionnelle, stage ou volontariat — pas de dépôt de garantie possible. À l'échéance d'un bail vide, le bailleur doit donner congé **6 mois avant** ; le locataire doit prévenir **3 mois avant** (ou **1 mois en zone tendue**). Sans congé, le bail se renouvelle tacitement aux mêmes conditions. *(Loi du 6 juillet 1989, loi ALUR 2014, loi ELAN 2018.)*"
+  },
+  {
+    "id": "depot_garantie",
+    "triggers": ["dépôt de garantie", "caution", "restitution caution", "restitution dépôt", "retenue caution", "délai restitution", "dépôt garantie restitution", "combien caution"],
+    "answer": "Le **dépôt de garantie** est plafonné à **1 mois de loyer hors charges** pour un logement vide, **2 mois** pour un meublé. Aucun dépôt n'est autorisé pour un bail mobilité. Le bailleur doit le restituer dans **1 mois** si l'état des lieux de sortie est conforme, **2 mois** si des dégradations sont constatées (avec justificatifs — devis ou factures). Passé ce délai, le bailleur doit payer une pénalité de **10% du loyer mensuel HC** par mois de retard. La vétusté normale (usure naturelle) ne peut pas être imputée au locataire. Le dépôt ne peut pas servir de loyer. En cas de vente du bien, le nouveau propriétaire hérite de l'obligation de restitution."
+  },
+  {
+    "id": "preavis_locataire",
+    "triggers": ["préavis locataire", "préavis départ", "délai préavis", "partir du logement", "résilier bail", "quitter logement", "donner préavis", "1 mois préavis", "3 mois préavis"],
+    "answer": "Le locataire peut résilier son bail à tout moment avec un préavis de **3 mois** (bail vide) ou **1 mois** (bail meublé). Le préavis est réduit à **1 mois** en cas de : logement situé **en zone tendue**, perte d'emploi ou mutation professionnelle, état de santé (RSA, AAH, ou pathologie grave), logement insalubre. Pour un bail meublé, le préavis est toujours 1 mois. Le préavis commence le **jour de réception** du courrier recommandé avec AR. Le loyer est dû jusqu'à la fin du préavis même si le locataire quitte les lieux avant. Pour un bail mobilité, aucun préavis — le bail se termine à la date prévue."
+  },
+  {
+    "id": "conge_proprietaire",
+    "triggers": ["congé propriétaire", "congé bailleur", "expulsion locataire", "préavis propriétaire", "reprise logement", "refus renouvellement", "donner congé locataire", "vendre avec locataire"],
+    "answer": "Le propriétaire ne peut donner congé à son locataire qu'à l'**échéance du bail** et uniquement pour 3 motifs légaux : (1) **reprise personnelle** (pour y habiter ou loger un proche direct), (2) **vente libre d'occupation** (locataire bénéficie d'un droit de préemption de 2 mois), (3) **motif légitime et sérieux** (impayés, troubles de voisinage). Délai : **6 mois** avant la fin du bail pour un logement vide, **3 mois** pour un meublé. Le congé est nul si le locataire a **plus de 65 ans et de faibles revenus** (sauf si le bailleur est lui-même dans la même situation). En cas de congé pour vendre, le locataire a 2 mois pour acheter en priorité."
+  },
+  {
+    "id": "charges_recuperables",
+    "triggers": ["charges locatives", "charges récupérables", "charges locataire", "charges propriétaire", "qui paie les charges", "charges non récupérables", "régularisation charges", "provision charges"],
+    "answer": "Les **charges récupérables** sont les dépenses que le bailleur peut refacturer au locataire. Elles sont limitativement listées par le décret de 1987 : eau froide et chaude (consommation), électricité parties communes, entretien ascenseur, nettoyage parties communes, ordures ménagères (TEOM), entretien espaces verts, gardien (75% du salaire si entretien + gardiennage). **Ne sont PAS récupérables** : ravalement, toiture, réfection plomberie principale, honoraires de syndic, impôts du bailleur (sauf TEOM). Les charges sont soit **réelles** (provision mensuelle + régularisation annuelle sur justificatifs) soit **forfaitaires** (uniquement pour les meublés). Le bailleur doit fournir le décompte annuel des charges sur demande."
+  },
+  {
+    "id": "reparations_locatives",
+    "triggers": ["réparations locatives", "entretien logement", "qui répare", "responsabilité réparations", "travaux locataire propriétaire", "menues réparations", "grosses réparations", "robinet", "chaudière panne"],
+    "answer": "La loi distingue clairement les obligations. **Locataire** (entretien courant) : joints et robinets, remplacement ampoules, entretien VMC, nettoyage WC et bac douche, entretien jardin privatif, remplacement vitres cassées par lui, contrat de maintenance chaudière annuel. **Propriétaire** (grosses réparations) : ravalement, toiture, remplacement chaudière vétuste, réfection plomberie principale, fissures structurelles, mise aux normes électriques, remplacement fenêtres vétustes. Si le logement devient inhabitable (sinistre), le locataire peut résilier sans préavis. Après des travaux du propriétaire supérieurs à 21 jours, le locataire a droit à une réduction de loyer proportionnelle."
+  },
+  {
+    "id": "etat_des_lieux",
+    "triggers": ["état des lieux", "état lieux", "état lieux entrée", "état lieux sortie", "vétusté", "dégradation locataire", "huissier état lieux"],
+    "answer": "L'**état des lieux** est obligatoire à l'entrée et à la sortie du locataire — il doit être réalisé contradictoirement (en présence des deux parties). Il décrit précisément l'état de chaque pièce, revêtement, équipement et ouvrant. Si le bailleur refuse l'état des lieux d'entrée, le logement est présumé en bon état. Si le bailleur refuse l'état des lieux de sortie, il ne peut retenir aucun dépôt de garantie. À la sortie, les **dégradations anormales** (au-delà de la vétusté naturelle) sont à la charge du locataire, sur justificatifs. La **vétusté** (usure normale dans le temps) est à la charge du bailleur. En cas de désaccord, un huissier peut être mandaté (frais partagés)."
+  },
+  {
+    "id": "apl_als_caf",
+    "triggers": ["apl", "als", "alf", "aide logement", "aide caf", "allocation logement", "caf logement", "mon-caf", "aides locataire", "aide loyer", "allocation personnalisée logement"],
+    "answer": "Il existe 3 aides au logement versées par la CAF. **APL** (Aide Personnalisée au Logement) : logements conventionnés — versée directement au bailleur. **ALS** (Allocation de Logement Sociale) : logements non conventionnés, pour personnes seules, étudiants, personnes âgées. **ALF** (Allocation de Logement Familiale) : familles avec enfants. Toutes trois sont calculées sur les **revenus N-2** (Revenu Fiscal de Référence) et varient selon la composition du foyer et la zone géographique. Montants : de 50€ à 400€/mois selon la situation. Demande sur **mon-caf.fr**. L'aide est versée dès le 1er du mois suivant la demande (pas de rétroactivité). Depuis 2021, la contemporanéisation prend en compte les revenus actuels."
+  },
+  {
+    "id": "maprimerenov_travaux",
+    "triggers": ["maprimerenov", "maprimerénov", "aide rénovation", "prime énergie", "aide travaux", "éco-ptz", "cee", "certificats économies énergie", "rénovation énergétique", "isolation subvention", "pompe à chaleur aide"],
+    "answer": "**MaPrimeRénov'** est l'aide principale de l'État pour la rénovation énergétique. Montants selon le profil de revenus (4 niveaux — bleu, jaune, violet, rose) : jusqu'à **12 000€** pour une pompe à chaleur (ménages très modestes). L'entreprise doit être **RGE** (Reconnue Garante de l'Environnement). Demande sur **maprimerenov.gouv.fr** avant les travaux. **Éco-PTZ** : prêt sans intérêts jusqu'à **50 000€** pour financer les travaux, remboursable sur 20 ans, sans condition de ressources. **CEE** (Certificats d'Économies d'Énergie) : primes versées par les fournisseurs d'énergie (EDF, Engie…) pour des travaux d'économies. Ces 3 dispositifs sont cumulables. Travaux éligibles : isolation, remplacement chaudière, pompe à chaleur, VMC double-flux, fenêtres."
+  },
+  {
+    "id": "garantie_visale_gli",
+    "triggers": ["visale", "garantie visale", "gli", "garantie loyers impayés", "caution solidaire", "garant", "action logement", "loyers impayés assurance", "impayés locataire"],
+    "answer": "**Visale** est une garantie locative gratuite d'Action Logement (ex-1% patronal) qui remplace le garant physique. Elle couvre jusqu'à **36 mois d'impayés** et les dégradations (jusqu'à 2 mois de loyer). Éligibles : moins de 30 ans sans condition de ressources, salariés en mobilité professionnelle (loyer < 1 500€ en IDF), étudiants jusqu'à 30 ans. Demande sur **visale.fr**. Incompatible avec la GLI. **GLI (Garantie Loyers Impayés)** : assurance souscrite par le propriétaire (coût ~2 à 4% des loyers annuels), couvre 70-90% des impayés + frais de procédure. Conditions : revenus locataire ≥ 2,85× le loyer. La prime GLI est **déductible des revenus fonciers**. Depuis la loi ALUR, la GLI ET une caution physique ne peuvent pas être exigées en même temps (sauf logement étudiant)."
+  },
+  {
+    "id": "treve_hivernale",
+    "triggers": ["trêve hivernale", "expulsion hiver", "expulsion locataire", "quand expulsion", "procédure expulsion", "commandement payer", "impayé loyer recours"],
+    "answer": "La **trêve hivernale** interdit toute expulsion physique de locataires du **1er novembre au 31 mars** (5 mois), même avec jugement rendu. Elle ne s'applique pas aux squatteurs (pas leur résidence principale). La **procédure d'expulsion** hors trêve dure en moyenne 18 à 24 mois : commandement de payer (2 mois) → assignation → jugement → commandement de quitter les lieux (2 mois) → expulsion avec huissier. En cas d'impayés, le propriétaire doit agir rapidement (saisir la CCAPEX, commission de coordination pour la prévention des expulsions). Des organismes comme la CAF ou le SIAO accompagnent les locataires en difficulté pour trouver des solutions amiables."
+  },
+  {
+    "id": "logement_decent",
+    "triggers": ["logement décent", "insalubrité", "logement insalubre", "critères décence", "décence logement", "recours logement indécent", "propriétaire ne répare pas"],
+    "answer": "Un **logement décent** doit respecter 6 critères légaux (décret 2002) : (1) surface minimale de 9 m² et 2,20 m de hauteur, (2) absence de risques pour la sécurité (humidité, plomb, risque d'effondrement), (3) absence de nuisibles et parasites, (4) performance énergétique minimale (les classes G > 450 kWh/m²/an sont interdites à la location depuis 2023), (5) équipements essentiels (chauffage, eau potable, WC séparé, réseau électrique), (6) accès sécurisé aux parties communes. Si le logement est indécent, le locataire peut : mettre en demeure le bailleur par LRAR, saisir la **commission de conciliation**, le tribunal judiciaire, ou la DDETSPP. La commune peut aussi déclencher une procédure de péril ou d'insalubrité."
+  },
+  {
+    "id": "revision_loyer_irl",
+    "triggers": ["irl", "indice référence loyers", "révision loyer", "augmentation loyer", "indexation loyer", "hausse loyer annuelle", "augmenter loyer", "révision annuelle"],
+    "answer": "La **révision annuelle du loyer** n'est possible que si le bail comporte une clause de révision. Elle s'effectue une fois par an à la date anniversaire du bail. Formule : **nouveau loyer = loyer actuel × IRL nouveau / IRL de la même période l'an passé**. L'**IRL (Indice de Référence des Loyers)** est publié par l'INSEE chaque trimestre. En 2025, l'IRL T1 est d'environ 149 (base 100 en 1998). Le bailleur a **1 an** pour demander la révision — s'il ne le fait pas, la révision est perdue pour l'année écoulée. Le taux de révision ne peut jamais dépasser le taux d'IRL. À Paris et dans les communes avec encadrement des loyers, la révision doit aussi rester sous le **loyer de référence majoré**."
+  },
+  {
+    "id": "diagnostics_obligatoires",
+    "triggers": ["diagnostics obligatoires", "diagnostic vente", "diagnostic location", "plomb diagnostic", "amiante diagnostic", "ddt", "dossier technique", "diagnostic électricité", "diagnostic gaz", "diagnostic ernt", "état des risques"],
+    "answer": "Le **DDT (Dossier de Diagnostic Technique)** regroupe les diagnostics immobiliers obligatoires selon le type de bien et son ancienneté. **Pour toute vente ET location** : DPE (classes A-G, 10 ans de validité), ERNT/ERP (état des risques, 6 mois). **Pour les biens avant 1949** : CREP (plomb, 6 ans si présence). **Pour les biens avant 1997** : état amiante (illimité si absence). **Électricité et gaz** (installations > 15 ans) : 3 ans en vente, 6 ans en location. **En vente uniquement** : mesurage loi Carrez (copropriété), audit énergétique (biens F et G). **En location uniquement** : surface Boutin. Ces diagnostics sont réalisés par des opérateurs certifiés. Un DPE erroné est opposable depuis 2021 — le propriétaire peut être tenu responsable si le classement est faux."
+  },
+  {
+    "id": "colocation_souslocation",
+    "triggers": ["colocation", "colocataire", "sous-location", "sous-louer", "partager logement", "bail colocation", "solidarité colocation"],
+    "answer": "**Colocation avec bail unique** : tous les colocataires signent le même bail et sont solidaires. En cas de départ d'un colocataire, la solidarité prend fin 6 mois après son préavis ou à l'arrivée d'un remplaçant. Le dépôt de garantie reste 1 mois HC total. **Colocation avec baux séparés** : chaque colocataire a son propre bail pour une chambre — pas de solidarité entre colocataires. **Sous-location** : totalement interdite sans l'accord écrit du propriétaire. Avec accord, le loyer de la sous-location ne peut pas dépasser le loyer principal. La sous-location touristique (Airbnb) sans accord est aussi interdite — à Paris, la résidence principale est limitée à 120 nuits/an et nécessite un enregistrement en mairie. Le locataire qui sous-loue sans autorisation risque la résiliation du bail."
   }
 ]

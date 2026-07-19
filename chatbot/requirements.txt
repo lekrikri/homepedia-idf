@@ -7,3 +7,4 @@ llama-cpp-python==0.3.22
 huggingface-hub==0.23.4
 sentence-transformers==3.1.1
 numpy==1.26.4
+redis==5.0.8
