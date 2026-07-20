@@ -174,10 +174,10 @@ func GetLoyer(c *gin.Context) {
 // Appelé depuis les deux chemins, avec et sans cache : les y dupliquer avait
 // fait disparaître le contrôle du plafond dès le second appel.
 func repondre(c *gin.Context, resp *LoyerResponse, codeCommune string, surface float64, loyerDemande int) {
-	enrichirLoyer(resp, surface, loyerDemande)
+	pieces, _ := strconv.Atoi(c.Query("pieces"))
+	meuble := c.Query("meuble") == "true"
+	enrichirLoyer(c.Request.Context(), resp, codeCommune, pieces, meuble, surface, loyerDemande)
 	if resp.Encadrement && loyerDemande > 0 && surface > 0 {
-		pieces, _ := strconv.Atoi(c.Query("pieces"))
-		meuble := c.Query("meuble") == "true"
 		resp.Controle = controlerEncadrement(
 			c.Request.Context(), codeCommune, pieces, meuble, surface, loyerDemande)
 	}
@@ -255,6 +255,37 @@ func controlerEncadrement(
 	return ctrl
 }
 
+// referenceOfficielle renvoie le loyer de référence de l'arrêté préfectoral pour
+// la commune et le nombre de pièces, moyenné sur les quartiers et les époques de
+// construction.
+//
+// Ce n'est pas le plafond — celui-ci dépend du quartier exact et figure au bail —
+// mais le point de comparaison honnête pour situer un loyer, là où l'estimation
+// dérivée des prix de vente se révélait basse de 12 à 24 %.
+func referenceOfficielle(ctx context.Context, codeCommune string, pieces int, meuble bool) (float64, bool) {
+	if pieces > 4 {
+		pieces = 4 // les barèmes s'arrêtent à « 4 pièces et plus »
+	}
+	filtre, args := "", []any{codeCommune, meuble}
+	if pieces > 0 {
+		filtre = "AND nb_pieces = $3"
+		args = append(args, pieces)
+	}
+
+	var moyenne float64
+	var nb int
+	err := db.Pool.QueryRow(ctx, fmt.Sprintf(`
+		SELECT COALESCE(AVG(loyer_reference), 0), COUNT(*)
+		FROM encadrement_loyers
+		WHERE code_commune = $1 AND meuble = $2 %s
+		  AND annee = (SELECT MAX(annee) FROM encadrement_loyers WHERE code_commune = $1)
+	`, filtre), args...).Scan(&moyenne, &nb)
+	if err != nil || nb == 0 || moyenne <= 0 {
+		return 0, false
+	}
+	return moyenne, true
+}
+
 // coefficientSurface corrige le biais de taille.
 //
 // Le loyer de référence est une moyenne toutes surfaces confondues. Or les
@@ -281,7 +312,8 @@ func coefficientSurface(surface float64) float64 {
 	}
 }
 
-func enrichirLoyer(resp *LoyerResponse, surface float64, loyerDemande int) {
+func enrichirLoyer(ctx context.Context, resp *LoyerResponse, codeCommune string,
+	pieces int, meuble bool, surface float64, loyerDemande int) {
 	if surface > 0 {
 		resp.SurfaceM2 = surface
 		coef := coefficientSurface(surface)
@@ -301,9 +333,21 @@ func enrichirLoyer(resp *LoyerResponse, surface float64, loyerDemande int) {
 		resp.LoyerDemande = loyerDemande
 		m2 := math.Round((float64(loyerDemande)/surface)*100) / 100
 		resp.LoyerM2Demande = &m2
-		// L'écart se mesure contre la référence ajustée à la surface, sinon un
-		// petit logement est systématiquement déclaré surévalué.
+		// La référence officielle, quand elle existe, l'emporte sur notre
+		// estimation. Confrontée aux barèmes préfectoraux là où les deux sont
+		// disponibles, l'estimation dérivée des prix de vente s'est révélée
+		// basse de 12 à 24 % dans les communes populaires (−24 % à Villetaneuse,
+		// −21 % à Épinay et La Courneuve, −12 % à Aubervilliers), juste à Paris
+		// et Saint-Ouen. Un locataire s'y voyait annoncer un loyer « supérieur
+		// au marché » alors qu'il était légal, et sous le plafond.
+		//
+		// Les barèmes étant déjà ventilés par nombre de pièces, l'ajustement de
+		// surface ne s'applique qu'à notre estimation, qui mélange les tailles.
 		ref := resp.LoyerMedianM2 * coefficientSurface(surface)
+		refOfficielle, dispo := referenceOfficielle(ctx, codeCommune, pieces, meuble)
+		if dispo {
+			ref = refOfficielle
+		}
 		ecart := math.Round(((m2-ref)/ref)*1000) / 10
 		resp.EcartPct = &ecart
 
@@ -329,10 +373,19 @@ func enrichirLoyer(resp *LoyerResponse, surface float64, loyerDemande int) {
 			resp.Verdict += " Cette commune appliquant l'encadrement, réclamez le loyer de " +
 				"référence majoré inscrit au bail : c'est lui qui fait foi, pas cette estimation."
 		}
-		resp.NoteMethode = "Référence estimée à partir d'une moyenne départementale 2022, " +
-			"ajustée à la surface. Elle s'entend hors charges : comparez avec votre loyer " +
-			"principal, pas avec le total appelé. Seul le loyer de référence préfectoral " +
-			"est opposable."
+		if dispo {
+			resp.NoteMethode = "Comparaison établie sur le loyer de référence de l'arrêté " +
+				"préfectoral, pour ce nombre de pièces — et non sur une estimation. Il s'entend " +
+				"hors charges : comparez avec votre loyer principal, pas avec le total appelé. " +
+				"Le plafond applicable dépend du quartier exact et de l'année de construction ; " +
+				"il figure obligatoirement dans votre bail."
+		} else {
+			resp.NoteMethode = "Référence estimée à partir d'une moyenne départementale 2022, " +
+				"ajustée à la surface. Elle s'entend hors charges : comparez avec votre loyer " +
+				"principal, pas avec le total appelé. Là où les barèmes préfectoraux existent, " +
+				"cette estimation s'est révélée basse de 12 à 24 % : un loyer un peu au-dessus " +
+				"n'a donc rien d'anormal. Seul le loyer de référence préfectoral est opposable."
+		}
 	}
 
 	// Un loyer se compare aussi à une mensualité de crédit : c'est l'arbitrage

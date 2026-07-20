@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import axios from "axios";
 import { CapaciteEmprunt, RenovationDPE } from "./outils/OutilsAchat.jsx";
 import { analyserAnnonce } from "./outils/annonce.js";
+import { entete as enteteDoc, pied as piedDoc, titre as titreDoc, imprimer as imprimerDoc } from "./outils/document.js";
 
 /**
  * Estimation — situe un bien dans la distribution réelle des ventes comparables.
@@ -585,124 +586,121 @@ export default function Estimation() {
    */
   function genererRapport() {
     if (!data) return;
-    const d = new Date().toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" });
     const p = data.prix_m2;
-    const ligne = (label, valeur, fort) =>
-      `<tr${fort ? ' class="fort"' : ""}><td>${label}</td><td class="num">${valeur}</td></tr>`;
+    const est = data.prix_estime;
     // Virgule décimale : le document est imprimé, l'écriture anglaise y saute aux yeux.
     const pct = n => (n > 0 ? "+" : "") + Number(n).toLocaleString("fr-FR", { maximumFractionDigits: 1 });
 
+    // Position du curseur sur la jauge : le percentile parle plus qu'un chiffre brut.
+    const jauge = pos ? `
+<div class="hp-jauge">
+  <div class="hp-jauge-barre">
+    <div class="hp-jauge-curseur" style="left:${Math.min(97, Math.max(1, pos.percentile_estime))}%"></div>
+  </div>
+  <div class="hp-jauge-reperes">
+    <span>🟢 ${fmtM2(p.p10)}</span><span>${fmtM2(p.p25)}</span>
+    <span><strong>médiane ${fmtM2(p.median)}</strong></span>
+    <span>${fmtM2(p.p75)}</span><span>🔴 ${fmtM2(p.p90)}</span>
+  </div>
+</div>` : "";
+
     const blocPosition = pos ? `
-<div class="encart">
-  <h3>Positionnement du bien</h3>
-  <p class="verdict">${pos.verdict}</p>
-  <p>Prix demandé : <strong>${fmtEur(pos.prix_demande)}</strong>${data.surface_m2 ? ` pour ${data.surface_m2} m²` : ""}
-     — soit <strong>${fmtM2(pos.prix_m2_demande)}</strong>.</p>
-  <p>Ce prix place le bien au <strong>${pos.percentile_estime}ᵉ percentile</strong> des ventes comparables :
-     ${pos.percentile_estime} % des transactions se sont conclues moins cher.
-     Écart à la médiane locale : <strong>${pct(pos.ecart_median_pct)} %</strong>.</p>
-  ${pos.marge_nego_haute > 0 ? `<p class="nego">Cible de négociation : <strong>−${fmtEur(pos.marge_nego_basse)} à −${fmtEur(pos.marge_nego_haute)}</strong>
-     pour ramener le bien au prix médian, puis au premier quartile des ventes comparables.</p>` : ""}
+${titreDoc("🎯", "Votre bien dans le marché")}
+<div class="hp-chiffres">
+  <div class="hp-chiffre"><div class="v">${pos.percentile_estime}ᵉ</div><div class="l">percentile</div></div>
+  <div class="hp-chiffre ${pos.ecart_median_pct > 0 ? "ambre" : "vert"}">
+    <div class="v">${pct(pos.ecart_median_pct)} %</div><div class="l">écart à la médiane</div>
+  </div>
+  <div class="hp-chiffre"><div class="v">${fmtM2(pos.prix_m2_demande)}</div><div class="l">prix au m²</div></div>
+</div>
+${jauge}
+<div class="hp-encart ${pos.percentile_estime > 60 ? "ambre" : "vert"}">
+  <b>${pos.percentile_estime > 60 ? "⚠️ " : "✅ "}${pos.verdict}</b>
+  <p>${pos.percentile_estime} % des ventes comparables se sont conclues moins cher que
+     ${fmtEur(pos.prix_demande)}${data.surface_m2 ? ` pour ${data.surface_m2} m²` : ""}.</p>
+</div>
+${pos.marge_nego_haute > 0 ? `
+<div class="hp-encart">
+  <b>💬 Cible de négociation : −${fmtEur(pos.marge_nego_basse)} à −${fmtEur(pos.marge_nego_haute)}</b>
+  <p>Pour ramener le bien au prix médian, puis au premier quartile des ventes comparables.</p>
+</div>` : ""}` : "";
+
+    const blocDetention = data.cout_detention ? `
+<div class="hp-encart ambre">
+  <b>🧾 Ce que le bien coûtera ensuite</b>
+  <p>Taux de foncier bâti de la commune : <strong>${data.cout_detention.taux_tf_global} %</strong>${
+    data.cout_detention.taxe_fonciere_estimee
+      ? `, soit environ <strong>${fmtEur(data.cout_detention.taxe_fonciere_estimee)} par an</strong> pour un logement moyen.`
+      : ". Montant non estimable dans cette commune."}</p>
+</div>` : "";
+
+    const blocCopro = data.copropriete && data.copropriete.pct_aidee != null ? `
+<div class="hp-encart ${data.copropriete.pct_aidee >= 10 ? "rouge" : data.copropriete.pct_aidee >= 5 ? "ambre" : "vert"}">
+  <b>🏢 Le parc en copropriété — ${data.copropriete.pct_aidee} % sous dispositif d'aide</b>
+  <p>${data.copropriete.note}</p>
 </div>` : "";
 
     const blocTendance = data.tendance?.length ? `
-<h3>Évolution du marché local</h3>
+${titreDoc("📉", "Évolution du marché local")}
 <table>
-  <thead><tr><th>Année</th><th class="num">Prix médian /m²</th><th class="num">Ventes</th></tr></thead>
+  <thead><tr><th>Année</th><th class="n">Prix médian /m²</th><th class="n">Ventes</th></tr></thead>
   <tbody>${data.tendance.map(t =>
-      `<tr><td>${t.annee}</td><td class="num">${t.median_m2.toLocaleString("fr-FR")} €</td><td class="num">${t.nb_ventes}</td></tr>`
+      `<tr><td>${t.annee}</td><td class="n">${t.median_m2.toLocaleString("fr-FR")} €</td><td class="n">${t.nb_ventes}</td></tr>`
     ).join("")}</tbody>
 </table>
-${data.evolution_pct != null ? `<p class="${data.evolution_pct < 0 ? "favorable" : ""}">
-  Évolution sur la période : <strong>${pct(data.evolution_pct)} %</strong>.
-  ${data.evolution_pct < 0 ? "Un marché orienté à la baisse renforce la position de l'acheteur." : ""}</p>` : ""}` : "";
+${data.evolution_pct != null ? `
+<div class="hp-encart ${data.evolution_pct < 0 ? "vert" : "ambre"}">
+  <b>${data.evolution_pct < 0 ? "📊 Le marché joue pour vous" : "📈 Marché orienté à la hausse"}</b>
+  <p>Évolution de <strong>${pct(data.evolution_pct)} %</strong> sur la période.
+  ${data.evolution_pct < 0
+    ? "Dans un marché qui baisse, le temps est du côté de l'acheteur : un vendeur dont le bien traîne devient plus ouvert à la discussion."
+    : "Les prix progressent : la réactivité compte davantage que la négociation."}</p>
+</div>` : ""}` : "";
 
     const blocBudget = data.cout_acquisition ? `
-<h3>Budget à prévoir</h3>
+${titreDoc("💰", "Budget à prévoir")}
 <table>
-  ${ligne("Prix du bien", fmtEur(data.cout_acquisition.prix_bien))}
-  ${ligne("Frais de notaire (ancien, ~7,5 %)", fmtEur(data.cout_acquisition.frais_notaire))}
-  ${ligne("Total acquisition", fmtEur(data.cout_acquisition.total_acquisition), true)}
+  <tr><td>Prix du bien</td><td class="n">${fmtEur(data.cout_acquisition.prix_bien)}</td></tr>
+  <tr><td>Frais de notaire (ancien, ~7,5 %)</td><td class="n">${fmtEur(data.cout_acquisition.frais_notaire)}</td></tr>
+  <tr class="hp-fort"><td>Total acquisition</td><td class="n">${fmtEur(data.cout_acquisition.total_acquisition)}</td></tr>
 </table>
-<p class="petit">Hors travaux, charges de copropriété et taxe foncière. Un logement classé F ou G
-justifie une décote : ces biens seront interdits à la location en 2028.</p>` : "";
+<p class="hp-petit">Hors travaux, charges de copropriété et taxe foncière. Un logement classé
+F ou G justifie une décote : ces biens seront interdits à la location en 2028.</p>` : "";
 
     const blocConseils = `
-<h3>Comment lire ce résultat</h3>
+${titreDoc("🧭", "Comment lire ce résultat")}
 ${lectureResultat(data, pos).map(b => `
-<div class="conseil">
-  <p class="conseil-titre">${b.titre}</p>
+<div class="hp-encart${b.ton === "prudence" || b.ton === "attention" ? " ambre" : b.ton === "favorable" ? " vert" : ""}">
+  <b>${{ prudence: "🔎 ", attention: "⚠️ ", favorable: "🌱 " }[b.ton] || "💡 "}${b.titre}</b>
   ${b.texte ? `<p>${b.texte}</p>` : ""}
   ${b.liste ? `<ul>${b.liste.map(i => `<li>${i}</li>`).join("")}</ul>` : ""}
 </div>`).join("")}`;
 
-    const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
-<title>Estimation ${data.ville} — ${data.type_local} ${data.pieces || ""} pièces</title>
-<style>
-@page{size:A4;margin:1.8cm}
-body{font-family:Arial,sans-serif;font-size:11pt;color:#111;line-height:1.55;margin:0}
-.header{border-bottom:3px solid #111;padding-bottom:14px;margin-bottom:24px}
-h1{font-size:20pt;margin:0 0 4px;letter-spacing:-0.5px}
-h3{font-size:10pt;text-transform:uppercase;letter-spacing:.07em;color:#555;margin:26px 0 8px;border-bottom:1px solid #ddd;padding-bottom:4px}
-.sub{color:#555;font-size:10pt;margin:0}
-table{width:100%;border-collapse:collapse;margin:10px 0}
-th{background:#f4f4f4;padding:8px 12px;text-align:left;font-size:9.5pt;border:1px solid #ddd}
-td{padding:8px 12px;border:1px solid #ddd;font-size:10.5pt}
-td.num,th.num{text-align:right}
-tr.fort td{font-weight:700;background:#efefef}
-.encart{background:#f7f9fc;border:1px solid #d8e2f0;border-left:4px solid #1d4ed8;padding:14px 18px;margin:18px 0}
-.encart h3{margin-top:0;border:none;color:#1d4ed8}
-.verdict{font-size:12pt;font-weight:700;margin:0 0 8px}
-.nego{background:#fff;border:1px dashed #1d4ed8;padding:10px 12px;margin-top:10px}
-.favorable{color:#047857;font-weight:600}
-.petit{font-size:9pt;color:#666}
-.conseil{margin:12px 0;padding-left:12px;border-left:2px solid #d0d7e2;page-break-inside:avoid}
-.conseil-titre{font-weight:700;margin:0 0 3px;font-size:10.5pt}
-.conseil p{margin:0;font-size:10pt;color:#333}
-.conseil ul{margin:4px 0 0;padding-left:18px;font-size:10pt;color:#333}
-.conseil li{margin-bottom:2px}
-.footer{margin-top:32px;font-size:8.5pt;color:#888;border-top:1px solid #ddd;padding-top:10px}
-</style></head><body>
-<div class="header">
-  <h1>Estimation — ${data.ville}</h1>
-  <p class="sub">${data.type_local}${data.pieces ? ` · ${data.pieces} pièces` : ""}${data.surface_m2 ? ` · ${data.surface_m2} m²` : ""} — établie le ${d}</p>
-</div>
-
-${blocPosition}
-
-<h3>Distribution des ventes comparables</h3>
-<p class="petit">Établie sur <strong>${data.nb_comparables} ventes</strong> (${data.niveau_comparables}).
+    const corps = enteteDoc(
+      `Estimation — ${data.ville}`,
+      `${data.type_local}${data.pieces ? ` · ${data.pieces} pièces` : ""}${data.surface_m2 ? ` · ${data.surface_m2} m²` : ""}`
+    ) + blocPosition + `
+${titreDoc("📊", "Distribution des ventes comparables")}
+<p class="hp-petit">Établie sur <strong>${data.nb_comparables} ventes</strong> (${data.niveau_comparables}).
 ${data.avertissement || ""}</p>
 <table>
-  <thead><tr><th>Repère</th><th class="num">Prix /m²</th>${data.prix_estime ? `<th class="num">Pour ${data.surface_m2} m²</th>` : ""}</tr></thead>
+  <thead><tr><th>Repère</th><th class="n">Prix /m²</th>${est ? `<th class="n">Pour ${data.surface_m2} m²</th>` : ""}</tr></thead>
   <tbody>
-    <tr><td>10 % les moins chers</td><td class="num">${fmtM2(p.p10)}</td>${data.prix_estime ? `<td class="num">${fmtEur(data.prix_estime.p10)}</td>` : ""}</tr>
-    <tr><td>Premier quartile (p25)</td><td class="num">${fmtM2(p.p25)}</td>${data.prix_estime ? `<td class="num">${fmtEur(data.prix_estime.p25)}</td>` : ""}</tr>
-    <tr class="fort"><td>Médiane du marché</td><td class="num">${fmtM2(p.median)}</td>${data.prix_estime ? `<td class="num">${fmtEur(data.prix_estime.median)}</td>` : ""}</tr>
-    <tr><td>Troisième quartile (p75)</td><td class="num">${fmtM2(p.p75)}</td>${data.prix_estime ? `<td class="num">${fmtEur(data.prix_estime.p75)}</td>` : ""}</tr>
-    <tr><td>10 % les plus chers</td><td class="num">${fmtM2(p.p90)}</td>${data.prix_estime ? `<td class="num">${fmtEur(data.prix_estime.p90)}</td>` : ""}</tr>
+    <tr><td>🟢 10 % les moins chers</td><td class="n">${fmtM2(p.p10)}</td>${est ? `<td class="n">${fmtEur(est.p10)}</td>` : ""}</tr>
+    <tr><td>Premier quartile</td><td class="n">${fmtM2(p.p25)}</td>${est ? `<td class="n">${fmtEur(est.p25)}</td>` : ""}</tr>
+    <tr class="hp-fort"><td>⭐ Médiane du marché</td><td class="n">${fmtM2(p.median)}</td>${est ? `<td class="n">${fmtEur(est.median)}</td>` : ""}</tr>
+    <tr><td>Troisième quartile</td><td class="n">${fmtM2(p.p75)}</td>${est ? `<td class="n">${fmtEur(est.p75)}</td>` : ""}</tr>
+    <tr><td>🔴 10 % les plus chers</td><td class="n">${fmtM2(p.p90)}</td>${est ? `<td class="n">${fmtEur(est.p90)}</td>` : ""}</tr>
   </tbody>
 </table>
-<p class="petit">L'écart entre le premier et le troisième quartile mesure la marge de manœuvre :
-il s'explique par l'étage, l'état, le DPE, l'exposition ou les charges. Un bien au-dessus de la
+<p class="hp-petit">L'écart entre le premier et le troisième quartile mesure votre marge de
+manœuvre : il s'explique par l'étage, l'état, le DPE ou les charges. Un bien au-dessus de la
 médiane doit le justifier.</p>
+` + blocDetention + blocCopro + blocTendance + blocBudget + blocConseils + piedDoc();
 
-${blocTendance}
-${blocBudget}
-${blocConseils}
-
-<div class="footer">
-  Source : transactions DVF (DGFiP), base HomePedia IDF. Les données publiées accusent environ
-  six mois de décalage : les ventes les plus récentes n'y figurent pas encore. Ce document est une
-  aide à la décision fondée sur des ventes passées, il ne constitue ni une expertise ni une offre.
-</div>
-<script>window.onload=()=>window.print()</script>
-</body></html>`;
-
-    const w = window.open("", "_blank");
-    if (!w) { setErreur("Autorisez les fenêtres surgissantes pour générer le rapport."); return; }
-    w.document.write(html);
-    w.document.close();
+    if (!imprimerDoc(corps, `Estimation ${data.ville}`)) {
+      setErreur("Autorisez les fenêtres surgissantes pour générer le rapport.");
+    }
   }
 
   return (

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { ReleveCompte } from "./GestionLocative.jsx";
 
 const API = import.meta.env.VITE_API_URL || "";
 
@@ -371,6 +372,11 @@ export default function MonLogement() {
             Cliquez sur un mois payé pour télécharger la quittance (PDF).
           </p>
         </div>
+
+        {/* Relevé de compte — la première chose qu'un locataire vient vérifier.
+            Le même calcul que côté bailleur : un solde qui différerait selon qui
+            le consulte serait pire que pas de solde du tout. */}
+        <ReleveCompte token={localStorage.getItem("hp_token")} />
 
         {/* Documents */}
         <div className="rounded-2xl border border-slate-800 p-5 space-y-4"

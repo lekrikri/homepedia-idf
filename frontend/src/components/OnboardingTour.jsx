@@ -22,6 +22,9 @@ const STEPS = [
     icon: "travel_explore",
     title: "Où chercher ?",
     subtitle: "La première question, avant même de visiter",
+    // On ne cherche pas « front de Pareto », on cherche « acheter » ou « louer » :
+    // ces mots-clés rattachent l'intention du visiteur au vocabulaire de l'étape.
+    motsCles: ["acheter achat acquerir proprietaire budget emprunt commune quartier"],
     description:
       "Indiquez votre budget et ce qui compte le plus pour vous — le prix, la performance énergétique du parc, les transports, le cadre de vie ou la sécurité. HomePedia classe les communes accessibles selon ce critère et vous laisse repartir avec un dossier à emporter en visite.",
     tips: [
@@ -38,6 +41,7 @@ const STEPS = [
     icon: "calculate",
     title: "Ce prix est-il justifié ?",
     subtitle: "Situer un bien parmi les ventes réelles",
+    motsCles: ["acheter achat negocier negociation offre estimation surcote decote compromis annonce"],
     description:
       "Une annonce en main, HomePedia place son prix dans la distribution des ventes comparables. Vous savez alors si vous êtes au-dessus ou en dessous du marché, et de combien négocier. La médiane donne un chiffre ; le percentile vous dit où viser.",
     tips: [
@@ -54,6 +58,7 @@ const STEPS = [
     icon: "key",
     title: "Ce loyer est-il correct ?",
     subtitle: "Pour les locataires, avant de signer",
+    motsCles: ["louer location locataire bail loyer encadrement surloyer signer augmentation irl"],
     description:
       "Comparez un loyer au marché local et vérifiez si la commune applique l'encadrement des loyers. À Paris, Plaine Commune et Est Ensemble, un loyer supérieur au loyer de référence majoré est contestable — et le trop-perçu récupérable.",
     tips: [
@@ -150,6 +155,7 @@ const STEPS = [
     icon: "smart_toy",
     title: "HomePedia IA",
     subtitle: "Le marché, vos droits, et la méthode",
+    motsCles: ["acheter louer droits juridique legal loi conseil question assistant chatbot"],
     description:
       "L'assistant répond sur les 1 266 communes, mais aussi sur le droit du logement — bail, dépôt de garantie, préavis, aides — et sur la méthode d'achat : comment lire un percentile, quoi vérifier en copropriété, comment négocier. Hors de ce périmètre, il le dit plutôt que d'inventer.",
     tips: [
@@ -166,6 +172,7 @@ const STEPS = [
     icon: "home_work",
     title: "Mon Patrimoine",
     subtitle: "Gestion locative sans abonnement",
+    motsCles: ["louer location bailleur proprietaire gestion locative quittance loyer impaye csv comptable"],
     description:
       "Enregistrez vos biens, associez vos locataires et suivez les loyers mois par mois. Générez des quittances PDF conformes à la loi 89-462, calculez l'indexation IRL et exportez un CSV comptable annuel. 100% gratuit, aucun logiciel à installer.",
     tips: [
@@ -182,6 +189,7 @@ const STEPS = [
     icon: "key",
     title: "Espace Locataire",
     subtitle: "Portail dédié pour les locataires",
+    motsCles: ["louer location locataire documents bail quittance"],
     description:
       "Le bailleur invite son locataire en un clic : un compte est créé automatiquement. Le locataire se connecte, consulte sa fiche logement, l'historique des paiements et télécharge ses quittances PDF en toute autonomie — sans déranger son propriétaire.",
     tips: [
@@ -205,7 +213,9 @@ export default function OnboardingTour({ open, onClose }) {
   useEffect(() => {
     if (open) {
       setStep(0);
-      setSommaireOuvert(false);
+      // Le sommaire est le point d'entrée : on choisit ce qu'on veut lire
+      // plutôt que de subir douze écrans dans l'ordre.
+      setSommaireOuvert(true);
       setRecherche("");
     }
   }, [open]);
@@ -215,23 +225,32 @@ export default function OnboardingTour({ open, onClose }) {
   // description et les astuces, pas seulement sur le titre.
   // Les accents sont retirés des deux côtés : personne ne tape « négociation »
   // avec son accent dans un champ de recherche.
+  // La requête est découpée en mots : comparée d'un bloc, « acheter/louer » ne
+  // pouvait correspondre à rien, aucune étape ne contenant cette suite exacte.
+  // On exige d'abord tous les mots, puis on se rabat sur au moins un — c'est ce
+  // qu'attend celui qui tape deux termes proches pour couvrir son sujet.
   const resultats = useMemo(() => {
     const sansAccent = t =>
       (t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-    const q = sansAccent(recherche.trim());
-    if (!q) return STEPS.map((s, i) => ({ ...s, index: i }));
-    return STEPS
-      .map((s, i) => ({ ...s, index: i }))
-      .filter(s =>
-        sansAccent([s.title, s.subtitle, s.description, ...(s.tips || [])].join(" "))
-          .includes(q)
-      );
+    const mots = sansAccent(recherche).split(/[^a-z0-9]+/).filter(Boolean);
+    const toutes = STEPS.map((s, i) => ({ ...s, index: i }));
+    if (!mots.length) return toutes;
+
+    const texte = s =>
+      sansAccent([s.title, s.subtitle, s.description, ...(s.tips || []), ...(s.motsCles || [])].join(" "));
+
+    const tous = toutes.filter(s => mots.every(m => texte(s).includes(m)));
+    return tous.length ? tous : toutes.filter(s => mots.some(m => texte(s).includes(m)));
   }, [recherche]);
 
   if (!open) return null;
 
   const cur = STEPS[step];
   const isLast = step === STEPS.length - 1;
+
+  // Douze étapes ne se parcourent pas linéairement : la plupart des visiteurs
+  // abandonnent avant la moitié. Le sommaire s'ouvre donc en premier, et le
+  // parcours pas à pas reste disponible pour qui le souhaite.
 
   const handleNav = () => {
     if (cur.nav) navigate(cur.nav);
@@ -288,11 +307,13 @@ export default function OnboardingTour({ open, onClose }) {
                 onClick={() => setSommaireOuvert(v => !v)}
                 title="Chercher une rubrique"
                 aria-expanded={sommaireOuvert}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-white/5 transition-colors mt-0.5"
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-slate-400 hover:text-slate-100
+                           hover:bg-white/5 transition-colors mt-0.5 text-[11px] font-medium whitespace-nowrap"
               >
-                <span className="material-symbols-outlined" style={{ fontSize: 19 }}>
-                  {sommaireOuvert ? "close_fullscreen" : "search"}
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>
+                  {sommaireOuvert ? "close" : "list"}
                 </span>
+                {sommaireOuvert ? "Fermer" : "Sommaire"}
               </button>
             <button
               onClick={onClose}

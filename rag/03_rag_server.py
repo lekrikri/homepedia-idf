@@ -64,6 +64,10 @@ MAX_COMMUNES_SOURCES = 5  # Communes affichées en sources dans le chat (UI)
 MAX_COMMUNES_LLM = 3      # Summaries envoyés au LLM (perf prompt processing)
 MAX_LEGAL_LLM = 3         # Chunks légaux envoyés au LLM (bail, loyer, CAF…)
 NUM_PREDICT = 400
+# Un assistant factuel n a pas a etre creatif : a 0,3 le modele complete les
+# trous du contexte, ce qui lui a fait situer Montreuil dans le Val-de-Marne
+# alors que le departement figurait explicitement dans les documents fournis.
+TEMPERATURE = 0.05
 KEEP_ALIVE = "30m"
 
 # Poids de l'hybrid search : plus c'est élevé, plus la recherche sémantique domine
@@ -208,7 +212,7 @@ def call_llm(messages: list[dict]) -> str:
         result = _local_llm.create_chat_completion(
             messages=messages,
             max_tokens=NUM_PREDICT,
-            temperature=0.3,
+            temperature=TEMPERATURE,
         )
         return result["choices"][0]["message"]["content"].strip()
     resp = requests.post(
@@ -217,7 +221,7 @@ def call_llm(messages: list[dict]) -> str:
             "model": OLLAMA_MODEL,
             "messages": messages,
             "stream": False,
-            "options": {"temperature": 0.3, "num_predict": NUM_PREDICT},
+            "options": {"temperature": TEMPERATURE, "num_predict": NUM_PREDICT},
             "keep_alive": KEEP_ALIVE,
         },
         timeout=180,
@@ -231,7 +235,7 @@ def call_llm_stream(messages: list[dict]):
         for chunk in _local_llm.create_chat_completion(
             messages=messages,
             max_tokens=NUM_PREDICT,
-            temperature=0.3,
+            temperature=TEMPERATURE,
             stream=True,
         ):
             content = chunk["choices"][0].get("delta", {}).get("content", "")
@@ -244,7 +248,7 @@ def call_llm_stream(messages: list[dict]):
             "model": OLLAMA_MODEL,
             "messages": messages,
             "stream": True,
-            "options": {"temperature": 0.3, "num_predict": NUM_PREDICT},
+            "options": {"temperature": TEMPERATURE, "num_predict": NUM_PREDICT},
             "keep_alive": KEEP_ALIVE,
         },
         stream=True,
@@ -311,6 +315,32 @@ Question : "Et à Vincennes ?"
 Reformulée : Prix moyen à Vincennes ?"""
 
 
+def commune_du_contexte(question: str, history: list[dict]):
+    """Retrouve la commune dont il est question dans un échange de suivi.
+
+    « Et le DPE ? » ne nomme aucune commune : sans reprise du contexte, la
+    recherche part sur des communes au hasard. La réécriture par le modèle était
+    censée s'en charger, mais elle ajoute plusieurs secondes de latence et se
+    trompe régulièrement.
+
+    La reprise est ici déterministe : si la question courante ne cite aucune
+    commune, on remonte l'historique du plus récent au plus ancien et l'on
+    reprend la dernière mentionnée. C'est instantané, testable sans modèle, et
+    c'est exactement ce que fait déjà le chatbot SQL.
+    """
+    if detect_city(question):
+        return None  # la question se suffit à elle-même
+
+    for message in reversed(history or []):
+        contenu = (message or {}).get("content") or ""
+        if not contenu:
+            continue
+        ville = detect_city(contenu[:400])
+        if ville:
+            return ville
+    return None
+
+
 def rewrite_query(question: str, history: list[dict]) -> str:
     if not history:
         return question
@@ -368,9 +398,27 @@ Reformulée :"""
 
 
 # ── Hybrid Search (pgvector + tsvector) ──────────────────────────────────────
+# Noms de départements franciliens contenant eux-mêmes un nom de commune.
+# « Seine-Saint-Denis » découpé en n-grammes produit « saint denis », qui
+# correspond à une commune réelle : une question portant sur le département
+# était donc réorientée vers Saint-Denis. Ces libellés sont retirés du texte
+# avant la recherche de commune ; la détection de département, elle, travaille
+# sur la chaîne d'origine et n'est pas affectée.
+DEPARTEMENTS_LIBELLES = [
+    "seine-saint-denis", "seine saint denis",
+    "val-de-marne", "val de marne",
+    "seine-et-marne", "seine et marne",
+    "val-d'oise", "val d'oise", "val doise",
+    "hauts-de-seine", "hauts de seine",
+    "île-de-france", "ile-de-france", "ile de france",
+]
+
+
 def detect_city(query: str):
     """Détecte un nom de commune dans la question via lookup en base."""
     words = query.lower()
+    for libelle in DEPARTEMENTS_LIBELLES:
+        words = words.replace(libelle, " ")
     sql = """
         SELECT DISTINCT city, code_commune, code_departement
         FROM rag_documents
@@ -577,25 +625,42 @@ def retrieve_context(question: str, departement: str | None, top_k: int, history
       3. Récupération des summaries + docs détaillés des meilleures communes
       4. Chunks légaux passés directement au LLM si pertinents
     """
-    search_query = rewrite_query(question, history or [])
-    if search_query != question:
-        log.info(f"Query reformulée : '{question}' → '{search_query}'")
+    # La reprise du contexte s'applique à la question telle qu'elle a été posée,
+    # avant toute réécriture. L'inverse — réécrire puis reprendre — laissait le
+    # modèle transformer « Et le DPE ? » en « Quelle commune de Seine-Saint-Denis
+    # a le DPE ? » : la commune d'origine était perdue, et la reprise n'avait
+    # plus rien à rattraper puisque la question réécrite semblait autonome.
+    search_query = question
+    city_match = detect_city(question)
+    if not city_match:
+        city_match = commune_du_contexte(question, history or [])
+        if city_match:
+            log.info(f"Commune reprise du contexte : {city_match['city']}")
+            # La recherche lexicale ignore l'historique : on injecte le nom dans
+            # la requête pour que le BM25 en tienne compte comme le vectoriel.
+            search_query = f"{question} {city_match['city']}"
+
+    # La réécriture par le modèle ne sert plus que de recours, lorsque aucune
+    # commune n'a pu être identifiée. Elle coûte plusieurs secondes et se trompe
+    # régulièrement : autant l'éviter quand la reprise déterministe a suffi.
+    if not city_match:
+        search_query = rewrite_query(question, history or [])
+        if search_query != question:
+            log.info(f"Query reformulée : '{question}' → '{search_query}'")
+        city_match = detect_city(search_query)
 
     if not departement:
         departement = extract_departement(search_query)
         if departement:
             log.info(f"Département détecté : {departement}")
-
-    # Détection de ville dans la question
-    city_match = detect_city(search_query)
     if city_match:
-        log.info(f"Ville détectée : {city_match['city']} ({city_match['code_commune']})")
+        log.info(f"Ville retenue : {city_match['city']} ({city_match['code_commune']})")
         if not departement:
             departement = city_match["code_departement"]
 
     results = hybrid_search(search_query, departement, top_k)
     if not results:
-        return [], [], []
+        return [], [], [], question
 
     # Séparer les résultats légaux des summaries communes
     summary_results = [r for r in results if r["doc_type"] == "summary"]
@@ -632,7 +697,15 @@ def retrieve_context(question: str, departement: str | None, top_k: int, history
         ui_chunks.append(r["text"][:300])
         ui_metadatas.append({"city": "France", "type": "legal", "code_commune": "00000"})
 
-    return llm_chunks, ui_chunks, ui_metadatas
+    # La commune reprise du contexte sert à la recherche, mais la question posée
+    # au modèle reste « Et le DPE ? » — à charge pour lui de deviner de quelle
+    # commune il s'agit, ce qu'un modèle de cette taille ne fait pas de façon
+    # fiable : il répondait par la définition générale du DPE. On la lui nomme.
+    question_llm = question
+    if city_match and city_match["city"].lower() not in question.lower():
+        question_llm = f"{question} (à propos de {city_match['city']})"
+
+    return llm_chunks, ui_chunks, ui_metadatas, question_llm
 
 
 # ── Prompt ────────────────────────────────────────────────────────────────────
@@ -641,12 +714,18 @@ SYSTEM_PROMPT = """Tu es HomePedia, un assistant spécialisé dans l'immobilier 
 Règles impératives :
 - Réponds en français, directement, sans préambule.
 - Utilise UNIQUEMENT les informations du contexte ci-dessous.
+- N'invente JAMAIS un département, un code postal, une population ou un prix. Ces
+  éléments figurent dans le contexte : recopie-les tels quels. Si l'un manque, ne
+  le mentionne pas plutôt que de le deviner.
 - Pas de bullet points ni de listes numérotées sauf pour les étapes légales ou les listes de critères — réponds en phrases continues.
 - Les critères objectifs (DPE, prix, population, transports, superficie) sont des données factuelles : compare les chiffres et classe les communes du meilleur au moins bon. Pour le DPE : score bas = meilleur (1=A, 7=G), donc 3/7 est meilleur que 4/7.
 - Réponds toujours avec les données disponibles, même partielles. Ne dis jamais "les données ne permettent pas de répondre" si tu as des chiffres comparables dans le contexte.
 - Seules les questions purement subjectives sans aucun critère mesurable (la "plus belle", "la plus agréable") méritent la mention "c'est subjectif".
 - Si l'information n'est pas dans le contexte, dis-le en une phrase courte.
 - Pas de "Bien sûr", "Voici", "D'après les données", "Il convient de noter" — va directement au fait.
+- Désigne toujours une commune par son NOM. N'écris JAMAIS un code INSEE (93057, 75056) dans la réponse : le contexte donne le nom en regard du code, utilise le nom.
+- Ne reformule pas la question en guise de réponse. "Les transports sont bien desservis en transports" ne dit rien : donne le chiffre ou le fait du contexte, sinon dis que l'information manque.
+- Si la question porte sur une commune précise, réponds sur CETTE commune avec ses chiffres. Une définition générale ne répond pas à une question particulière : "Et le DPE ?" après une question sur Aubervilliers appelle le DPE d'Aubervilliers, pas la définition du DPE.
 - Pour les questions juridiques (bail, loyer, préavis, dépôt de garantie, APL, CAF, achat, diagnostics, travaux, copropriété), donne une réponse précise avec les montants et délais légaux exacts, puis termine par : "Pour plus de détails ou une situation personnelle, consultez service-public.fr ou un professionnel du droit."
 - Maximum 4 phrases courtes pour les questions simples. Pour les questions juridiques ou comparatives détaillées, tu peux aller jusqu'à 6 phrases si nécessaire."""
 
@@ -679,7 +758,7 @@ async def rag_query(req: QueryRequest):
         )
 
     try:
-        llm_chunks, ui_chunks, ui_metadatas = retrieve_context(
+        llm_chunks, ui_chunks, ui_metadatas, question_llm = retrieve_context(
             req.question, req.departement, req.top_k, history_dicts
         )
     except Exception as e:
@@ -692,7 +771,7 @@ async def rag_query(req: QueryRequest):
             latency_ms=int((time.time() - t0) * 1000),
         )
 
-    messages = build_messages(req.question, llm_chunks, history_dicts)
+    messages = build_messages(question_llm, llm_chunks, history_dicts)
 
     try:
         answer = call_llm(messages)
@@ -724,7 +803,7 @@ async def rag_query_stream(req: QueryRequest):
             return
 
         try:
-            llm_chunks, ui_chunks, ui_metadatas = retrieve_context(
+            llm_chunks, ui_chunks, ui_metadatas, question_llm = retrieve_context(
                 req.question, req.departement, req.top_k, history_dicts
             )
         except Exception as e:
@@ -743,7 +822,7 @@ async def rag_query_stream(req: QueryRequest):
         ]
         yield f"event: sources\ndata: {json.dumps({'sources': sources})}\n\n"
 
-        messages = build_messages(req.question, llm_chunks, history_dicts)
+        messages = build_messages(question_llm, llm_chunks, history_dicts)
         try:
             for token in call_llm_stream(messages):
                 yield f"event: token\ndata: {json.dumps({'text': token})}\n\n"

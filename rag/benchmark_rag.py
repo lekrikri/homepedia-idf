@@ -100,6 +100,22 @@ QUESTIONS = [
     ("legal-invest", "Qu'est-ce que le deficit foncier ?", "legal", "ficit foncier"),
     ("legal-invest", "Comment fonctionne la taxe fonciere ?", "legal", "onci"),
 
+    # ── Départements lus comme des communes ────────────────────────────────
+    # « Seine-Saint-Denis » contient « Saint-Denis », « Val-de-Marne » et
+    # « Seine-et-Marne » se ressemblent : une question portant sur un département
+    # ne doit pas être réorientée vers la commune que son nom contient.
+    ("dept-pas-commune", "Quelles communes de Seine-Saint-Denis sont les moins cheres ?", "commune", None),
+    ("dept-pas-commune", "Le marche immobilier en Seine-Saint-Denis est-il tendu ?", "commune", None),
+    ("dept-pas-commune", "Ou acheter en Seine-et-Marne ?", "commune", None),
+    ("dept-pas-commune", "Quel est le prix moyen dans le Val-de-Marne ?", "commune", None),
+
+    # ── Aide au choix ──────────────────────────────────────────────────────
+    ("aide-choix", "Je cherche un T2 a moins de 200000 euros en Seine-Saint-Denis", "commune", None),
+    ("aide-choix", "Faut-il acheter un logement classe F ?", "legal", None),
+    ("aide-choix", "Quels pieges eviter avant de signer un compromis ?", "legal", "compromis"),
+    ("aide-choix", "Comment savoir si le prix demande est justifie ?", "commune", None),
+    ("aide-choix", "Vaut-il mieux louer ou acheter ?", "legal", None),
+
     # ── Juridique : copropriété ────────────────────────────────────────────
     ("legal-copro", "Comment fonctionne une copropriete ?", "legal", "opropri"),
     ("legal-copro", "A quoi sert le syndic ?", "legal", "syndic"),
@@ -143,6 +159,20 @@ CONVERSATIONS = [
         ("Parle-moi de Vincennes", "commune", "Vincennes"),
         ("Et le DPE ?", "dpe", "Vincennes"),
         ("Compare avec Montreuil", "commune", "Montreuil"),
+    ]),
+    # Régression constatée en production : « Et le DPE ? » posé après Aubervilliers
+    # répondait sur Saint-Denis. Deux causes cumulées — la réécriture par le modèle
+    # s'exécutait avant la reprise du contexte et produisait « Quelle commune de
+    # Seine-Saint-Denis a le DPE ? », dans laquelle la détection de commune
+    # reconnaissait « Saint-Denis » par simple sous-chaîne.
+    ("multitours-aubervilliers", [
+        ("Parle-moi de Aubervilliers", "commune", "Aubervilliers"),
+        ("Et le DPE ?", "dpe", "Aubervilliers"),
+        ("Et la securite ?", "commune", "Aubervilliers"),
+    ]),
+    ("multitours-suivi-court", [
+        ("Quel est le prix a Pantin ?", "commune", "Pantin"),
+        ("Et les transports ?", "poi", "Pantin"),
     ]),
     ("multitours-legal", [
         ("Quel est le depot de garantie pour un meuble ?", "legal", "garantie"),

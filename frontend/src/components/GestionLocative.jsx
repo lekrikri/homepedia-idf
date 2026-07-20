@@ -36,6 +36,12 @@ export const DOC_CATS_PROPRIO = [
   { value: "reglement_copropriete", label: "Règlement de copropriété" },
   { value: "notice_information",  label: "Notice d'information (ALUR)" },
   { value: "taxe_fonciere",       label: "Taxe foncière" },
+  // La révision annuelle et la TEOM sont les deux pièces que le locataire
+  // réclame le plus : la première parce qu'elle justifie l'augmentation, la
+  // seconde parce qu'elle lui est refacturée et qu'il a le droit d'en voir
+  // le décompte.
+  { value: "revision_loyer",      label: "Révision de loyer (IRL)" },
+  { value: "taxe_ordures",        label: "Taxe d'enlèvement des ordures ménagères" },
   { value: "autre",               label: "Autre document" },
 ];
 
@@ -61,6 +67,123 @@ function fmtTaille(octets) {
   if (octets < 1024) return `${octets} o`;
   if (octets < 1048576) return `${(octets / 1024).toFixed(0)} Ko`;
   return `${(octets / 1048576).toFixed(1)} Mo`;
+}
+
+// ── Relevé de compte ──────────────────────────────────────────────────────────
+//
+// Le suivi mensuel dit « ce mois est-il réglé ? ». Le relevé dit « où en est-on ? »,
+// qui est la question réellement posée : chaque échéance au débit, chaque
+// règlement au crédit, et un solde qui court d'une ligne à l'autre. Un solde qui
+// dérive rend un mois oublié visible bien mieux qu'une case restée grise.
+// `bienId` désigne la vue bailleur ; sans lui, le composant interroge l'espace
+// locataire, qui atteint le même relevé par le compte plutôt que par le bien.
+// Un solde qui différerait selon qui le consulte serait pire que pas de solde.
+export function ReleveCompte({ bienId, token }) {
+  const [releve, setReleve] = useState(null);
+  const [annee, setAnnee] = useState(new Date().getFullYear());
+  const [chargement, setChargement] = useState(true);
+
+  useEffect(() => {
+    setChargement(true);
+    const API = import.meta.env.VITE_API_URL || "";
+    const url = bienId
+      ? `${API}/api/v1/gestion/biens/${bienId}/releve?annee=${annee}`
+      : `${API}/api/v1/mon-logement/releve?annee=${annee}`;
+    fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then(r => (r.ok ? r.json() : null))
+      .then(setReleve)
+      .catch(() => setReleve(null))
+      .finally(() => setChargement(false));
+  }, [bienId, annee, token]);
+
+  const eur = n => (n == null ? "" : n.toLocaleString("fr-FR",
+    { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €");
+
+  const soldeCouleur = s => (Math.abs(s) < 0.5 ? "#34d399" : s < 0 ? "#f87171" : "#fbbf24");
+
+  return (
+    <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+        <div className="flex items-center gap-2">
+          <span className="material-symbols-outlined text-primary" style={{ fontSize: 18 }}>
+            account_balance_wallet
+          </span>
+          <h3 className="text-white font-semibold text-sm">Relevé de compte</h3>
+        </div>
+        <select value={annee} onChange={e => setAnnee(Number(e.target.value))}
+          className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white">
+          {[0, 1, 2].map(d => {
+            const a = new Date().getFullYear() - d;
+            return <option key={a} value={a}>{a}</option>;
+          })}
+        </select>
+      </div>
+
+      {chargement ? (
+        <p className="text-slate-500 text-xs">Chargement…</p>
+      ) : !releve ? (
+        <p className="text-slate-500 text-xs">Relevé indisponible.</p>
+      ) : (
+        <>
+          <div className="rounded-lg p-3 mb-3" style={{ background: "rgba(148,163,184,0.08)" }}>
+            <div className="text-[11px] uppercase tracking-wider text-slate-500">Solde au terme de {releve.annee}</div>
+            <div className="text-2xl font-bold" style={{ color: soldeCouleur(releve.solde), fontVariantNumeric: "tabular-nums" }}>
+              {eur(releve.solde)}
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1">{releve.commentaire}</p>
+          </div>
+
+          {releve.ecritures.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm" style={{ fontVariantNumeric: "tabular-nums" }}>
+                <thead>
+                  <tr className="text-[10px] uppercase tracking-wider text-slate-500">
+                    <th className="text-left font-medium pb-2 pr-3">Date</th>
+                    <th className="text-left font-medium pb-2 px-2">Intitulé</th>
+                    <th className="text-right font-medium pb-2 px-2">Débit</th>
+                    <th className="text-right font-medium pb-2 px-2">Crédit</th>
+                    <th className="text-right font-medium pb-2 pl-2">Solde</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {releve.ecritures.map((e, i) => (
+                    <tr key={i} className="border-t border-slate-800">
+                      <td className="py-2 pr-3 text-slate-400 text-xs whitespace-nowrap">
+                        {e.date.split("-").reverse().join("/")}
+                      </td>
+                      <td className="px-2 text-slate-300 text-xs">
+                        {e.libelle}
+                        {e.en_attente && (
+                          <span className="ml-2 px-1.5 py-0.5 rounded text-[10px]"
+                            style={{ background: "rgba(248,113,113,0.15)", color: "#f87171" }}>
+                            en attente
+                          </span>
+                        )}
+                      </td>
+                      <td className="text-right px-2 text-xs" style={{ color: e.debit ? "#f87171" : "transparent" }}>
+                        {e.debit ? "−" + eur(e.debit) : "—"}
+                      </td>
+                      <td className="text-right px-2 text-xs" style={{ color: e.credit ? "#34d399" : "transparent" }}>
+                        {e.credit ? "+" + eur(e.credit) : "—"}
+                      </td>
+                      <td className="text-right pl-2 text-xs font-medium" style={{ color: soldeCouleur(e.solde) }}>
+                        {eur(e.solde)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <p className="text-[11px] text-slate-600 mt-3">
+            Appelé sur l'année : {eur(releve.total_appele)} · Réglé : {eur(releve.total_regle)}.
+            Le relevé se construit à partir des loyers saisis dans le suivi des paiements.
+          </p>
+        </>
+      )}
+    </div>
+  );
 }
 
 function DocSection({ documents, loading, onUpload, onDownload, onDelete }) {
@@ -230,10 +353,29 @@ function IRLCalculator({ loyer }) {
 }
 
 // ── Export CSV comptable ───────────────────────────────────────────────────────
+// Le fichier est destiné à un tableur français : séparateur « ; » et virgule
+// décimale. Avec un point, Excel lit « 900.00 » comme du texte et refuse d'en
+// faire la somme — le défaut ne se voit qu'au moment d'additionner la colonne.
+const nombreFr = n => Number(n || 0).toFixed(2).replace(".", ",");
+
+const STATUT_LIBELLE = {
+  paye: "Payé",
+  partiel: "Partiel",
+  impaye: "Impayé",
+  non_renseigne: "Non renseigné",
+};
+
+const dateFr = d => {
+  if (!d) return "";
+  const [a, m, j] = String(d).slice(0, 10).split("-");
+  return j ? `${j}/${m}/${a}` : String(d);
+};
+
 async function exportCSVComptable(biens, annee, token) {
   const API = import.meta.env.VITE_API_URL || "";
   const headers = token ? { Authorization: `Bearer ${token}` } : {};
   const rows = [["Bien","Adresse","Locataire","Mois","Année","Loyer HC (€)","Charges (€)","Total CC (€)","Statut","Date paiement"]];
+  let totalHC = 0, totalCharges = 0;
 
   await Promise.all(biens.map(async b => {
     try {
@@ -244,25 +386,40 @@ async function exportCSVComptable(biens, annee, token) {
       const loyerHC = b.locataire?.loyer_mensuel || 0;
       const charges = b.locataire?.charges_mensuelles || 0;
 
+      // La ville enregistrée porte déjà le code postal entre parenthèses ; le
+      // préfixer une seconde fois donnait « 93300 AUBERVILLIERS (93300) ».
+      const ville = (b.ville || "").trim();
+      const cp = (b.code_postal || "").trim();
+      const adresse = ville.includes(cp) ? ville : `${cp} ${ville}`.trim();
+
       for (let mois = 1; mois <= 12; mois++) {
         const p = paiements.find(p => p.mois === mois);
         rows.push([
           b.adresse,
-          `${b.code_postal || ""} ${b.ville || ""}`.trim(),
+          adresse,
           locNom,
           MOIS_LONG[mois - 1],
           annee,
-          loyerHC.toFixed(2),
-          charges.toFixed(2),
-          (loyerHC + charges).toFixed(2),
-          p?.statut || "non_renseigne",
-          p?.date_paiement || "",
+          nombreFr(loyerHC),
+          nombreFr(charges),
+          nombreFr(loyerHC + charges),
+          STATUT_LIBELLE[p?.statut] || STATUT_LIBELLE.non_renseigne,
+          dateFr(p?.date_paiement),
         ]);
+        totalHC += loyerHC;
+        totalCharges += charges;
       }
     } catch {}
   }));
 
-  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(";")).join("\n");
+  // Ligne de total : c'est le chiffre que l'on reporte sur la déclaration 2044.
+  if (rows.length > 1) {
+    rows.push([]);
+    rows.push(["TOTAL", "", "", "", annee,
+      nombreFr(totalHC), nombreFr(totalCharges), nombreFr(totalHC + totalCharges), "", ""]);
+  }
+
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(";")).join("\r\n");
   const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -848,6 +1005,12 @@ td{padding:9px 14px;border:1px solid #ddd;font-size:11pt}
         onDelete={deleteDocument}
         apiBase={API}
       />
+
+      {/* Le relevé précède le suivi mensuel : il donne la réponse (« où en est-on ? »)
+          avant le détail qui permet de la vérifier. */}
+      {bien.locataire && (
+        <ReleveCompte bienId={bien.id} token={localStorage.getItem("hp_token")} />
+      )}
 
       {/* ── Suivi paiements ──────────────────────────────────────────────────── */}
       <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4">

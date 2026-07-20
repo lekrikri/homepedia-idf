@@ -45,6 +45,14 @@ steps:
       - |
         pip install psycopg2-binary --quiet
         python ingestion/quality_check.py || true
+        # Contrôle des biais de présentation : une donnée exacte mais publiée
+        # avec plus d'assurance qu'elle n'en mérite trompe autant qu'une donnée
+        # fausse. Sans « || true » — un contrôle qui ne peut pas faire échouer le
+        # build ne protège de rien, et c'est précisément ce qui a laissé passer
+        # un classement énergétique fondé sur trois diagnostics.
+        # L'API n'est pas encore redéployée à ce stade du build : on ne contrôle
+        # ici que la base.
+        python scripts/controle_donnees.py --sans-api
     secretEnv: ['POSTGRES_PASSWORD']
     env:
       - 'POSTGRES_HOST=aws-0-eu-west-1.pooler.supabase.com'

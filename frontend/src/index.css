@@ -149,3 +149,16 @@
   polygon, polyline { stroke: #1d4ed8 !important; }
   circle[fill="#3c83f6"] { fill: #1d4ed8 !important; }
 }
+
+/* ── Champs numériques ────────────────────────────────────────────────────── */
+/* Les flèches natives des champs de type « number » se superposaient aux
+   suffixes placés en fin de champ : « €/mois » se lisait « €/m », et le curseur
+   devenait difficile à poser en fin de saisie. Les valeurs se tapent au clavier
+   dans cette application — aucun de ces champs ne s'incrémente utilement au
+   clic — donc les flèches ne coûtent rien à retirer. */
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type=number] { -moz-appearance: textfield; appearance: textfield; }

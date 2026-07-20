@@ -93,6 +93,7 @@ func main() {
 		v1.GET("/loyer", middleware.HTTPCache(1800, 86400), handlers.GetLoyer)
 		v1.GET("/dossier", middleware.HTTPCache(1800, 86400), handlers.GetDossier)
 		v1.GET("/dpe-adresse", middleware.HTTPCache(86400, 604800), handlers.GetDpeAdresse)
+		v1.GET("/sources", middleware.HTTPCache(3600, 86400), handlers.GetSources)
 
 		// Pipeline monitoring
 		v1.GET("/pipeline/runs", handlers.ListPipelineRuns)
@@ -143,6 +144,7 @@ func main() {
 			gestion.POST("/locataires/:id/inviter", handlers.InviterLocataire)
 			gestion.DELETE("/paiements/:id", handlers.DeleteGestionPaiement)
 			gestion.GET("/biens/:id/paiements", handlers.GetGestionPaiements)
+			gestion.GET("/biens/:id/releve", handlers.GetGestionReleve)
 			gestion.POST("/paiements", handlers.CreateGestionPaiement)
 
 			// Documents locatifs (proprio)
@@ -154,6 +156,7 @@ func main() {
 		// ── Espace locataire (locataires connectés) ───────────────────────────
 		v1.GET("/mon-logement", middleware.Auth(), handlers.GetMonLogement)
 		v1.GET("/mon-logement/documents", middleware.Auth(), handlers.ListDocumentsLocataire)
+		v1.GET("/mon-logement/releve", middleware.Auth(), handlers.GetReleveLocataire)
 		v1.POST("/mon-logement/documents/upload", middleware.Auth(), handlers.UploadDocumentLocataire)
 
 		// Documents (download accessible proprio + locataire selon droits)

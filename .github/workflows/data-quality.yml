@@ -32,13 +32,38 @@ jobs:
         with:
           python-version: "3.11"
 
+      # dbt-bigquery et great-expectations pèsent plusieurs minutes d'installation
+      # et ne servent qu'à l'étape dbt, elle-même conditionnelle. Ils sont donc
+      # installés là où ils servent : le contrôle des données n'a besoin que de
+      # psycopg2, et la facture d'un runner se compte en minutes.
       - name: Install dependencies
-        run: pip install dbt-bigquery great-expectations psycopg2-binary
+        run: pip install psycopg2-binary
 
       - name: Authenticate GCP
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+      # ── Biais de présentation ─────────────────────────────────────────────
+      # Contrôle distinct des vérifications d'intégrité ci-dessous : il ne
+      # cherche pas des valeurs manquantes ou aberrantes, mais des données
+      # exactes publiées avec plus d'assurance qu'elles n'en méritent — un
+      # pourcentage calculé sur trois diagnostics, une estimation présentée
+      # comme une observation. Il croise aussi nos estimations de loyer avec
+      # les barèmes préfectoraux, seul moyen d'avoir détecté qu'elles étaient
+      # basses de 12 à 24 % dans les communes populaires.
+      #
+      # Volontairement sans « || true » : c'est la seule étape dont l'échec
+      # doit se voir.
+      - name: Contrôle des biais de présentation
+        run: python scripts/controle_donnees.py --verbeux
+        env:
+          POSTGRES_HOST: aws-0-eu-west-1.pooler.supabase.com
+          POSTGRES_PORT: "5432"
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres.iugsfmvqddburvufzacy
+          POSTGRES_SSLMODE: require
+          PGPASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
 
       # ── Vérifications PostgreSQL ──────────────────────────────────────────
       - name: Check PostgreSQL data quality
@@ -53,9 +78,11 @@ jobs:
 
       # ── Tests DBT ─────────────────────────────────────────────────────────
       - name: Run DBT tests
-        run: dbt test --profiles-dir ~/.dbt || true
-        working-directory: ./homepedia_dbt
         if: ${{ hashFiles('homepedia_dbt/**') != '' }}
+        working-directory: ./homepedia_dbt
+        run: |
+          pip install dbt-bigquery great-expectations
+          dbt test --profiles-dir ~/.dbt || true
 
       # ── Notification si échec — GitHub Issue (pas besoin de SMTP) ────────
       - name: Notify on failure via GitHub Issue

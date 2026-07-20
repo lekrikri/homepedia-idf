@@ -58,9 +58,15 @@ type DossierResponse struct {
 // Les valeurs sont des fragments SQL : elles ne viennent jamais de l'utilisateur,
 // seule la clé est comparée à la requête. Le tri secondaire par prix départage
 // les communes à score égal.
+//
+// Le classement énergétique ne retient que les communes disposant d'au moins
+// trente diagnostics. En dessous, la proportion est du bruit : Épiais-lès-Louvres
+// affichait « 66,7 % de logements bien classés » sur trois diagnostics, et
+// arrivait donc en tête d'un critère censé désigner les communes où l'on évite
+// d'acheter une passoire thermique.
 var criteresValides = map[string]string{
 	"prix":       "v.p25 ASC",
-	"dpe":        "ca.pct_dpe_bon DESC NULLS LAST, v.p25 ASC",
+	"dpe":        "CASE WHEN ca.nb_dpe >= 30 THEN ca.pct_dpe_bon END DESC NULLS LAST, v.p25 ASC",
 	"transports": "ca.score_accessibilite DESC NULLS LAST, v.p25 ASC",
 	"cadre_vie":  "ca.score_qualite_vie DESC NULLS LAST, v.p25 ASC",
 	"securite":   "ca.score_securite_commune DESC NULLS LAST, v.p25 ASC",
@@ -169,7 +175,7 @@ func communesDossier(c *gin.Context, typeLocal string, pieces int, deps []string
 		)
 		SELECT ca.code_commune, ca.city, TRIM(ca.code_departement),
 		       v.nb, v.p25, v.med, v.p75,
-		       ca.pct_dpe_bon,
+		       CASE WHEN ca.nb_dpe >= 30 THEN ca.pct_dpe_bon END,
 		       COALESCE(ca.score_securite_commune, ca.score_securite::int),
 		       ca.score_accessibilite::int,
 		       ca.score_qualite_vie::int, ca.loyer_median_m2,
