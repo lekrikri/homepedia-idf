@@ -2,6 +2,28 @@ import { useState, useRef, useEffect } from "react";
 import ConseillerIA from "./ConseillerIA";
 
 const CHAT_API = import.meta.env.VITE_CHAT_API_URL || "http://localhost:5001";
+// Le RAG (Qwen 1,5 B) répond au droit du logement, à l'achat et aux aides ; il
+// est servi par l'API Go. Le chatbot SQL, lui, répond aux données de commune
+// (prix, DPE, classements) avec ses cartes.
+const RAG_API = import.meta.env.VITE_API_URL || "http://localhost:8080";
+
+// Aiguillage hybride. Deux cerveaux : le SQL pour la donnée chiffrée d'une
+// commune, le RAG pour le juridique et le conseil. Un mot-clé juridique fait
+// basculer vers le RAG — « le loyer est-il encadré à Aubervilliers ? » est une
+// question de droit, même si elle nomme une commune. Les termes retenus
+// n'apparaissent pas dans une demande de donnée commune (prix, DPE, sécurité,
+// classement), qui reste donc sur le SQL et ses cartes.
+const sansAccents = (s) =>
+  (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+const JURIDIQUE_RE =
+  // Bornes de début conservées ; pas de borne de fin, pour que les racines
+  // (« encadr » → encadré/encadrement, « expuls » → expulser/expulsion) captent
+  // leurs suffixes. Les acronymes courts (apl, caf, hlm, sci, irl, ptz) gardent
+  // leurs propres bornes internes pour ne pas matcher au milieu d'un mot.
+  /\b(preavis|conge|bail|baux|caution|depot de garantie|garant|encadr|quittance|etat des lieux|vetuste|notaire|compromis|retractation|carrez|boutin|syndic|copropriete|\bapl\b|\bcaf\b|visale|maprimerenov|renov|\baides?\b|passoire|classe [fg]\b|expuls|treve|colocation|sous.location|honoraires|decence|decent|resiliation|indemnite|dalo|\bhlm\b|preemption|servitude|indivision|succession|\bsci\b|pinel|deficit foncier|\birl\b|logement (meuble|vide|nu|decent|insalubre)|plus.value|permis de construire|declaration prealable|\bptz\b|litige|conciliation|zone tendue|emprunt|capacite d.emprunt|frais de notaire|credit immobilier|augment|hausse|revis|loyer.{0,20}(correct|abusif|trop|plafond|maximum|legal)|puis.je|ai.?je le droit|dois.je|le droit de|peut.il m|obligation|comment (resilier|contester|obtenir|declarer|calculer|financer|reviser|augmenter))/;
+
+const estJuridique = (q) => JURIDIQUE_RE.test(sansAccents(q));
 
 // Couleurs du site (dark theme)
 const C = {
@@ -19,25 +41,29 @@ const C = {
   fabShadow:  "0 0 20px rgba(60,131,246,0.5), 0 4px 16px rgba(0,0,0,0.6)",
 };
 
-// Tâche 1 — 6 suggestions statiques (chat vide)
+// Suggestions de l'accueil : une par capacité, pour que l'utilisateur découvre
+// les trois cerveaux — données de commune, calcul, et droit du logement.
 const SUGGESTED_QUESTIONS = [
-  "Meilleures communes pour investir en Essonne ?",
+  "Prix au m² à Aubervilliers ?",
+  "Combien puis-je emprunter avec 2 500 € ?",
+  "Le loyer est-il encadré à Aubervilliers ?",
   "Comparer Vincennes et Montreuil",
-  "Communes avec rendement > 5% près de Paris",
-  "Où acheter avec 300 000 € en IDF ?",
-  "Quels coins ont les meilleures écoles en 78 ?",
-  "Tendance des prix en Seine-Saint-Denis",
+  "Meilleures communes pour investir en Essonne ?",
+  "Quel préavis pour quitter mon logement en zone tendue ?",
 ];
 
-// Tâche 1 — Suggestions contextuelles par intent
+// Suggestions contextuelles par intent, pour rebondir après une réponse.
 const CONTEXTUAL_SUGGESTIONS = {
   rendement:        ["Et en Seine-et-Marne ?", "Rendement en 92 ?", "Communes avec loyer > 15 €/m² ?"],
   top_investissement: ["Et pour une famille ?", "Score DPE de ces communes ?", "Budget 250 000 € ?"],
   multi_criteria:   ["Comparer les 2 premières", "Prévisions prix de Palaiseau ?", "DPE de ces communes ?"],
-  commune_detail:   ["Et les prévisions pour 2026 ?", "Communes similaires moins chères ?", "Rendement locatif ?"],
+  commune_detail:   ["Et le DPE ?", "Et la sécurité ?", "Combien puis-je emprunter ici ?"],
   comparaison:      ["Quelle commune a les meilleures écoles ?", "Et pour investir lequel choisir ?"],
   budget_achat:     ["Et en 77 ?", "Meilleur rendement dans ce budget ?", "Communes similaires ?"],
-  default:          ["Meilleures communes 93 ?", "Investir à Massy ?", "DPE en 91 ?"],
+  // Après une réponse juridique ou un calcul (outils emprunt/loyer), on propose
+  // d'autres questions de droit et de calcul plutôt que des données de commune.
+  juridique:        ["Combien puis-je emprunter avec 3 000 € ?", "Comment récupérer mon dépôt de garantie ?", "Suis-je éligible au PTZ ?"],
+  default:          ["Prix à Montreuil ?", "Combien puis-je emprunter avec 3 000 € ?", "Quel préavis en zone tendue ?"],
 };
 
 // Rendu markdown minimaliste (**bold** uniquement)
@@ -86,6 +112,17 @@ function Message({ msg }) {
                 {row.score_global && <span>· score {row.score_global}</span>}
               </div>
             ))}
+          </div>
+        )}
+        {/* Accusé de fiabilité : distinguer un calcul déterministe / une source
+            juridique d'une simple réponse générée renforce la confiance. */}
+        {!isUser && !msg.streaming && msg.sourceTypes?.length > 0 && (
+          <div className="mt-2 pt-1.5 text-[11px]" style={{ color: C.textMuted, borderTop: `1px solid ${C.border}` }}>
+            {msg.sourceTypes.includes("outil")
+              ? "🧮 Calcul HomePedia — valeurs officielles, pas une estimation générée"
+              : msg.sourceTypes.includes("legal")
+              ? "📖 Droit du logement — vérifiez sur service-public.fr"
+              : null}
           </div>
         )}
       </div>
@@ -140,6 +177,18 @@ export default function ChatWidget() {
     if (open && !showConseiller) setTimeout(() => inputRef.current?.focus(), 100);
   }, [open, showConseiller]);
 
+  // Réveil du RAG à l'ouverture du chat. Le modèle 1,5 B se charge au démarrage
+  // du conteneur (~1 min) ; le déclencher pendant que l'utilisateur lit et tape
+  // évite qu'une première question juridique n'attende ce chargement. Une seule
+  // fois par montage, fire-and-forget.
+  const ragWarmed = useRef(false);
+  useEffect(() => {
+    if (open && !ragWarmed.current) {
+      ragWarmed.current = true;
+      fetch(`${RAG_API}/api/v1/rag/health`).catch(() => {});
+    }
+  }, [open]);
+
   // Tâche 1 — calcul des suggestions à afficher
   const isEmpty = messages.length <= 1;
   const lastIntent = !isEmpty
@@ -148,6 +197,110 @@ export default function ChatWidget() {
   const contextualSuggestions = lastIntent
     ? (CONTEXTUAL_SUGGESTIONS[lastIntent] || CONTEXTUAL_SUGGESTIONS.default)
     : null;
+
+  // Met à jour le dernier message assistant en cours de streaming.
+  const majDernier = (patch) =>
+    setMessages((prev) => {
+      const copy = [...prev];
+      const last = copy[copy.length - 1];
+      if (!last || last.role !== "assistant") return prev;
+      copy[copy.length - 1] = typeof patch === "function" ? patch(last) : { ...last, ...patch };
+      return copy;
+    });
+
+  // Flux du chatbot SQL : « data: {intent,data} » puis « data: {chunk} ».
+  async function streamSQL(q, history, ctrl) {
+    const res = await fetch(`${CHAT_API}/chat/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: q, history }),
+      signal: ctrl.signal,
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop() ?? "";
+      for (const part of parts) {
+        const line = part.split("\n").find((l) => l.startsWith("data:"));
+        if (!line) continue;
+        const payload = line.slice(5).trim();
+        if (payload === "[DONE]") break;
+        try {
+          const ev = JSON.parse(payload);
+          if (ev.intent !== undefined) {
+            majDernier((last) => ({ ...last, data: ev.data || [], intent: ev.intent }));
+          } else if (ev.replace !== undefined) {
+            majDernier({ content: ev.replace });
+          } else if (ev.chunk !== undefined) {
+            majDernier((last) => ({ ...last, content: (last.content || "") + ev.chunk }));
+          }
+        } catch { /* payload malformé ignoré */ }
+      }
+    }
+  }
+
+  // Flux du RAG : « event: sources|token|done ». Pas de cartes (data reste vide),
+  // la réponse s'affiche en prose. On marque le message pour l'accusé de source.
+  async function streamRAG(q, history, ctrl) {
+    majDernier({ intent: "juridique", data: [] });
+
+    // Le service RAG peut être en train de démarrer (cold start ~1 min). Plutôt
+    // qu'une erreur, on patiente et on réessaie une fois, en le disant.
+    const appel = () =>
+      fetch(`${RAG_API}/api/v1/rag/query/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: q, history }),
+        signal: ctrl.signal,
+      });
+
+    let res = await appel();
+    if (!res.ok) {
+      majDernier({ content: "L'assistant juridique se réveille, un instant…" });
+      await new Promise((r) => setTimeout(r, 4000));
+      res = await appel();
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      majDernier({ content: "" }); // effacer le message d'attente avant les tokens
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let evName = null;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop() ?? "";
+      for (const part of parts) {
+        for (const line of part.split("\n")) {
+          if (line.startsWith("event:")) {
+            evName = line.slice(6).trim();
+          } else if (line.startsWith("data:")) {
+            const payload = line.slice(5).trim();
+            try {
+              const ev = JSON.parse(payload);
+              if (evName === "token" && ev.text) {
+                majDernier((last) => ({ ...last, content: (last.content || "") + ev.text }));
+              } else if (evName === "sources" && Array.isArray(ev.sources)) {
+                // Types de sources renvoyés, pour l'accusé de fiabilité (outil / droit).
+                const types = [...new Set(ev.sources.map((s) => s.type).filter(Boolean))];
+                majDernier((last) => ({ ...last, sourceTypes: types }));
+              }
+            } catch { /* payload malformé ignoré */ }
+          }
+        }
+      }
+    }
+  }
 
   async function sendMessage(question) {
     const q = (question || input).trim();
@@ -163,59 +316,27 @@ export default function ChatWidget() {
     const ctrl = new AbortController();
     abortRef.current = ctrl;
 
+    // Observabilité : on note quel cerveau a répondu et en combien de temps.
+    // Fire-and-forget en fin d'échange — un log raté ne gêne jamais l'utilisateur.
+    const route = estJuridique(q) ? "rag" : "sql";
+    const t0 = Date.now();
+    let ok = true;
+
     try {
       const history = messages
         .filter((m) => m.role === "user" || m.role === "assistant")
         .slice(-6)
         .map((m) => ({ role: m.role, content: m.content || "" }));
 
-      const res = await fetch(`${CHAT_API}/chat/stream`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: q, history }),
-        signal: ctrl.signal,
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const parts = buffer.split("\n\n");
-        buffer = parts.pop() ?? "";
-
-        for (const part of parts) {
-          const line = part.split("\n").find(l => l.startsWith("data:"));
-          if (!line) continue;
-          const payload = line.slice(5).trim();
-          if (payload === "[DONE]") break;
-          try {
-            const ev = JSON.parse(payload);
-            setMessages((prev) => {
-              const copy = [...prev];
-              const last = copy[copy.length - 1];
-              if (!last || last.role !== "assistant") return prev;
-              // Premier event : metadata (intent + data SQL)
-              if (ev.intent !== undefined) {
-                copy[copy.length - 1] = { ...last, data: ev.data || [], intent: ev.intent };
-              // Event replace : hallucination détectée → remplacer le texte
-              } else if (ev.replace !== undefined) {
-                copy[copy.length - 1] = { ...last, content: ev.replace };
-              // Chunk texte normal
-              } else if (ev.chunk !== undefined) {
-                copy[copy.length - 1] = { ...last, content: (last.content || "") + ev.chunk };
-              }
-              return copy;
-            });
-          } catch { /* payload malformé ignoré */ }
-        }
+      // Aiguillage : juridique/conseil → RAG 1,5 B ; donnée commune → SQL.
+      if (route === "rag") {
+        await streamRAG(q, history, ctrl);
+      } else {
+        await streamSQL(q, history, ctrl);
       }
     } catch (e) {
       if (e.name !== "AbortError") {
+        ok = false;
         setMessages((prev) => {
           const copy = [...prev];
           const last = copy[copy.length - 1];
@@ -224,6 +345,11 @@ export default function ChatWidget() {
         });
       }
     } finally {
+      fetch(`${RAG_API}/api/v1/chat/log`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: q, route, latency_ms: Date.now() - t0, ok }),
+      }).catch(() => {});
       setLoading(false);
       abortRef.current = null;
       setMessages((prev) => {

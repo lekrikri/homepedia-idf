@@ -9,11 +9,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# sentence-transformers pour les embeddings (sans Ollama en prod)
+# sentence-transformers pour les embeddings (retrieval). La génération passe par
+# Gemini (API) : llama-cpp-python a été retiré — sa compilation prenait ~10 min
+# au build pour un modèle local qu'on ne charge plus.
 # einops est requis par le code distant de nomic-embed-text-v1.5 (trust_remote_code)
 RUN pip install --no-cache-dir \
     sentence-transformers==3.3.1 \
-    llama-cpp-python==0.3.4 \
     einops==0.8.0
 
 # Pré-télécharger le modèle d'embedding nomic (768 dims, identique à Ollama nomic-embed-text)
@@ -24,14 +25,11 @@ COPY 03_rag_server.py .
 COPY corpus.json legal_corpus.json mock_gold.json ./
 COPY 01_build_corpus.py 02_index_pgvector.py 05_index_legal_prod.py ./
 
-# Le modèle Qwen est copié depuis rag/models/ (rempli par gsutil dans cloudbuild-rag.yaml)
-COPY models/ /app/models/
+# Plus de modèle LLM local à embarquer : la génération est déléguée à Gemini.
 
 EXPOSE 8002
 
 ENV USE_LOCAL_EMBED=true
-ENV USE_LOCAL_LLM=true
-ENV LLM_MODEL_PATH=/app/models/qwen2.5-0.5b.gguf
-ENV LLM_THREADS=4
+ENV USE_LOCAL_LLM=false
 
 CMD ["python", "03_rag_server.py"]

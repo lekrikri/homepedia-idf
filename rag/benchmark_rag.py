@@ -113,8 +113,33 @@ QUESTIONS = [
     ("aide-choix", "Je cherche un T2 a moins de 200000 euros en Seine-Saint-Denis", "commune", None),
     ("aide-choix", "Faut-il acheter un logement classe F ?", "legal", None),
     ("aide-choix", "Quels pieges eviter avant de signer un compromis ?", "legal", "compromis"),
-    ("aide-choix", "Comment savoir si le prix demande est justifie ?", "commune", None),
+    # « Comment savoir si un prix est justifié ? » appelle une méthode (comparer
+    # aux ventes, regarder les percentiles), pas la fiche d'une commune : une
+    # réponse juridique/méthodologique y est légitime, on ne force pas le type.
+    ("aide-choix", "Comment savoir si le prix demande est justifie ?", None, None),
     ("aide-choix", "Vaut-il mieux louer ou acheter ?", "legal", None),
+
+    # ── Communes : couverture élargie (une par département) ─────────────────
+    ("commune-prix", "Quel est le prix au m2 a Melun ?", "commune", "Melun"),
+    ("commune-prix", "Combien coute un appartement a Argenteuil ?", "commune", "Argenteuil"),
+    ("commune-prix", "Prix immobilier a Evry-Courcouronnes", "commune", None),
+    ("commune-prix", "Quel est le prix a Nanterre ?", "commune", "Nanterre"),
+    ("commune-prix", "Combien vaut le m2 a Créteil ?", "commune", "Créteil"),
+    ("commune-prix", "Prix a Rosny-sous-Bois", "commune", "Rosny"),
+
+    # ── Encadrement des loyers : communes réellement couvertes ──────────────
+    # Ces communes ont désormais des barèmes préfectoraux ingérés (Plaine
+    # Commune, Est Ensemble) : une question sur l'encadrement doit trouver la
+    # réponse juridique, pas se rabattre sur une commune au hasard.
+    ("legal-encadrement", "Le loyer est-il encadré à Montreuil ?", "legal", "ncadrement"),
+    ("legal-encadrement", "Y a-t-il un plafond de loyer à Pantin ?", "legal", None),
+    ("legal-encadrement", "Comment contester un loyer trop élevé à Bagnolet ?", "legal", None),
+
+    # ── Aide à l'achat : questions de décision ──────────────────────────────
+    ("aide-achat", "Quels sont les frais caches lors d'un achat immobilier ?", "legal", None),
+    ("aide-achat", "Combien puis-je emprunter avec 2500 euros de revenus ?", "legal", None),
+    ("aide-achat", "Faut-il acheter dans le neuf ou l'ancien ?", "legal", None),
+    ("aide-achat", "Qu'est-ce que le delai de retractation apres un compromis ?", "legal", "tractation"),
 
     # ── Juridique : copropriété ────────────────────────────────────────────
     ("legal-copro", "Comment fonctionne une copropriete ?", "legal", "opropri"),
@@ -185,6 +210,45 @@ CONVERSATIONS = [
 ]
 
 MARQUEURS_REFUS = ("spécialisé dans l'immobilier", "Je suis l'assistant HomePedia")
+
+# Contrôles portant sur le TEXTE de la réponse, pas sur les sources ramenées.
+# Le retrieval peut être parfait et la génération mauvaise : « les moins chères
+# sont les 93057 et 93039 » (codes INSEE au lieu de noms), « les transports sont
+# très bien desservis en transports » (tautologie), ou une définition générale
+# du DPE là où l'on attendait celui d'une commune précise. Ces défauts sont
+# invisibles au benchmark de retrieval, et ce sont eux qui rendent le chatbot
+# décevant à l'usage.
+#
+# Chaque cas : (question, history, [contrôles]). Un contrôle est un couple
+# (doit_contenir, motif) où doit_contenir est un booléen — True = le motif
+# devrait figurer, False = il devrait être absent.
+QUALITE_REPONSE = [
+    (
+        "Quelles communes de Seine-Saint-Denis sont les moins cheres ?", [],
+        [(False, r"\b93\d{3}\b", "code INSEE brut dans la réponse")],
+    ),
+    (
+        "Et le DPE ?",
+        [{"role": "user", "content": "Parle-moi de Aubervilliers"},
+         {"role": "assistant", "content": "Aubervilliers est une commune de Seine-Saint-Denis."}],
+        [(True, r"[Aa]ubervilliers", "la commune du contexte doit être nommée")],
+    ),
+    (
+        "Et les transports ?",
+        [{"role": "user", "content": "Quel est le prix a Pantin ?"},
+         {"role": "assistant", "content": "Le prix a Pantin est de 5 800 euros/m2."}],
+        [(False, r"transports?[^.]{0,40}\btransports?\b", "tautologie (transports … transports)")],
+    ),
+    (
+        "Quel est le prix a Vincennes ?", [],
+        [(True, r"\d", "un prix doit comporter un chiffre"),
+         (False, r"\b(je ne sais pas|aucune information)\b", "esquive alors que la donnée existe")],
+    ),
+    (
+        "Quel preavis pour quitter mon logement en zone tendue ?", [],
+        [(True, r"\b(1|un)\s*mois\b", "le préavis réduit d'un mois attendu")],
+    ),
+]
 
 
 def demander(question, history):
@@ -276,7 +340,28 @@ for cat, q in NON_REGRESSION_GF:
 
 print()
 print("=" * 100)
-print("D. CONVERSATIONS MULTI-TOURS")
+print("D. QUALITE DES REPONSES (texte genere, pas retrieval)")
+print("=" * 100)
+for q, history, controles in QUALITE_REPONSE:
+    try:
+        data, ms = demander(q, history)
+        rep = (data.get("answer") or "").replace("\n", " ").strip()
+        manques = []
+        for doit_contenir, motif, libelle in controles:
+            present = re.search(motif, rep) is not None
+            if present != doit_contenir:
+                manques.append(libelle)
+        if manques:
+            statut, detail = "ECHEC", "; ".join(manques)
+        else:
+            statut, detail = "OK", f"{len(controles)} controle(s) passes"
+    except Exception as e:
+        statut, detail, rep, ms = "ERREUR", str(e)[:80], "", 0
+    enregistrer("qualite-reponse", q, statut, detail, rep, ms)
+
+print()
+print("=" * 100)
+print("E. CONVERSATIONS MULTI-TOURS")
 print("=" * 100)
 for cat, tours in CONVERSATIONS:
     history = []

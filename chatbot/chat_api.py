@@ -499,8 +499,11 @@ def chat():
         if isinstance(h, dict) and h.get("role") == "user"
     )
 
-    # Cache exact hit
-    cached = get_cached(question)
+    # Pas de cache pour les relances courtes dépendantes du contexte (« Et le
+    # DPE ? ») : le cache est indexé sur le texte seul et renverrait la donnée
+    # d'une autre commune. Voir /chat/stream.
+    relance_contextuelle = bool(history) and len(question.split()) <= 6
+    cached = None if relance_contextuelle else get_cached(question)
     if cached:
         logger.info("⚡ Cache hit")
         return jsonify({**cached, "cached": True})
@@ -510,9 +513,10 @@ def chat():
     if sem:
         return jsonify({**sem, "cached": True, "semantic_cache": True})
 
-    # Knowledge Base — court-circuit avant intent detection
-    # Intercepte les questions théoriques quel que soit l'intent qui serait détecté
-    kb_result = search_kb(question)
+    # Knowledge Base — court-circuit avant intent detection, sauf si une commune
+    # est nommée : la donnée de cette commune prime alors sur la définition
+    # générique (« DPE à Montreuil » ne doit pas renvoyer la définition du DPE).
+    kb_result = None if extract_communes(question) else search_kb(question)
     if kb_result:
         kb_answer, kb_score = kb_result
         logger.info(f"📚 KB match (score={kb_score}) — bypass intent detection")
@@ -702,22 +706,49 @@ def chat_stream():
         return Response(gen(), mimetype="text/event-stream",
                         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
-    # Cache exact (réponse déjà calculée)
-    cached = get_cached(question)
+    # Le cache est indexé sur le seul texte de la question, sans le contexte. Une
+    # relance courte comme « Et le DPE ? » dépend pourtant de la commune du tour
+    # précédent : la mettre en cache renverrait le DPE de Montreuil à quelqu'un
+    # qui parlait ensuite de Paris. On ne cache donc pas ces relances.
+    relance_contextuelle = bool(history) and len(question.split()) <= 6
+    cached = None if relance_contextuelle else get_cached(question)
     if cached:
         return _sse_fixed(cached.get("answer", ""), cached.get("intent", "general"))
 
-    # Knowledge Base — court-circuit avant intent detection
-    kb_result = search_kb(question)
+    # Depuis que le juridique est aiguillé vers le RAG, une question qui atteint
+    # ce chatbot en nommant une commune est une demande de donnée : on ne laisse
+    # pas la KB générique l'intercepter. « DPE à Montreuil » renvoyait la
+    # définition du DPE au lieu de la donnée de Montreuil. Idem pour une relance
+    # courte reprenant la commune d'un tour précédent (« Et le DPE ? » après
+    # « Parle-moi d'Aubervilliers »).
+    commune_dans_question = bool(extract_communes(question))
+    commune_hist = None
+    if not commune_dans_question and context_summary and len(question.split()) <= 6:
+        for msg in reversed(history):
+            if isinstance(msg, dict) and msg.get("role") == "user":
+                ch = extract_communes(msg.get("content", ""))
+                if ch:
+                    commune_hist = ch[0]
+                    break
+
+    # Knowledge Base — court-circuit avant intent detection, sauf si une commune
+    # est en jeu (la donnée prime alors sur la définition générale).
+    kb_result = None if (commune_dans_question or commune_hist) else search_kb(question)
     if kb_result:
         kb_answer, _ = kb_result
         return _sse_fixed(kb_answer, "general")
 
     intent, params = detect_intent(question)
 
-    # Résolution contextuelle : "et Bagnolet ?" seul détecté comme salutation/general
-    # → on réessaie avec le contexte conversationnel pour trouver le vrai intent
-    if intent in ("salutation", "general") and context_summary and len(question.split()) <= 6:
+    # Résolution contextuelle des relances courtes sans commune (« et Bagnolet ? »,
+    # « Et le DPE ? ») : on réinjecte la commune du dernier tour et on redétecte,
+    # ce qui ramène « Et le DPE ? » sur la fiche de la commune concernée (elle
+    # porte tous ses indicateurs) plutôt que sur une définition ou un classement.
+    #
+    # On exclut les salutations : « Bonjour » ou « merci » posés en cours de
+    # conversation ne sont pas des relances de données — les étendre avec le
+    # contexte transformait « Bonjour » en requête sur la dernière commune citée.
+    if intent != "salutation" and context_summary and len(question.split()) <= 6 and not commune_dans_question:
         last_ctx = context_summary.split("|")[-1].strip()
         expanded = f"{last_ctx} {question}"
         exp_intent, exp_params = detect_intent(expanded)

@@ -1,5 +1,11 @@
 # Pipeline dédié au build et déploiement du service RAG pgvector (03_rag_server.py).
-# Inclut sentence-transformers (nomic-embed-text-v1.5) + Qwen2.5-0.5B via llama-cpp.
+# Inclut sentence-transformers (nomic-embed-text-v1.5) + Qwen2.5-1.5B via llama-cpp.
+#
+# Le 1,5 B a remplacé le 0,5 B après mesure au benchmark : ce dernier produisait
+# des réponses juridiques fausses (préavis « 3 mois » en zone tendue au lieu d'un
+# mois) et des hallucinations en boucle sur les listes de communes, que le 1,5 B
+# corrige. Coût : latence ~2,5× (≈ 30-40 s à chaud). Retour au 0,5 B possible en
+# un build (voir le commentaire de l'étape de téléchargement).
 #
 # Déclencher MANUELLEMENT quand rag/ est modifié :
 #   gcloud builds submit --config cloudbuild-rag.yaml .
@@ -19,20 +25,8 @@ timeout: 2400s
 
 steps:
   # ─────────────────────────────────────────────────────────────────────────────
-  # ÉTAPE 1 : Télécharger le modèle Qwen depuis GCS (même que chatbot OLD)
-  # ─────────────────────────────────────────────────────────────────────────────
-  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
-    id: download-qwen
-    entrypoint: bash
-    args:
-      - -c
-      - |
-        mkdir -p ./rag/models
-        gsutil cp gs://homepedia-datalake/models/qwen2.5-0.5b-instruct-q4_k_m.gguf \
-          ./rag/models/qwen2.5-0.5b.gguf
-
-  # ─────────────────────────────────────────────────────────────────────────────
-  # ÉTAPE 2 : Build image RAG (sentence-transformers nomic pré-chargé + Qwen GGUF)
+  # ÉTAPE 1 : Build image RAG (sentence-transformers nomic pré-chargé pour le
+  # retrieval ; génération déléguée à Gemini, plus de modèle local à embarquer).
   # ─────────────────────────────────────────────────────────────────────────────
   - name: gcr.io/cloud-builders/docker
     id: build-rag
@@ -45,7 +39,7 @@ steps:
       - --cache-from
       - ${_REGISTRY}/rag:latest
       - ./rag
-    waitFor: [download-qwen]
+    waitFor: ['-']
 
   # ─────────────────────────────────────────────────────────────────────────────
   # ÉTAPE 3 : Push image RAG
@@ -70,13 +64,15 @@ steps:
       - --platform=managed
       - --allow-unauthenticated
       - --port=8002
+      # La génération passe par Gemini (API) : plus de LLM local à charger. Il ne
+      # reste que les embeddings nomic (retrieval), légers. RAM et CPU divisés.
       - --memory=4Gi
-      - --cpu=4
+      - --cpu=2
       - --min-instances=0
       - --max-instances=2
       - --timeout=300
-      - --set-env-vars=USE_LOCAL_EMBED=true,USE_LOCAL_LLM=true,LLM_MODEL_PATH=/app/models/qwen2.5-0.5b.gguf,LLM_THREADS=4,POSTGRES_HOST=aws-0-eu-west-1.pooler.supabase.com,POSTGRES_PORT=6543,POSTGRES_DB=postgres,POSTGRES_USER=postgres.iugsfmvqddburvufzacy,POSTGRES_SSLMODE=require
-      - --update-secrets=POSTGRES_PASSWORD=homepedia-supabase-password:latest
+      - --set-env-vars=USE_LOCAL_EMBED=true,USE_LOCAL_LLM=false,GEMINI_MODEL=gemini-flash-lite-latest,POSTGRES_HOST=aws-0-eu-west-1.pooler.supabase.com,POSTGRES_PORT=6543,POSTGRES_DB=postgres,POSTGRES_USER=postgres.iugsfmvqddburvufzacy,POSTGRES_SSLMODE=require
+      - --update-secrets=POSTGRES_PASSWORD=homepedia-supabase-password:latest,GEMINI_API_KEY=gemini-api-key:latest
       - --quiet
     waitFor: [push-rag]
 
@@ -98,7 +94,7 @@ steps:
         echo "  URL     : $$RAG_URL"
         echo "  Health  : $$RAG_URL/rag/health"
         echo "  Embed   : sentence-transformers nomic-embed-text-v1.5"
-        echo "  LLM     : Qwen2.5-0.5B (llama-cpp)"
+        echo "  LLM     : Qwen2.5-1.5B (llama-cpp)"
         echo "==================================="
         echo ""
         echo "Mettre à jour le backend avec RAG_SERVICE_URL=$$RAG_URL"

@@ -60,6 +60,25 @@ func RAGQuery(c *gin.Context) {
 	_, _ = io.Copy(c.Writer, resp.Body)
 }
 
+// RAGHealth handles GET /api/v1/rag/health
+//
+// Simple relais du health du service RAG. Sert au frontend à réveiller le
+// service à l'ouverture du chat : le modèle 1,5 B se charge au démarrage du
+// conteneur (~1 min), et sans cela la première question juridique posée après
+// une période d'inactivité attendrait ce chargement. Le ping le déclenche
+// pendant que l'utilisateur lit et tape.
+func RAGHealth(c *gin.Context) {
+	client := &http.Client{Timeout: 90 * time.Second}
+	resp, err := client.Get(ragServiceURL() + "/rag/health")
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "warming"})
+		return
+	}
+	defer resp.Body.Close()
+	c.Status(resp.StatusCode)
+	_, _ = io.Copy(c.Writer, resp.Body)
+}
+
 // RAGQueryStream handles POST /api/v1/rag/query/stream
 // Proxyfie le streaming SSE du service RAG Python vers le client.
 // Les tokens sont relayés au fur et à mesure, sans buffering.

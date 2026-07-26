@@ -104,6 +104,13 @@ func main() {
 		{
 			rag.POST("/query", handlers.RAGQuery)
 			rag.POST("/query/stream", handlers.RAGQueryStream)
+			rag.GET("/health", handlers.RAGHealth)
+		}
+
+		// Observabilité du chatbot (appelé par le frontend en fire-and-forget)
+		chat := v1.Group("/chat")
+		{
+			chat.POST("/log", handlers.PostChatLog)
 		}
 
 		// Communes similaires (distance euclidienne sur 5 features normalisées)

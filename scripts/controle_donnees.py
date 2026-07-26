@@ -48,6 +48,23 @@ BLOQUANT, ALERTE, INFO = "BLOQUANT", "ALERTE", "INFO"
 # explication affichée en cas d'échec).
 CONTROLES = [
     (
+        ALERTE,
+        "Taille de la base proche du plafond gratuit (500 Mo)",
+        "SELECT (pg_database_size(current_database()) / 1024 / 1024)::int",
+        460,
+        "Supabase gratuit plafonne à 500 Mo : au-delà, la base passe en LECTURE "
+        "SEULE et la gestion locative (CRUD) casse. La table transactions (DVF) "
+        "pèse ~80 % du total — archiver les millésimes anciens ou compresser avant "
+        "d'atteindre la limite. Un VACUUM FULL demande de la place temporaire.",
+    ),
+    (
+        INFO,
+        "Taille actuelle de la base (Mo)",
+        "SELECT (pg_database_size(current_database()) / 1024 / 1024)::int",
+        10**6,
+        "",
+    ),
+    (
         INFO,
         "Communes dont le DPE repose sur moins de 30 diagnostics",
         """SELECT COUNT(*) FROM communes_agregat

@@ -1082,13 +1082,25 @@ def _build_params(intent: str, q: str) -> Dict[str, Any]:
             params["dept"] = dept
     elif intent == "top_prix":
         order = "ASC" if re.search(r"moins ch[eè]r|moins [eé]lev[eé]|pas cher|abordable|les? moins", q, re.I) else "DESC"
-        # psycopg2 ne peut pas interpoler des mots-clés SQL (ORDER BY) → f-string avec valeur validée
+        # Un département cité (« les moins chères du 93 ») doit filtrer le
+        # classement. Sans cela, « du 93 » était ignoré et la requête renvoyait
+        # les communes les moins chères de toute l'Île-de-France — des communes
+        # rurales du 77 (Gironville, Vaux-sur-Lunain…), jamais du 93.
+        dept = extract_departement(q)
+        dept_cond = ""
+        if dept:
+            dept_cond = "AND TRIM(code_departement) = %(dept)s"
+            params["dept"] = dept
+        # psycopg2 ne peut pas interpoler des mots-clés SQL (ORDER BY) → f-string
+        # avec valeur validée (order ∈ {ASC, DESC}). Le département, lui, passe
+        # bien par un paramètre lié.
         params["_sql"] = f"""
             SELECT city AS commune, TRIM(code_departement) AS dept,
                    ROUND(prix_median_m2::numeric, 0) AS prix_m2,
                    nb_transactions
             FROM communes_agregat
             WHERE prix_median_m2 IS NOT NULL
+              {dept_cond}
             ORDER BY prix_median_m2 {order}
             LIMIT %(limit)s
         """
