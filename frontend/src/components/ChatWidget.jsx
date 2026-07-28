@@ -181,11 +181,16 @@ export default function ChatWidget() {
   // du conteneur (~1 min) ; le déclencher pendant que l'utilisateur lit et tape
   // évite qu'une première question juridique n'attende ce chargement. Une seule
   // fois par montage, fire-and-forget.
-  const ragWarmed = useRef(false);
+  // On réveille les DEUX cerveaux : le RAG (juridique) ET le chatbot SQL
+  // (données). Les deux s'éteignent après inactivité pour rester gratuits ; sans
+  // ce ping, la première question après une pause tombait sur un cold start
+  // (~5-10 s) et pouvait échouer — c'est l'erreur « une erreur est survenue ».
+  const warmed = useRef(false);
   useEffect(() => {
-    if (open && !ragWarmed.current) {
-      ragWarmed.current = true;
+    if (open && !warmed.current) {
+      warmed.current = true;
       fetch(`${RAG_API}/api/v1/rag/health`).catch(() => {});
+      fetch(`${CHAT_API}/health`).catch(() => {});
     }
   }, [open]);
 
@@ -210,12 +215,23 @@ export default function ChatWidget() {
 
   // Flux du chatbot SQL : « data: {intent,data} » puis « data: {chunk} ».
   async function streamSQL(q, history, ctrl) {
-    const res = await fetch(`${CHAT_API}/chat/stream`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question: q, history }),
-      signal: ctrl.signal,
-    });
+    const appel = () =>
+      fetch(`${CHAT_API}/chat/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: q, history }),
+        signal: ctrl.signal,
+      });
+
+    // Le chatbot SQL peut être en cold start (~5-10 s). On patiente et on
+    // réessaie une fois plutôt que d'échouer, comme pour le RAG.
+    let res = await appel();
+    if (!res.ok) {
+      majDernier({ content: "Un instant, je me réveille…" });
+      await new Promise((r) => setTimeout(r, 3500));
+      res = await appel();
+      majDernier({ content: "" });
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
     const reader = res.body.getReader();

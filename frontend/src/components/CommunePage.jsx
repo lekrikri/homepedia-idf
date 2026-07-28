@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 import axios from "axios";
+import MillesimeFooter from "./MillesimeFooter.jsx";
 
 function slugToCity(slug) {
   // "saint-germain-en-laye" → "Saint-Germain-en-Laye"
@@ -204,11 +205,7 @@ export default function CommunePage() {
 
         {/* Sources et liens internes */}
         <div className="px-6 pb-6 text-xs text-slate-600">
-          <p>
-            Données sources : DVF (Demandes de Valeurs Foncières) 2019-2024 · DPE (Diagnostic de
-            Performance Énergétique) · IPS scolaire · BRGM risques naturels · Prévisions Prophet
-            2025-2026
-          </p>
+          <MillesimeFooter />
           <p className="mt-1">
             <a href="/commune/paris" className="hover:text-slate-400 underline">
               Paris

@@ -3,6 +3,7 @@ import axios from "axios";
 import { CapaciteEmprunt, RenovationDPE } from "./outils/OutilsAchat.jsx";
 import { analyserAnnonce } from "./outils/annonce.js";
 import { entete as enteteDoc, pied as piedDoc, titre as titreDoc, imprimer as imprimerDoc } from "./outils/document.js";
+import MillesimeFooter from "./MillesimeFooter.jsx";
 
 /**
  * Estimation — situe un bien dans la distribution réelle des ventes comparables.
@@ -978,6 +979,7 @@ médiane doit le justifier.</p>
             Source : transactions DVF (DGFiP). Les données publiées accusent environ six mois de
             décalage : dans un marché qui bouge, les dernières ventes ne sont pas encore visibles.
           </p>
+          <MillesimeFooter className="mt-1" />
         </>
       )}
     </div>
