@@ -6,24 +6,9 @@ const CHAT_API = import.meta.env.VITE_CHAT_API_URL || "http://localhost:5001";
 // est servi par l'API Go. Le chatbot SQL, lui, répond aux données de commune
 // (prix, DPE, classements) avec ses cartes.
 const RAG_API = import.meta.env.VITE_API_URL || "http://localhost:8080";
-
-// Aiguillage hybride. Deux cerveaux : le SQL pour la donnée chiffrée d'une
-// commune, le RAG pour le juridique et le conseil. Un mot-clé juridique fait
-// basculer vers le RAG — « le loyer est-il encadré à Aubervilliers ? » est une
-// question de droit, même si elle nomme une commune. Les termes retenus
-// n'apparaissent pas dans une demande de donnée commune (prix, DPE, sécurité,
-// classement), qui reste donc sur le SQL et ses cartes.
-const sansAccents = (s) =>
-  (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-
-const JURIDIQUE_RE =
-  // Bornes de début conservées ; pas de borne de fin, pour que les racines
-  // (« encadr » → encadré/encadrement, « expuls » → expulser/expulsion) captent
-  // leurs suffixes. Les acronymes courts (apl, caf, hlm, sci, irl, ptz) gardent
-  // leurs propres bornes internes pour ne pas matcher au milieu d'un mot.
-  /\b(preavis|conge|bail|baux|caution|depot de garantie|garant|encadr|quittance|etat des lieux|vetuste|notaire|compromis|retractation|carrez|boutin|syndic|copropriete|\bapl\b|\bcaf\b|visale|maprimerenov|renov|\baides?\b|passoire|classe [fg]\b|expuls|treve|colocation|sous.location|honoraires|decence|decent|resiliation|indemnite|dalo|\bhlm\b|preemption|servitude|indivision|succession|\bsci\b|pinel|deficit foncier|\birl\b|logement (meuble|vide|nu|decent|insalubre)|plus.value|permis de construire|declaration prealable|\bptz\b|litige|conciliation|zone tendue|emprunt|capacite d.emprunt|frais de notaire|credit immobilier|augment|hausse|revis|loyer.{0,20}(correct|abusif|trop|plafond|maximum|legal)|puis.je|ai.?je le droit|dois.je|le droit de|peut.il m|obligation|comment (resilier|contester|obtenir|declarer|calculer|financer|reviser|augmenter))/;
-
-const estJuridique = (q) => JURIDIQUE_RE.test(sansAccents(q));
+// Le routage entre les deux cerveaux (données de commune vs droit du logement)
+// vit désormais dans la gateway côté serveur (/api/v1/chat). Le widget envoie la
+// question à cette porte unique et reçoit un flux normalisé.
 
 // Couleurs du site (dark theme)
 const C = {
@@ -213,108 +198,71 @@ export default function ChatWidget() {
       return copy;
     });
 
-  // Flux du chatbot SQL : « data: {intent,data} » puis « data: {chunk} ».
-  async function streamSQL(q, history, ctrl) {
-    const appel = () =>
-      fetch(`${CHAT_API}/chat/stream`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: q, history }),
-        signal: ctrl.signal,
-      });
-
-    // Le chatbot SQL peut être en cold start (~5-10 s). On patiente et on
-    // réessaie une fois plutôt que d'échouer, comme pour le RAG.
-    let res = await appel();
-    if (!res.ok) {
-      majDernier({ content: "Un instant, je me réveille…" });
-      await new Promise((r) => setTimeout(r, 3500));
-      res = await appel();
-      majDernier({ content: "" });
-    }
+  // Flux unique de la gateway : « event: meta|token|replace|done|error ». La
+  // gateway (backend Go) route côté serveur et normalise les deux cerveaux
+  // (données de commune et droit du logement) en un seul format — le widget
+  // n'a plus qu'un gestionnaire, et ne connaît plus les services individuels.
+  async function streamGateway(q, history, ctrl) {
+    const res = await fetch(`${RAG_API}/api/v1/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: q, history }),
+      signal: ctrl.signal,
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const parts = buffer.split("\n\n");
-      buffer = parts.pop() ?? "";
-      for (const part of parts) {
-        const line = part.split("\n").find((l) => l.startsWith("data:"));
-        if (!line) continue;
-        const payload = line.slice(5).trim();
-        if (payload === "[DONE]") break;
-        try {
-          const ev = JSON.parse(payload);
-          if (ev.intent !== undefined) {
-            majDernier((last) => ({ ...last, data: ev.data || [], intent: ev.intent }));
-          } else if (ev.replace !== undefined) {
-            majDernier({ content: ev.replace });
-          } else if (ev.chunk !== undefined) {
-            majDernier((last) => ({ ...last, content: (last.content || "") + ev.chunk }));
-          }
-        } catch { /* payload malformé ignoré */ }
-      }
-    }
-  }
-
-  // Flux du RAG : « event: sources|token|done ». Pas de cartes (data reste vide),
-  // la réponse s'affiche en prose. On marque le message pour l'accusé de source.
-  async function streamRAG(q, history, ctrl) {
-    majDernier({ intent: "juridique", data: [] });
-
-    // Le service RAG peut être en train de démarrer (cold start ~1 min). Plutôt
-    // qu'une erreur, on patiente et on réessaie une fois, en le disant.
-    const appel = () =>
-      fetch(`${RAG_API}/api/v1/rag/query/stream`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: q, history }),
-        signal: ctrl.signal,
-      });
-
-    let res = await appel();
-    if (!res.ok) {
-      majDernier({ content: "L'assistant juridique se réveille, un instant…" });
-      await new Promise((r) => setTimeout(r, 4000));
-      res = await appel();
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      majDernier({ content: "" }); // effacer le message d'attente avant les tokens
-    }
+    // Cold start possible : si rien n'arrive vite, on rassure (effacé au 1er token).
+    const attente = setTimeout(
+      () => majDernier({ content: "Un instant, je me réveille…" }), 3500);
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
     let evName = null;
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const parts = buffer.split("\n\n");
-      buffer = parts.pop() ?? "";
-      for (const part of parts) {
-        for (const line of part.split("\n")) {
-          if (line.startsWith("event:")) {
-            evName = line.slice(6).trim();
-          } else if (line.startsWith("data:")) {
-            const payload = line.slice(5).trim();
-            try {
-              const ev = JSON.parse(payload);
-              if (evName === "token" && ev.text) {
-                majDernier((last) => ({ ...last, content: (last.content || "") + ev.text }));
-              } else if (evName === "sources" && Array.isArray(ev.sources)) {
-                // Types de sources renvoyés, pour l'accusé de fiabilité (outil / droit).
-                const types = [...new Set(ev.sources.map((s) => s.type).filter(Boolean))];
-                majDernier((last) => ({ ...last, sourceTypes: types }));
+    let premierToken = true;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() ?? "";
+        for (const part of parts) {
+          for (const line of part.split("\n")) {
+            if (line.startsWith("event:")) {
+              evName = line.slice(6).trim();
+            } else if (line.startsWith("data:")) {
+              let ev;
+              try { ev = JSON.parse(line.slice(5).trim()); } catch { continue; }
+              if (evName === "meta") {
+                clearTimeout(attente);
+                majDernier((last) => ({
+                  ...last,
+                  intent: ev.route === "rag" ? "juridique" : ev.intent,
+                  data: ev.data || [],
+                  sourceTypes: ev.sourceTypes?.length ? ev.sourceTypes : last.sourceTypes,
+                }));
+              } else if (evName === "token" && ev.text) {
+                clearTimeout(attente);
+                if (premierToken) {
+                  premierToken = false;
+                  majDernier({ content: ev.text }); // efface l'éventuel « je me réveille… »
+                } else {
+                  majDernier((last) => ({ ...last, content: (last.content || "") + ev.text }));
+                }
+              } else if (evName === "replace" && ev.text !== undefined) {
+                clearTimeout(attente);
+                premierToken = false;
+                majDernier({ content: ev.text });
+              } else if (evName === "error") {
+                throw new Error(ev.error || "erreur gateway");
               }
-            } catch { /* payload malformé ignoré */ }
+            }
           }
         }
       }
+    } finally {
+      clearTimeout(attente);
     }
   }
 
@@ -332,27 +280,17 @@ export default function ChatWidget() {
     const ctrl = new AbortController();
     abortRef.current = ctrl;
 
-    // Observabilité : on note quel cerveau a répondu et en combien de temps.
-    // Fire-and-forget en fin d'échange — un log raté ne gêne jamais l'utilisateur.
-    const route = estJuridique(q) ? "rag" : "sql";
-    const t0 = Date.now();
-    let ok = true;
-
     try {
       const history = messages
         .filter((m) => m.role === "user" || m.role === "assistant")
         .slice(-6)
         .map((m) => ({ role: m.role, content: m.content || "" }));
 
-      // Aiguillage : juridique/conseil → RAG 1,5 B ; donnée commune → SQL.
-      if (route === "rag") {
-        await streamRAG(q, history, ctrl);
-      } else {
-        await streamSQL(q, history, ctrl);
-      }
+      // La gateway route côté serveur et journalise elle-même : le widget
+      // envoie simplement la question à une porte unique.
+      await streamGateway(q, history, ctrl);
     } catch (e) {
       if (e.name !== "AbortError") {
-        ok = false;
         setMessages((prev) => {
           const copy = [...prev];
           const last = copy[copy.length - 1];
@@ -361,11 +299,6 @@ export default function ChatWidget() {
         });
       }
     } finally {
-      fetch(`${RAG_API}/api/v1/chat/log`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: q, route, latency_ms: Date.now() - t0, ok }),
-      }).catch(() => {});
       setLoading(false);
       abortRef.current = null;
       setMessages((prev) => {

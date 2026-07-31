@@ -107,9 +107,11 @@ func main() {
 			rag.GET("/health", handlers.RAGHealth)
 		}
 
-		// Observabilité du chatbot (appelé par le frontend en fire-and-forget)
+		// Gateway de conversation : porte unique qui route côté serveur (données
+		// commune → chatbot SQL, droit → RAG) et normalise le flux.
 		chat := v1.Group("/chat")
 		{
+			chat.POST("", handlers.ChatGateway)
 			chat.POST("/log", handlers.PostChatLog)
 		}
 

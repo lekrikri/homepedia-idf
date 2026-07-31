@@ -749,8 +749,12 @@ def chat_stream():
     # conversation ne sont pas des relances de données — les étendre avec le
     # contexte transformait « Bonjour » en requête sur la dernière commune citée.
     if intent != "salutation" and context_summary and len(question.split()) <= 6 and not commune_dans_question:
-        last_ctx = context_summary.split("|")[-1].strip()
-        expanded = f"{last_ctx} {question}"
+        # On étend avec la dernière COMMUNE citée (commune_hist), pas le dernier
+        # message : dans une chaîne « Aubervilliers » → « Et le DPE ? » → « Et la
+        # sécurité ? », le dernier message (« Et le DPE ? ») ne contient plus la
+        # commune, et la relance se perdait (« Aucun résultat »).
+        ancre = commune_hist or context_summary.split("|")[-1].strip()
+        expanded = f"{ancre} {question}"
         exp_intent, exp_params = detect_intent(expanded)
         if exp_intent not in ("salutation", "general", "hors_scope"):
             intent, params = exp_intent, exp_params

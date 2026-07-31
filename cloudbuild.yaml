@@ -108,7 +108,7 @@ steps:
       - --cpu=1
       - --min-instances=0
       - --max-instances=5
-      - --set-env-vars=GIN_MODE=release,POSTGRES_HOST=aws-0-eu-west-1.pooler.supabase.com,POSTGRES_PORT=5432,POSTGRES_DB=postgres,POSTGRES_USER=postgres.iugsfmvqddburvufzacy,POSTGRES_SSLMODE=require,RAG_SERVICE_URL=https://homepedia-rag-714876351060.europe-west1.run.app
+      - --set-env-vars=GIN_MODE=release,POSTGRES_HOST=aws-0-eu-west-1.pooler.supabase.com,POSTGRES_PORT=5432,POSTGRES_DB=postgres,POSTGRES_USER=postgres.iugsfmvqddburvufzacy,POSTGRES_SSLMODE=require,RAG_SERVICE_URL=https://homepedia-rag-714876351060.europe-west1.run.app,CHAT_SERVICE_URL=https://homepedia-chat-714876351060.europe-west1.run.app
       - --update-secrets=POSTGRES_PASSWORD=homepedia-supabase-password:latest,JWT_SECRET=homepedia-jwt-secret:latest
       - --quiet
     waitFor: [push-backend]
