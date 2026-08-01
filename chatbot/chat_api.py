@@ -6,10 +6,21 @@ Porté depuis virida-eve/flask_rag_api.py
 """
 
 import os
+import re
 import json
 import time
 import logging
 import hashlib
+
+# Vraies salutations (texte, ancré) — distinct de ce que le modèle croit être une
+# salutation. Sert à ne PAS étendre « Bonjour » avec le contexte, tout en laissant
+# « Et la sécurité ? » (parfois mal classée en salutation) être résolue.
+_SALUTATION_RE = re.compile(
+    r"^(salut|bonjour|bonsoir|hello|coucou|hey|hi|ok|merci|super|g[eé]nial|"
+    r"parfait|cool|bravo|au revoir|bye|[àa] bient[oô]t|bonne\s+\w+|"
+    r"(ok|c.est bon)\s+merci)[\s!.?]*$",
+    re.I,
+)
 from datetime import datetime
 from decimal import Decimal
 from flask import Flask, request, jsonify, Response
@@ -745,10 +756,12 @@ def chat_stream():
     # ce qui ramène « Et le DPE ? » sur la fiche de la commune concernée (elle
     # porte tous ses indicateurs) plutôt que sur une définition ou un classement.
     #
-    # On exclut les salutations : « Bonjour » ou « merci » posés en cours de
-    # conversation ne sont pas des relances de données — les étendre avec le
-    # contexte transformait « Bonjour » en requête sur la dernière commune citée.
-    if intent != "salutation" and context_summary and len(question.split()) <= 6 and not commune_dans_question:
+    # On exclut les VRAIES salutations (texte « bonjour / merci… »), pas ce que le
+    # modèle croit être une salutation : « Et la sécurité ? » était mal classée
+    # comme salutation, et l'exclure par l'intention détecté la privait de la
+    # reprise de contexte (elle renvoyait alors le bonjour). Le test porte donc
+    # sur le libellé, via le même SALUTATION_RE que la détection d'intention.
+    if not _SALUTATION_RE.match(question) and context_summary and len(question.split()) <= 6 and not commune_dans_question:
         # On étend avec la dernière COMMUNE citée (commune_hist), pas le dernier
         # message : dans une chaîne « Aubervilliers » → « Et le DPE ? » → « Et la
         # sécurité ? », le dernier message (« Et le DPE ? ») ne contient plus la
