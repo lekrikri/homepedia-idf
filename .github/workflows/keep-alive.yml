@@ -1,0 +1,50 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Keep-alive Supabase — empêche la mise en pause du projet gratuit
+#
+# Pourquoi ?
+# ──────────
+# Un projet Supabase du plan gratuit se met EN PAUSE après ~7 jours sans
+# activité. Toutes les requêtes renvoient alors « tenant/user not found » et
+# l'app affiche 0 donnée — mauvais effet pour un portfolio partagé publiquement.
+#
+# Ce workflow exécute une requête triviale (SELECT 1) deux fois par semaine.
+# L'écart maximal entre deux exécutions (3-4 jours) reste bien en deçà du seuil
+# de 7 jours, avec une marge confortable même si un run échoue ponctuellement.
+#
+# Volontairement séparé de data-quality.yml : ce dernier est hebdomadaire (pile
+# à la limite), fait de l'auth GCP + des contrôles lourds, et peut échouer sans
+# que ce soit grave. Le keep-alive, lui, doit être minimal et fiable.
+#
+# Coût : dépôt public → minutes GitHub Actions gratuites et illimitées.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+name: Keep-alive Supabase
+
+on:
+  schedule:
+    - cron: '0 6 * * 1,4'   # lundi et jeudi à 6h UTC (écart max 3-4 j < 7 j)
+  workflow_dispatch:          # déclenchement manuel possible
+
+# Une seule exécution à la fois ; on annule une exécution en cours si une
+# nouvelle est déclenchée (évite les doublons manuels).
+concurrency:
+  group: keep-alive-supabase
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    name: 🫀 Ping Supabase (SELECT 1)
+    runs-on: ubuntu-latest
+    steps:
+      # psql est préinstallé sur ubuntu-latest (postgresql-client) : aucune
+      # dépendance à installer, le job dure quelques secondes.
+      - name: Ping base Supabase
+        env:
+          PGPASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+        run: |
+          psql "host=aws-0-eu-west-1.pooler.supabase.com \
+                port=5432 \
+                dbname=postgres \
+                user=postgres.iugsfmvqddburvufzacy \
+                sslmode=require" \
+            -tAc "SELECT 'keep-alive OK ' || now();"
