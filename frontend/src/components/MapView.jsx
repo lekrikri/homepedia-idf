@@ -586,12 +586,14 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock, sheetS
               </span>
             </button>
             {showScoreDetail && (() => {
+              // Décomposition fidèle du score global (cf. ingestion/scores/compute_scores.py
+              // et docs/SCORING.md) : mêmes axes et mêmes poids que la formule backend.
               const axes = [
-                { label: "Prix / CAGR", pct: 35, val: scoreInv, color: "#3c83f6" },
-                { label: "Énergie DPE", pct: 20, val: scoreStab, color: "#f59e0b" },
-                { label: "Social IPS", pct: 20, val: scoreQV, color: "#10b981" },
-                { label: "Transports", pct: 15, val: agregat.score_accessibilite != null ? Math.round(agregat.score_accessibilite) : null, color: "#8b5cf6" },
-                { label: "Sécurité", pct: 10, val: agregat.score_securite != null ? Math.round(agregat.score_securite) : null, color: "#ef4444" },
+                { label: "Qualité de vie", pct: 30, val: scoreQV, color: "#10b981" },
+                { label: "Investissement", pct: 20, val: scoreInv, color: "#3c83f6" },
+                { label: "Accessibilité", pct: 20, val: agregat.score_accessibilite != null ? Math.round(agregat.score_accessibilite) : null, color: "#8b5cf6" },
+                { label: "Stabilité DPE", pct: 15, val: scoreStab, color: "#f59e0b" },
+                { label: "Sécurité", pct: 15, val: agregat.score_securite != null ? Math.round(agregat.score_securite) : null, color: "#ef4444" },
               ];
               return (
                 <div className="px-4 pb-4 space-y-2.5" style={{ background: "rgba(22,32,48,0.8)" }}>
@@ -614,7 +616,7 @@ function RightPanel({ commune, transactions, agregat, isLocked, onUnlock, sheetS
                       </div>
                     </div>
                   ))}
-                  <p className="text-[8px] text-slate-600 pt-1">Pondération du score investissement global</p>
+                  <p className="text-[8px] text-slate-600 pt-1">Pondération du score global · détail dans docs/SCORING.md</p>
                 </div>
               );
             })()}
