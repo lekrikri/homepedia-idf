@@ -22,6 +22,16 @@ name: CD — Déploiement GCP Cloud Run
 on:
   push:
     branches: [ main ]
+    # Ne déclencher un déploiement payant que si le code réellement déployé par
+    # cloudbuild.yaml change (backend Go + frontend React). Un changement de doc,
+    # d'ingestion, de scripts, ou de RAG/chatbot — qui ont leurs propres pipelines
+    # (cloudbuild-rag.yaml / cloudbuild-chatbot.yaml, déclenchés à la main) — ne
+    # doit PAS relancer un build complet. Économie directe de minutes Cloud Build.
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'cloudbuild.yaml'
+      - '.github/workflows/cd.yml'
   workflow_dispatch:
     inputs:
       environment:
