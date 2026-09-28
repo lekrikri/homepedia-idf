@@ -115,6 +115,54 @@ const FEATURES = [
   },
 ];
 
+// Les six notes visibles par l'utilisateur (carte + fiche commune). Formulées
+// pour un acheteur/locataire, pas pour un data engineer : méthodologie complète
+// dans docs/SCORING.md. Poids et libellés alignés sur ingestion/scores/compute_scores.py.
+const SCORES = [
+  {
+    icon: "workspace_premium",
+    title: "Score global",
+    color: "#eab308",
+    desc: "La note de synthèse sur 100 : elle agrège toutes les autres pour classer une commune d'un seul coup d'œil.",
+    drivers: "Qualité de vie · Investissement · Accessibilité · Énergie · Sécurité",
+  },
+  {
+    icon: "cottage",
+    title: "Qualité de vie",
+    color: "#10b981",
+    desc: "Le confort au quotidien : écoles, performance énergétique du bâti, commerces, transports, santé et espaces verts à proximité.",
+    drivers: "Écoles (IPS) · Équipements · Énergie",
+  },
+  {
+    icon: "trending_up",
+    title: "Investissement",
+    color: "#3c83f6",
+    desc: "Le potentiel pour un investisseur : dynamisme du marché, qualité sociale, prix d'entrée et signes de valorisation du quartier.",
+    drivers: "Volume de ventes · Prix d'entrée · Attractivité",
+  },
+  {
+    icon: "shield",
+    title: "Sécurité",
+    color: "#ef4444",
+    desc: "La tranquillité, calculée sur les chiffres réels de délinquance de la commune. 100 = aucune atteinte constatée.",
+    drivers: "Cambriolages · Violences · Vols",
+  },
+  {
+    icon: "bolt",
+    title: "Énergie (DPE)",
+    color: "#f59e0b",
+    desc: "La performance énergétique moyenne des logements vendus, de A (vert) à G (rouge). Un bon score = moins de travaux à prévoir.",
+    drivers: "Classe énergie réelle des ventes",
+  },
+  {
+    icon: "savings",
+    title: "Rendement",
+    color: "#8b5cf6",
+    desc: "Le rapport loyer annuel / prix d'achat, en %. Plus il est élevé, plus le bien se rembourse vite par les loyers.",
+    drivers: "Loyer de marché ÷ prix d'achat",
+  },
+];
+
 const SOURCES = [
   { label: "DVF", full: "Demandes de Valeurs Foncières", color: "#3c83f6" },
   { label: "INSEE", full: "Statistiques socio-démographiques", color: "#22c55e" },
@@ -334,6 +382,42 @@ export default function LandingPage() {
             </Link>
           </div>
         </div>
+      </section>
+
+      {/* ── Comment on note les communes ─────────────────────────────── */}
+      <section className="px-6 md:px-16 pb-20">
+        <div className="text-center mb-12">
+          <h2 className="text-3xl font-bold text-white mb-3">Comment on note les communes</h2>
+          <p className="text-slate-400 max-w-2xl mx-auto">
+            Chaque commune reçoit des notes sur 100. Ce sont des{" "}
+            <span className="text-slate-200 font-medium">indices relatifs</span> : ils situent une
+            commune par rapport aux 1 266 autres d'Île-de-France, pour comparer d'un coup d'œil.
+            Tout est calculé sur des données publiques officielles.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {SCORES.map(s => (
+            <div key={s.title}
+              className="p-6 rounded-xl h-full flex flex-col"
+              style={{ background: "rgba(15,23,42,0.6)", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="size-10 rounded-xl flex items-center justify-center shrink-0"
+                  style={{ background: `${s.color}18`, border: `1px solid ${s.color}35` }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 20, color: s.color }}>{s.icon}</span>
+                </div>
+                <h3 className="font-bold text-slate-100">{s.title}</h3>
+              </div>
+              <p className="text-sm text-slate-400 leading-relaxed mb-4 grow">{s.desc}</p>
+              <div className="flex items-start gap-1.5 pt-3 border-t border-white/[0.06]">
+                <span className="material-symbols-outlined shrink-0" style={{ fontSize: 13, color: s.color }}>tune</span>
+                <span className="text-[11px] text-slate-500 leading-snug">{s.drivers}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className="text-center text-xs text-slate-600 mt-8">
+          Notes normalisées sur la distribution francilienne · aucune commune n'est laissée sans score.
+        </p>
       </section>
 
       {/* ── Features grid ────────────────────────────────────────────── */}
