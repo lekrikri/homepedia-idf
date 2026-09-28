@@ -141,7 +141,7 @@ Pendant locatif de l'estimation, pour le locataire avant signature.
 
 ### Fiche commune (panel droit)
 - **Graphique Prophet** : historique DVF 2019–2024 + prévisions 2025–2026 avec intervalles de confiance 80%
-- **Score expliqué** : 5 axes pondérés (Prix 35%, DPE 20%, IPS 20%, Transport 15%, Sécurité 10%)
+- **Score expliqué** : 5 axes pondérés — méthodologie complète dans [docs/SCORING.md](docs/SCORING.md)
 - **Risques BRGM** : retrait-gonflement argile (0→3) + inondation (0→3) + badge score global
 - **Villes jumelles** : communes similaires mais −8% minimum sur le prix au m² (distance euclidienne 5D)
 - Communes similaires (5D euclidien) · Insights vs moyenne IDF
