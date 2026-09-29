@@ -30,8 +30,12 @@ DB_URL = os.getenv(
     "DATABASE_URL",
     f"postgresql://postgres:{_MDP_URL}@db.iugsfmvqddburvufzacy.supabase.co:5432/postgres"
 )
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
-DELAY_S = 1.5  # ~40 req/min — sous le rate-limit Overpass
+# Instance Overpass et cadence configurables par env : l'instance publique
+# overpass-api.de bloque temporairement l'IP si on la sollicite trop vite. En cas
+# de blocage, ralentir (OVERPASS_DELAY_S=4) ou basculer sur un mirror
+# (OVERPASS_URL=https://overpass.kumi.systems/api/interpreter).
+OVERPASS_URL = os.getenv("OVERPASS_URL", "https://overpass-api.de/api/interpreter")
+DELAY_S = float(os.getenv("OVERPASS_DELAY_S", "1.5"))  # secondes entre communes
 HEADERS = {
     "User-Agent": "HomePedia-Ingestion/1.0 (homepedia-idf; contact: ganou.christophe@gmail.com)",
     "Accept": "application/json",
