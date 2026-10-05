@@ -113,7 +113,7 @@ function detectType(tags = {}) {
   if (tags.subway === "yes" || tags.station === "subway") return "subway";
   if (tags.tram === "yes" || tags.railway === "tram_stop") return "tram";
   if (tags.train === "yes" || tags.station === "train" || (tags.railway === "station" && (tags.operator || "").match(/SNCF|Transilien/i))) return "train";
-  if (tags.bus === "yes") return "bus";
+  if (tags.bus === "yes" || tags.highway === "bus_stop") return "bus";
   return "other";
 }
 
@@ -1759,6 +1759,7 @@ export default function MapView() {
   const hoverTipRef = useRef(null);
   const txHoverDivRef = useRef(null);
   const [txHover, setTxHover] = useState(null); // { x, y, html }
+  const [poiHover, setPoiHover] = useState(null); // { x, y, html } pour POIs
   // Bottom sheet mobile — état partagé avec RightPanel
   const [sheetState, setSheetState] = useState('peek');
   useEffect(() => { setSheetState('peek'); }, [selectedCommune]);
@@ -1774,6 +1775,11 @@ export default function MapView() {
   const [mapLoaded, setMapLoaded] = useState(false);
   const setTxHoverRef = useRef(null);
   useEffect(() => { setTxHoverRef.current = setTxHover; }, []);
+  const setPoiHoverRef = useRef(null);
+  useEffect(() => { setPoiHoverRef.current = setPoiHover; }, []);
+  // Temporisation avant masquage du tooltip POI : laisse le temps d'amener la
+  // souris dessus pour cliquer le lien (sinon le tooltip disparaît aussitôt).
+  const poiHideTimerRef = useRef(null);
   const setHoveredTxIdRef = useRef(null);
   const agregatAbortRef = useRef(null);
   const txAbortRef = useRef(null);
@@ -1842,6 +1848,7 @@ export default function MapView() {
       txMarkerElsRef.current.clear();
       txTooltipDataRef.current.clear();
       setTxHoverRef.current?.(null);
+      setPoiHoverRef.current?.(null);
 
       // FlyTo seulement lors d'un changement de commune, pas lors d'un filtre
       if (fly) {
@@ -1946,7 +1953,7 @@ export default function MapView() {
         });
         txMarkerElsRef.current.set(t.id, el);
         popupsRef.current.push(popup);
-        markersRef.current.push(new maplibregl.Marker(el).setLngLat([t.longitude, t.latitude]).addTo(map.current));
+        markersRef.current.push(new maplibregl.Marker({ element: el, anchor: "center" }).setLngLat([t.longitude, t.latitude]).addTo(map.current));
       });
     }).catch(err => { if (!axios.isCancel(err)) console.warn("loadTransactions:", err); });
   }, []);
@@ -2002,19 +2009,32 @@ export default function MapView() {
       const data = await fetchPOIBatch(code, lat, lon, poiLoadingRef.current?.signal);
       if (!data || !map.current) return;
       const seen = new Set();
-      data.transports
-        .filter(stop => {
-          const name = stop.tags?.name;
-          if (!name) return false;
-          const key = `${detectType(stop.tags)}:${name}`;
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        })
-        .slice(0, 30)
+      let busCount = 0;
+      const filtres = data.transports.filter(stop => {
+        const name = stop.tags?.name;
+        if (!name) return false;
+        const type = detectType(stop.tags);
+        // Les arrêts de bus sont très nombreux : on les plafonne (15) pour ne
+        // pas noyer métro/RER/tram sous les bus.
+        if (type === "bus") {
+          if (busCount >= 15) return false;
+          busCount++;
+        }
+        const key = `${type}:${name}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      // Slots réservés : transport lourd (métro/RER/tram, jusqu'à 50) ET bus
+      // (≤15) séparément — sinon un plafond global couperait tous les bus dans
+      // les grandes villes où le métro dépasse déjà la limite.
+      const lourd = filtres.filter(s => detectType(s.tags) !== "bus").slice(0, 50);
+      const busArrets = filtres.filter(s => detectType(s.tags) === "bus");
+      [...lourd, ...busArrets]
         .forEach(stop => {
           const type = detectType(stop.tags);
           const el = createTransportMarkerEl(type, stop.tags?.name || "");
+          createPOITooltip(el, stop.tags, "#3c83f6", "directions_transit", "Transport");
           transportMarkersRef.current.push(
             new maplibregl.Marker({ element: el, anchor: "center" })
               .setLngLat([stop.lon, stop.lat])
@@ -2042,7 +2062,7 @@ export default function MapView() {
       const data = await fetchPOIBatch(code, lat, lon, poiLoadingRef.current?.signal);
       if (!data || !map.current) return;
       const seen = new Set();
-      data.security.slice(0, 50).forEach(el => {
+      data.security.slice(0, 80).forEach(el => {
         const type = el.tags?.amenity;
         const name = el.tags?.name || type;
         const key = `${type}:${name}`;
@@ -2053,6 +2073,7 @@ export default function MapView() {
         dom.title = name;
         dom.style.cssText = `width:16px;height:16px;background:${cfg.bg};border-radius:50%;border:2px solid rgba(255,255,255,0.9);display:flex;align-items:center;justify-content:center;font-size:6px;font-weight:900;color:#fff;box-shadow:0 2px 6px rgba(0,0,0,0.6),0 0 0 1px ${cfg.bg}44;pointer-events:none;`;
         dom.textContent = cfg.letter;
+        createPOITooltip(dom, el.tags, cfg.bg, "security", "Sécurité");
         securityMarkersRef.current.push(
           new maplibregl.Marker({ element: dom, anchor: "center" })
             .setLngLat([el.lon, el.lat])
@@ -2081,6 +2102,92 @@ export default function MapView() {
     return dom;
   };
 
+  const createPOITooltip = (el, tags, typeColor, typeIcon, typeLabel) => {
+    // Échappe toute valeur issue d'OpenStreetMap avant injection HTML (les tags
+    // sont de la donnée externe non fiable — anti-XSS via dangerouslySetInnerHTML).
+    const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+    const name = tags?.name || tags?.["name:fr"] || typeLabel;
+    const addr = [tags?.["addr:housenumber"], tags?.["addr:street"]].filter(Boolean).join(" ") || "";
+    const phone = tags?.phone || tags?.["contact:phone"] || "";
+    // URL : n'accepter que http(s) (bloque javascript:, data:, etc.).
+    const websiteRaw = (tags?.website || tags?.["contact:website"] || "").trim();
+    let safeUrl = websiteRaw;
+    if (safeUrl && !/^https?:\/\//i.test(safeUrl)) safeUrl = "https://" + safeUrl;
+    if (!/^https?:\/\//i.test(safeUrl)) safeUrl = "";
+    const websiteLabel = websiteRaw.replace(/^https?:\/\//i, "");
+    const openingHours = tags?.opening_hours || "";
+    const cuisine = tags?.cuisine || "";
+    const amenity = tags?.amenity || "";
+    const shop = tags?.shop || "";
+    const leisure = tags?.leisure || "";
+    const operator = tags?.operator || "";
+    const brand = tags?.brand || "";
+    const wheelchair = tags?.wheelchair || "";
+    const capacity = tags?.capacity || "";
+
+    const lines = [];
+    if (addr) lines.push(`<div style="font-size:10px;color:#94a3b8;margin-bottom:4px">${esc(addr)}</div>`);
+    if (phone) lines.push(`<div style="font-size:10px;color:#94a3b8;margin-bottom:2px"><span class="material-symbols-outlined" style="font-size:10px;vertical-align:middle;margin-right:2px">phone</span>${esc(phone)}</div>`);
+    if (safeUrl) lines.push(`<div style="font-size:10px;margin-bottom:2px"><span class="material-symbols-outlined" style="font-size:10px;vertical-align:middle;margin-right:2px;color:#3c83f6">language</span><a href="${esc(safeUrl)}" target="_blank" rel="noopener noreferrer" style="color:#3c83f6;text-decoration:underline">${esc(websiteLabel.length > 40 ? websiteLabel.slice(0, 40) + "…" : websiteLabel)}</a></div>`);
+    if (openingHours) lines.push(`<div style="font-size:10px;color:#94a3b8;margin-bottom:2px"><span class="material-symbols-outlined" style="font-size:10px;vertical-align:middle;margin-right:2px">schedule</span>${esc(openingHours.length > 50 ? openingHours.slice(0, 50) + "…" : openingHours)}</div>`);
+    if (cuisine) lines.push(`<div style="font-size:10px;color:#94a3b8;margin-bottom:2px"><span class="material-symbols-outlined" style="font-size:10px;vertical-align:middle;margin-right:2px">restaurant</span>Cuisine: ${esc(cuisine)}</div>`);
+    if (amenity) lines.push(`<div style="font-size:10px;color:#94a3b8;margin-bottom:2px"><span class="material-symbols-outlined" style="font-size:10px;vertical-align:middle;margin-right:2px">location_on</span>Type: ${esc(amenity)}</div>`);
+    if (shop) lines.push(`<div style="font-size:10px;color:#94a3b8;margin-bottom:2px"><span class="material-symbols-outlined" style="font-size:10px;vertical-align:middle;margin-right:2px">store</span>Commerce: ${esc(shop)}</div>`);
+    if (leisure) lines.push(`<div style="font-size:10px;color:#94a3b8;margin-bottom:2px"><span class="material-symbols-outlined" style="font-size:10px;vertical-align:middle;margin-right:2px">park</span>Loisir: ${esc(leisure)}</div>`);
+    if (operator) lines.push(`<div style="font-size:10px;color:#94a3b8;margin-bottom:2px"><span class="material-symbols-outlined" style="font-size:10px;vertical-align:middle;margin-right:2px">business</span>Exploitant: ${esc(operator)}</div>`);
+    if (brand) lines.push(`<div style="font-size:10px;color:#94a3b8;margin-bottom:2px"><span class="material-symbols-outlined" style="font-size:10px;vertical-align:middle;margin-right:2px">badge</span>Marque: ${esc(brand)}</div>`);
+    if (wheelchair) lines.push(`<div style="font-size:10px;color:#10b981;margin-bottom:2px"><span class="material-symbols-outlined" style="font-size:10px;vertical-align:middle;margin-right:2px">accessible</span>Accessible: ${wheelchair === "yes" ? "Oui" : wheelchair === "no" ? "Non" : "Partiel"}</div>`);
+    if (capacity) lines.push(`<div style="font-size:10px;color:#94a3b8;margin-bottom:2px"><span class="material-symbols-outlined" style="font-size:10px;vertical-align:middle;margin-right:2px">people</span>Capacité: ${esc(capacity)}</div>`);
+
+    const html = `
+      <div style="font-family:Inter,sans-serif;padding:2px 0;min-width:200px;max-width:280px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.08)">
+          <div style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:${typeColor}22;border:1px solid ${typeColor}55">
+            <span class="material-symbols-outlined" style="font-size:14px;color:${typeColor}">${typeIcon}</span>
+          </div>
+          <span style="font-size:12px;font-weight:700;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px">${esc(name)}</span>
+        </div>
+        <span style="font-size:9px;font-weight:600;padding:1px 6px;border-radius:4px;background:${typeColor}22;color:${typeColor};border:1px solid ${typeColor}44">${typeLabel}</span>
+        ${lines.length > 0 ? `<div style="margin-top:8px">${lines.join("")}</div>` : ""}
+        <div style="height:1px;background:rgba(255,255,255,0.05);margin:8px 0"></div>
+        <div style="font-size:9px;color:#475569;text-align:right">Source: OpenStreetMap</div>
+      </div>`;
+
+    // MapLibre positionne le marqueur via un transform:translate(...) sur
+    // l'élément racine `el`. Animer el.style.transform (scale) écrasait ce
+    // translate → le marqueur sautait en haut à gauche. On isole donc le visuel
+    // dans un enfant et on anime CET enfant ; la racine garde son transform.
+    const inner = document.createElement("div");
+    inner.innerHTML = el.innerHTML;
+    inner.setAttribute("style", el.getAttribute("style") || "");
+    inner.style.pointerEvents = "none";
+    inner.style.transition = "transform 0.15s, box-shadow 0.15s";
+    const baseShadow = inner.style.boxShadow;
+    el.innerHTML = "";
+    el.setAttribute("style", "display:flex;align-items:center;justify-content:center;pointer-events:auto;cursor:pointer;");
+    el.appendChild(inner);
+
+    el.addEventListener("mouseenter", (e) => {
+      if (poiHideTimerRef.current) { clearTimeout(poiHideTimerRef.current); poiHideTimerRef.current = null; }
+      const rect = mapContainer.current?.getBoundingClientRect();
+      if (rect && map.current) {
+        setPoiHoverRef.current?.({ x: e.clientX - rect.left, y: e.clientY - rect.top, html });
+      }
+      inner.style.transform = "scale(1.3)";
+      inner.style.boxShadow = `0 0 12px ${typeColor}, 0 0 0 3px ${typeColor}44`;
+      inner.style.zIndex = "1000";
+    });
+    el.addEventListener("mouseleave", () => {
+      // Délai avant masquage : le temps d'entrer dans le tooltip pour cliquer un lien.
+      poiHideTimerRef.current = setTimeout(() => setPoiHoverRef.current?.(null), 280);
+      inner.style.transform = "scale(1)";
+      inner.style.boxShadow = baseShadow;
+      inner.style.zIndex = "";
+    });
+  };
+
   const loadRestaurantMarkers = useCallback(async () => {
     restaurantMarkersRef.current.forEach(m => m.remove());
     restaurantMarkersRef.current = [];
@@ -2099,10 +2206,12 @@ export default function MapView() {
           seen.add(key);
           return true;
         })
-        .slice(0, 40)
+        .slice(0, 80)
         .forEach(el => {
+          const elDom = createPOIMkr("R", "#f97316", el.tags?.name || "Restaurant");
+          createPOITooltip(elDom, el.tags, "#f97316", "restaurant", "Restaurant");
           restaurantMarkersRef.current.push(
-            new maplibregl.Marker({ element: createPOIMkr("R", "#f97316", el.tags?.name || "Restaurant"), anchor: "center" })
+            new maplibregl.Marker({ element: elDom, anchor: "center" })
               .setLngLat([el.lon, el.lat]).addTo(map.current)
           );
         });
@@ -2134,14 +2243,16 @@ export default function MapView() {
           seen.add(key);
           return true;
         })
-        .slice(0, 30)
+        .slice(0, 80)
         .forEach(el => {
           const type = el.tags?.amenity;
           const cfg = type === "kindergarten" ? { letter: "Ma", bg: "#fbbf24" }
                     : type === "university" || type === "college" ? { letter: "U", bg: "#3b82f6" }
                     : { letter: "É", bg: "#0ea5e9" };
+          const elDom = createPOIMkr(cfg.letter, cfg.bg, el.tags?.name || "École");
+          createPOITooltip(elDom, el.tags, cfg.bg, "school", "École");
           schoolMarkersRef.current.push(
-            new maplibregl.Marker({ element: createPOIMkr(cfg.letter, cfg.bg, el.tags?.name || "École"), anchor: "center" })
+            new maplibregl.Marker({ element: elDom, anchor: "center" })
               .setLngLat([el.lon, el.lat]).addTo(map.current)
           );
         });
@@ -2173,14 +2284,16 @@ export default function MapView() {
           seen.add(key);
           return true;
         })
-        .slice(0, 25)
+        .slice(0, 80)
         .forEach(el => {
           const type = el.tags?.leisure;
           const cfg = type === "playground" ? { letter: "J",  bg: "#22c55e" }
                     : type === "nature_reserve" ? { letter: "Na", bg: "#15803d" }
                     : { letter: "Pa", bg: "#84cc16" };
+          const elDom = createPOIMkr(cfg.letter, cfg.bg, el.tags?.name || "Parc");
+          createPOITooltip(elDom, el.tags, cfg.bg, "park", "Parc");
           parkMarkersRef.current.push(
-            new maplibregl.Marker({ element: createPOIMkr(cfg.letter, cfg.bg, el.tags?.name || "Parc"), anchor: "center" })
+            new maplibregl.Marker({ element: elDom, anchor: "center" })
               .setLngLat([el.lon, el.lat]).addTo(map.current)
           );
         });
@@ -2212,14 +2325,16 @@ export default function MapView() {
           seen.add(key);
           return true;
         })
-        .slice(0, 30)
+        .slice(0, 80)
         .forEach(el => {
           const type = el.tags?.shop;
           const cfg = type === "supermarket" || type === "mall" ? { letter: "S",  bg: "#7c3aed" }
                     : type === "bakery" ? { letter: "Bo", bg: "#d97706" }
                     : { letter: "C",  bg: "#a855f7" };
+          const elDom = createPOIMkr(cfg.letter, cfg.bg, el.tags?.name || "Commerce");
+          createPOITooltip(elDom, el.tags, cfg.bg, "store", "Commerce");
           shopMarkersRef.current.push(
-            new maplibregl.Marker({ element: createPOIMkr(cfg.letter, cfg.bg, el.tags?.name || "Commerce"), anchor: "center" })
+            new maplibregl.Marker({ element: elDom, anchor: "center" })
               .setLngLat([el.lon, el.lat]).addTo(map.current)
           );
         });
@@ -2477,7 +2592,7 @@ export default function MapView() {
         <div style="font-weight:700;margin-bottom:2px">${q || "Adresse recherchée"}</div>
         <div style="color:#64748b;font-size:10px">${lat.toFixed(5)}, ${lng.toFixed(5)}</div>
       </div>`);
-    const pin = new maplibregl.Marker(el)
+    const pin = new maplibregl.Marker({ element: el, anchor: "center" })
       .setLngLat([lng, lat])
       .setPopup(popup)
       .addTo(map.current);
@@ -2593,6 +2708,8 @@ export default function MapView() {
           if (!e.features?.length) return;
           if (markerClickedRef.current) return;
           e.originalEvent._communeHandled = true;
+          setTxHoverRef.current?.(null);
+          setPoiHoverRef.current?.(null);
           const { code_insee, nom } = e.features[0].properties;
           const found = allCommunesRef.current.find(c => c.code_insee === code_insee)
             || allCommunesRef.current.find(c => c.nom.toLowerCase() === nom.toLowerCase());
@@ -2610,6 +2727,8 @@ export default function MapView() {
       hoverTipRef.current?.remove();
       [transportMarkersRef, securityMarkersRef, restaurantMarkersRef, schoolMarkersRef, parkMarkersRef, shopMarkersRef]
         .forEach(ref => ref.current.forEach(m => m.remove()));
+      setTxHoverRef.current?.(null);
+      setPoiHoverRef.current?.(null);
       map.current?.remove();
       map.current = null;
     };
@@ -2630,6 +2749,9 @@ export default function MapView() {
       if (e.originalEvent?._communeHandled) return;
       if (markerClickedRef.current) return;
       if (e.originalEvent?.target?.closest?.(".maplibregl-marker, .maplibregl-popup")) return;
+
+      setTxHoverRef.current?.(null);
+      setPoiHoverRef.current?.(null);
 
       const { lng, lat } = e.lngLat;
 
@@ -2783,6 +2905,37 @@ export default function MapView() {
             />
           );
         })()}
+        
+        {/* ── Hover tooltip POI — overlay React ── */}
+        {poiHover && (() => {
+          const containerW = mapContainer.current?.offsetWidth ?? 800;
+          const left = poiHover.x + 18 + 300 > containerW ? poiHover.x - 310 : poiHover.x + 18;
+          return (
+            <div
+              // pointerEvents auto + on garde le tooltip tant que la souris est
+              // dessus : c'est ce qui rend le lien du site web réellement cliquable.
+              onMouseEnter={() => { if (poiHideTimerRef.current) { clearTimeout(poiHideTimerRef.current); poiHideTimerRef.current = null; } }}
+              onMouseLeave={() => setPoiHover(null)}
+              style={{
+                position: "absolute",
+                left: Math.max(4, left),
+                top: Math.max(4, poiHover.y - 20),
+                zIndex: 9999,
+                pointerEvents: "auto",
+                minWidth: 220,
+                maxWidth: 300,
+                borderRadius: 12,
+                padding: "12px 14px",
+                background: "rgba(10,16,28,0.97)",
+                border: "1px solid rgba(60,131,246,0.5)",
+                boxShadow: "0 8px 32px rgba(0,0,0,0.7)",
+                backdropFilter: "blur(8px)",
+                fontFamily: "Inter,sans-serif",
+              }}
+              dangerouslySetInnerHTML={{ __html: poiHover.html }}
+            />
+          );
+        })()}
 
         {/* Breadcrumb + loading indicator */}
         <div className="absolute top-4 left-4 flex items-center gap-2 z-10 rounded-full px-4 py-1.5 text-xs font-medium"
@@ -2821,8 +2974,11 @@ export default function MapView() {
           </div>
         )}
 
-        {/* Contrôles droite */}
-        <div className="absolute bottom-20 right-4 z-10 flex flex-col gap-2">
+        {/* Contrôles droite — hauteur bornée au viewport + scroll : sinon la
+            colonne (toggles POI + isochrone + 3D + heatmap + score + zoom)
+            dépasse le haut de l'écran et les premiers boutons (sécurité,
+            transport, resto, école, parcs) deviennent invisibles/inatteignables. */}
+        <div className="absolute bottom-20 right-4 z-10 flex flex-col gap-2 max-h-[calc(100vh-6.5rem)] overflow-y-auto overflow-x-hidden px-1 -mr-1 no-scrollbar">
           {/* Toggles couches OSM — désactivés en vue 3D (marqueurs MapLibre non visibles) */}
           <div className={`flex flex-col gap-2 ${is3D ? "opacity-40 pointer-events-none" : ""}`}>
           {/* Toggle sécurité */}

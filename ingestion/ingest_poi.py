@@ -45,6 +45,7 @@ HEADERS = {
 QUERY_TEMPLATE = """[out:json][timeout:25];(
 node["public_transport"="station"](around:3000,{lat},{lon});
 node["railway"~"station|tram_stop"](around:2500,{lat},{lon});
+node["highway"="bus_stop"](around:1500,{lat},{lon});
 node["amenity"~"police|fire_station|hospital|pharmacy"](around:3500,{lat},{lon});
 way["amenity"~"police|fire_station|hospital"](around:3500,{lat},{lon});
 node["amenity"~"restaurant|cafe|bar|fast_food|brasserie"](around:2000,{lat},{lon});
@@ -68,10 +69,11 @@ def classify(elements: list) -> dict:
         am = tags.get("amenity", "")
         pt = tags.get("public_transport", "")
         ra = tags.get("railway", "")
+        hw = tags.get("highway", "")
         le = tags.get("leisure", "")
         sh = tags.get("shop", "")
         entry = {"name": tags.get("name", ""), "lat": lat, "lon": lon, "tags": tags}
-        if pt == "station" or any(x in ra for x in ["station", "tram_stop"]):
+        if pt == "station" or any(x in ra for x in ["station", "tram_stop"]) or hw == "bus_stop":
             b["transports"].append(entry)
         elif any(x in am for x in ["police", "fire_station", "hospital", "pharmacy"]):
             b["security"].append(entry)
@@ -112,6 +114,8 @@ def main():
     parser.add_argument("--limit", type=int, default=0, help="Nb communes max (0=toutes)")
     parser.add_argument("--dept", type=str, default="", help="Département (ex: 92)")
     parser.add_argument("--skip-existing", action="store_true", help="Ignorer communes déjà ingérées")
+    parser.add_argument("--only-missing-bus", action="store_true",
+                        help="Ne traiter que les communes SANS arrêt de bus (reprise incrémentale)")
     args = parser.parse_args()
 
     conn = psycopg2.connect(DB_URL)
@@ -149,6 +153,20 @@ def main():
         communes = [c for c in communes if c[0] not in done]
         print(f"  → skip-existing : {before - len(communes)} ignorées, {len(communes)} restantes")
 
+    # Reprise incrémentale bus : on saute les communes qui ont DÉJÀ au moins un
+    # arrêt de bus. Chaque relance avance donc, même si la précédente a été
+    # interrompue (utile face à la limite de 10 min des tâches en arrière-plan).
+    if args.only_missing_bus:
+        cur.execute("""
+            SELECT DISTINCT p.code_commune
+            FROM poi_communes p, jsonb_array_elements(p.data->'transports') t
+            WHERE t->'tags'->>'highway' = 'bus_stop'
+        """)
+        avec_bus = {r[0] for r in cur.fetchall()}
+        before = len(communes)
+        communes = [c for c in communes if c[0] not in avec_bus]
+        print(f"  → only-missing-bus : {before - len(communes)} déjà avec bus ignorées, {len(communes)} restantes")
+
     total = len(communes)
     print(f"🗺️  {total} communes à traiter" + (f" (dept {args.dept})" if args.dept else ""))
 
@@ -159,6 +177,14 @@ def main():
 
         poi = fetch_poi(lat, lon)
         n = sum(len(v) for v in poi.values())
+
+        # Garde-fou : 0 POI = quasi certainement un échec réseau (toute commune
+        # habitée a au moins quelques POI dans le rayon). Ne JAMAIS écraser une
+        # donnée existante par du vide — on saute, l'existant est conservé.
+        if n == 0:
+            print("⏭️  0 POI (échec probable) — existant conservé")
+            time.sleep(DELAY_S)
+            continue
 
         try:
             cur.execute("""

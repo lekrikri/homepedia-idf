@@ -5,6 +5,15 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Masque la scrollbar (barre d'outils carte scrollable sur petits écrans) */
+.no-scrollbar {
+  scrollbar-width: none;        /* Firefox */
+  -ms-overflow-style: none;     /* IE/Edge legacy */
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;                /* Chrome/Safari */
+}
+
 @layer base {
   html, body, #root { height: 100%; }
   body {
