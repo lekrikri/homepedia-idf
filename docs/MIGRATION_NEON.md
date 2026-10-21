@@ -1,5 +1,11 @@
 # Runbook — Migration Supabase → Neon (HomePedia IDF)
 
+> ✅ **MIGRATION EFFECTUÉE le 21/10/2026.** Base sur Neon (Frankfurt, 1 Go, PG18),
+> 22 tables migrées (transactions 867 877, rag_documents 5 117 + embeddings, postgis OK),
+> backend/RAG/chatbot repointés et testés (latence 21 ms). Supabase gardé en **fallback**
+> quelques jours. Reste : décommissionner Supabase + (option) secret GitHub `POSTGRES_PASSWORD`.
+> Ce document reste la référence du *comment* (et du rollback).
+
 > Plan de bascule de la base PostgreSQL de **Supabase (free)** vers **Neon (free)**.
 > HomePedia utilise Supabase **uniquement comme Postgres** (pas de Storage/Auth/Realtime :
 > documents en `bytea`, auth JWT dans le backend Go) → migration = `pg_dump`/`pg_restore`.

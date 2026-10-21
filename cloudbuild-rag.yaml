@@ -71,8 +71,8 @@ steps:
       - --min-instances=0
       - --max-instances=2
       - --timeout=300
-      - --set-env-vars=USE_LOCAL_EMBED=true,USE_LOCAL_LLM=false,GEMINI_MODEL=gemini-flash-lite-latest,POSTGRES_HOST=aws-0-eu-west-1.pooler.supabase.com,POSTGRES_PORT=6543,POSTGRES_DB=postgres,POSTGRES_USER=postgres.iugsfmvqddburvufzacy,POSTGRES_SSLMODE=require
-      - --update-secrets=POSTGRES_PASSWORD=homepedia-supabase-password:latest,GEMINI_API_KEY=gemini-api-key:latest
+      - --set-env-vars=USE_LOCAL_EMBED=true,USE_LOCAL_LLM=false,GEMINI_MODEL=gemini-flash-lite-latest,POSTGRES_HOST=ep-snowy-hill-b9ods1vn.c-7.eu-central-1.aws.neon.tech,POSTGRES_PORT=5432,POSTGRES_DB=neondb,POSTGRES_USER=neondb_owner,POSTGRES_SSLMODE=require
+      - --update-secrets=POSTGRES_PASSWORD=homepedia-neon-password:latest,GEMINI_API_KEY=gemini-api-key:latest
       - --quiet
     waitFor: [push-rag]
 
