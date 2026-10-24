@@ -59,7 +59,9 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
 REWRITE_MODEL = os.getenv("OLLAMA_REWRITE_MODEL", "qwen2.5:3b")
 EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
 
-TOP_K = 12
+# 30 candidats plutôt que 12 : la bonne fiche juridique est plus souvent parmi eux,
+# et le re-ranker la remonte ensuite (eval/reranker/, mesures du 24/10/2026).
+TOP_K = 30
 MAX_COMMUNES_SOURCES = 5  # Communes affichées en sources dans le chat (UI)
 MAX_COMMUNES_LLM = 3      # Summaries envoyés au LLM (perf prompt processing)
 MAX_LEGAL_LLM = 3         # Chunks légaux envoyés au LLM (bail, loyer, CAF…)
@@ -73,6 +75,16 @@ KEEP_ALIVE = "30m"
 # Poids de l'hybrid search : plus c'est élevé, plus la recherche sémantique domine
 # 0.0 = full-text only, 1.0 = embeddings only, 0.7 = pondéré
 SEMANTIC_WEIGHT = 0.7
+
+# Re-ranker : un cross-encoder lit la question et chaque fiche juridique ensemble et
+# les re-classe avant d'en envoyer trois au LLM. Mesuré sur 73 questions annotées
+# (eval/reranker/) : rappel@3 de 71 % à 82 %, de 41 % à 63 % sur les questions en
+# langage courant, pour moins d'une seconde sur 2 vCPU. Seules les 10 premières
+# fiches sont re-notées, textes coupés à 256 jetons : au-delà, chaque point de
+# rappel coûte trop cher en latence sans GPU. Chaîne vide = re-ranker désactivé.
+RERANKER_MODEL = os.getenv("RERANKER_MODEL", "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1")
+RERANK_LIMIT = 10
+RERANK_MAX_LENGTH = 256
 
 # ── Mode production (Cloud Run sans Ollama) ───────────────────────────────────
 USE_LOCAL_EMBED = os.getenv("USE_LOCAL_EMBED", "false").lower() == "true"
@@ -97,6 +109,13 @@ if USE_LOCAL_EMBED:
     log.info("Chargement du modèle d'embedding local (nomic-embed-text-v1.5)…")
     _local_embed_model = SentenceTransformer("nomic-ai/nomic-embed-text-v1.5", trust_remote_code=True)
     log.info("Modèle d'embedding local prêt")
+
+_reranker = None
+if RERANKER_MODEL:
+    from sentence_transformers import CrossEncoder
+    log.info(f"Chargement du re-ranker ({RERANKER_MODEL})…")
+    _reranker = CrossEncoder(RERANKER_MODEL, max_length=RERANK_MAX_LENGTH)
+    log.info("Re-ranker prêt")
 
 if USE_GEMINI:
     log.info(f"Génération via Gemini ({GEMINI_MODEL}) — pas de LLM local chargé")
@@ -529,13 +548,17 @@ def hybrid_search(query: str, departement: str | None, top_k: int):
     query_vec = embed_query(query)
     query_vec_pg = vector_to_pg(query_vec)
 
+    # Mots de la question reliés par OU. plainto_tsquery les relie par ET : « Combien
+    # coûtent les frais de notaire ? » exigeait alors « combien » ET « coutent » dans
+    # la fiche, aucune ne correspondait, et la partie plein texte valait toujours 0.
     sql = """
         WITH ranked AS (
             SELECT
                 id, doc_type, code_commune, city, code_departement, text,
                 (1 - (embedding <=> %s::vector)) AS semantic_score,
                 COALESCE(
-                    ts_rank_cd(text_fts, plainto_tsquery('french', %s)),
+                    ts_rank_cd(text_fts, to_tsquery('french',
+                        replace(plainto_tsquery('french', %s)::text, '&', '|'))),
                     0
                 ) AS fts_score
             FROM rag_documents
@@ -561,6 +584,16 @@ def hybrid_search(query: str, departement: str | None, top_k: int):
                 top_k,
             ))
             return cur.fetchall()
+
+
+def rerank_legal(question: str, legal_results: list[dict]) -> list[dict]:
+    """Re-classe les premières fiches juridiques avec le cross-encoder."""
+    if _reranker is None or len(legal_results) < 2:
+        return legal_results
+    a_noter = legal_results[:RERANK_LIMIT]
+    scores = _reranker.predict([(question, r["text"]) for r in a_noter], batch_size=16)
+    triees = [r for _, r in sorted(zip(scores, a_noter), key=lambda paire: -paire[0])]
+    return triees + legal_results[RERANK_LIMIT:]
 
 
 def get_commune_details(codes_commune: list[str]):
@@ -899,7 +932,7 @@ def retrieve_context(question: str, departement: str | None, top_k: int, history
 
     # Séparer les résultats légaux des summaries communes
     summary_results = [r for r in results if r["doc_type"] == "summary"]
-    legal_results = [r for r in results if r["doc_type"] == "legal"]
+    legal_results = rerank_legal(search_query, [r for r in results if r["doc_type"] == "legal"])
 
     matched_communes = [r["code_commune"] for r in summary_results]
 

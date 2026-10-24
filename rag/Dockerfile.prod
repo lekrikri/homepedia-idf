@@ -21,6 +21,12 @@ RUN pip install --no-cache-dir \
 RUN python -c "from sentence_transformers import SentenceTransformer; \
     SentenceTransformer('nomic-ai/nomic-embed-text-v1.5', trust_remote_code=True)"
 
+# Pré-télécharger le re-ranker (cross-encoder multilingue, ~470 Mo) : il re-classe les
+# fiches juridiques avant l'envoi au LLM. Sans ce téléchargement, le premier démarrage
+# de Cloud Run le récupérerait depuis Hugging Face.
+RUN python -c "from sentence_transformers import CrossEncoder; \
+    CrossEncoder('cross-encoder/mmarco-mMiniLMv2-L12-H384-v1')"
+
 COPY 03_rag_server.py .
 COPY corpus.json legal_corpus.json mock_gold.json ./
 COPY 01_build_corpus.py 02_index_pgvector.py 05_index_legal_prod.py ./

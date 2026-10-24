@@ -95,6 +95,10 @@ dvf_full_log.txt
 /ocr/data/predictions_*.csv
 /ocr/mlflow.db
 /ocr/mlartifacts/
+# Benchmark re-ranker : résultats régénérables, suivi MLflow local
+/eval/reranker/predictions_*.csv
+/eval/reranker/mlflow.db
+/eval/reranker/mlartifacts/
 
 # Environnements virtuels nommés (le pattern .venv/ ne les couvre pas)
 ingestion/.venv*/
