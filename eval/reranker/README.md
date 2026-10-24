@@ -35,6 +35,20 @@ peut pas répondre juste, quelle que soit sa qualité.
 Configuration retenue (v3) : mots-clés en OU, 30 candidats, re-ranker mMiniLM (118 M de
 paramètres) sur les 8 premières fiches, textes coupés à 128 jetons.
 
+### Mesure de bout en bout sur la production
+
+`mesure_prod.py` envoie les 73 questions à l'API déployée et vérifie les fiches renvoyées en
+sources. Latence complète : recherche, re-ranking et génération par Gemini.
+
+| Version déployée | Rappel@3 | Langage courant | Latence médiane |
+|---|---|---|---|
+| Avant (révision 19) | 71,2 % | 40,6 % | 2,0 s |
+| v2 : 10 fiches, 256 jetons (révision 20) | 82,2 % | 62,5 % | 4,3 s |
+| **v3 : 8 fiches, 128 jetons (révision 21)** | **84,9 %** | **68,8 %** | **2,4 s** |
+
+Les précisions mesurées en production sont exactement celles du benchmark : la recherche
+y est reproduite fidèlement. Par rapport à l'origine, 12 questions sont gagnées et 2 perdues.
+
 ### Réglage pour la production (25/10/2026)
 
 La v2, déployée le 24/10, a donné en production exactement la précision prévue (82,2 %),
