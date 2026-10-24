@@ -91,12 +91,12 @@ CONFIGURATIONS = [
     ("hybride_ou_30_rerank_minilm_cpu", SEMANTIC_WEIGHT, "ou", 30, MINILM, "cpu"),
 ]
 
-# Configuration retenue pour la production (CPU, 2 vCPU) : on ne re-note que les 10
-# premières fiches juridiques, textes coupés à 256 jetons. +11 points de rappel@3 pour
-# moins d'une seconde ; au-delà, chaque point coûte trop cher en latence.
-PRODUCTION_V2 = ("production_v2", SEMANTIC_WEIGHT, "ou", 30, MINILM, "cpu")
-FICHES_RERANKEES_V2 = 10
-LONGUEUR_V2 = 256
+# Configuration retenue pour la production (CPU, 2 vCPU). La v2 (10 fiches, 256 jetons)
+# déployée le 24/10 ajoutait 2,3 s sur Cloud Run. La v3 ne re-note que les 8 premières
+# fiches juridiques, textes coupés à 128 jetons : plus précise et 3 fois plus rapide.
+PRODUCTION_V2 = ("production_v3", SEMANTIC_WEIGHT, "ou", 30, MINILM, "cpu")
+FICHES_RERANKEES_V2 = 8
+LONGUEUR_V2 = 128
 
 
 def mot_de_passe():

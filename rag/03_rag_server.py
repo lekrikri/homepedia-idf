@@ -77,14 +77,17 @@ KEEP_ALIVE = "30m"
 SEMANTIC_WEIGHT = 0.7
 
 # Re-ranker : un cross-encoder lit la question et chaque fiche juridique ensemble et
-# les re-classe avant d'en envoyer trois au LLM. Mesuré sur 73 questions annotées
-# (eval/reranker/) : rappel@3 de 71 % à 82 %, de 41 % à 63 % sur les questions en
-# langage courant, pour moins d'une seconde sur 2 vCPU. Seules les 10 premières
-# fiches sont re-notées, textes coupés à 256 jetons : au-delà, chaque point de
-# rappel coûte trop cher en latence sans GPU. Chaîne vide = re-ranker désactivé.
+# les re-classe avant d'en envoyer trois au LLM (mesures dans eval/reranker/, sur 73
+# questions annotées, recherche identique à la production).
+# - 10 fiches à 256 jetons, déployé le 24/10 : rappel@3 de 71 % à 82 %, mais +2,3 s de
+#   latence sur Cloud Run (CPU environ 2,7 fois plus lent que le portable de mesure).
+# - 8 fiches à 128 jetons : 85 % et un re-ranking 3 fois plus rapide. Le titre et le
+#   début d'une fiche suffisent à juger sa pertinence ; la suite noie le modèle.
+# - La version ONNX 8 bits du même modèle n'a gagné que 10 % : non retenue.
+# Réglables sans rebuild par variables d'environnement. RERANKER_MODEL vide = désactivé.
 RERANKER_MODEL = os.getenv("RERANKER_MODEL", "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1")
-RERANK_LIMIT = 10
-RERANK_MAX_LENGTH = 256
+RERANK_LIMIT = int(os.getenv("RERANK_LIMIT", "8"))
+RERANK_MAX_LENGTH = int(os.getenv("RERANK_MAX_LENGTH", "128"))
 
 # ── Mode production (Cloud Run sans Ollama) ───────────────────────────────────
 USE_LOCAL_EMBED = os.getenv("USE_LOCAL_EMBED", "false").lower() == "true"

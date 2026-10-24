@@ -29,10 +29,33 @@ peut pas répondre juste, quelle que soit sa qualité.
 | Hybride, mots-clés en OU | 60,3 % | 69,9 % | 43,8 % | 45 ms |
 | Hybride OU, 30 candidats + mMiniLM | 80,8 % | **91,8 %** | **81,2 %** | 198 ms (GPU) / 3,7 s (CPU) |
 | Hybride OU, 30 candidats + BGE v2 M3 | **87,7 %** | 90,4 % | 78,1 % | 1,6 s (GPU) / ~30 s (CPU) |
-| **Retenue pour la production (CPU, 2 cœurs)** | 76,7 % | **82,2 %** | **62,5 %** | **0,9 s** |
+| Production v2 (10 fiches, 256 jetons, CPU 2 cœurs) | 76,7 % | 82,2 % | 62,5 % | 0,8 s |
+| **Production v3 (8 fiches, 128 jetons, CPU 2 cœurs)** | — | **84,9 %** | **68,8 %** | **0,3 s** |
 
-Configuration retenue : mots-clés en OU, 30 candidats, re-ranker mMiniLM (118 M de
-paramètres) sur les 10 premières fiches, textes coupés à 256 jetons.
+Configuration retenue (v3) : mots-clés en OU, 30 candidats, re-ranker mMiniLM (118 M de
+paramètres) sur les 8 premières fiches, textes coupés à 128 jetons.
+
+### Réglage pour la production (25/10/2026)
+
+La v2, déployée le 24/10, a donné en production exactement la précision prévue (82,2 %),
+mais la latence médiane est passée de 2,0 s à 4,3 s : les CPU de Cloud Run sont environ
+2,7 fois plus lents que le portable de mesure, même à nombre de cœurs égal. Mesures sur
+le portable limité à 2 cœurs :
+
+| Fiches re-notées | 256 jetons | 128 jetons |
+|---|---|---|
+| 3 | 69,9 % · 259 ms | 69,9 % · 125 ms |
+| 5 | 75,3 % · 403 ms | 76,7 % · 200 ms |
+| 8 | 82,2 % · 666 ms | **84,9 % · 295 ms** |
+| 10 | 82,2 % · 840 ms | 84,9 % · 366 ms |
+
+Couper à 128 jetons est à la fois plus rapide et plus précis : le titre et le début d'une
+fiche suffisent à juger sa pertinence, la suite noie le modèle.
+
+**ONNX quantifié en 8 bits** (`onnx/model_quint8_avx2.onnx`, 119 Mo au lieu de 471, testé
+avec `reranker_onnx.py`) : 247 ms au lieu de 275 ms pour la même précision à 128 jetons,
+et un point de rappel perdu à 256 jetons. Gain trop faible pour ajouter une dépendance :
+non retenu.
 
 **Ce qu'on en retient**
 
@@ -42,7 +65,7 @@ paramètres) sur les 10 premières fiches, textes coupés à 256 jetons.
   en réalité 100 % sémantique. Les mots sont désormais reliés par OU.
 - **Le re-ranker apporte l'essentiel du gain**, surtout sur les questions en langage
   courant (de 41 % à 63 % en production, jusqu'à 81 % avec plus de candidats).
-- **Le choix dépend de l'infrastructure.** Sur GPU, 30 candidats et mMiniLM donnent 92 % en
+- **Le choix dépend de l'infrastructure (mesures v2).** Sur GPU, 30 candidats et mMiniLM donnent 92 % en
   0,2 s. Cloud Run n'a pas de GPU : même mMiniLM y prendrait 3,7 s sur 30 fiches. On n'en
   re-note donc que 10, pour 82 % en 0,9 s. BGE, le plus précis à la première place, est
   inutilisable sans GPU (environ 30 s par question).

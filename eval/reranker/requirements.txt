@@ -4,3 +4,5 @@ transformers>=4.44,<4.50
 einops==0.8.0
 psycopg2-binary
 mlflow
+onnxruntime   # uniquement pour reranker_onnx.py (comparaison, non utilisé en production)
+requests

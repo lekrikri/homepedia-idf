@@ -115,3 +115,4 @@ rag/models/
 
 # Config MCP locale
 .mcp.json
+/eval/reranker/mesure_prod_*.json
