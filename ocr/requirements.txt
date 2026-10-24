@@ -1,0 +1,7 @@
+# Module OCR des DPE. Tesseract s'installe à part : apt install tesseract-ocr tesseract-ocr-fra
+# torch doit correspondre au pilote CUDA de la machine (ici torch 2.9.1 + CUDA 12.8).
+pillow
+numpy
+python-doctr
+torchvision>=0.24,<0.25
+mlflow

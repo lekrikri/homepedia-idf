@@ -89,6 +89,12 @@ dvf_full_log.txt
 /kickoff*
 /message*
 /project*
+/ocr/data/private/
+# OCR : jeu synthétique et résultats régénérables, suivi MLflow local
+/ocr/data/synth/
+/ocr/data/predictions_*.csv
+/ocr/mlflow.db
+/ocr/mlartifacts/
 
 # Environnements virtuels nommés (le pattern .venv/ ne les couvre pas)
 ingestion/.venv*/
