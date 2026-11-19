@@ -25,6 +25,13 @@ type gzipWriter struct {
 func (w *gzipWriter) Write(b []byte) (int, error) { return w.gz.Write(b) }
 func (w *gzipWriter) WriteString(s string) (int, error) { return w.gz.Write([]byte(s)) }
 
+// Flush vide le tampon de compression avant de pousser la réponse : sans lui,
+// un flux SSE (passerelle /api/v1/chat) n'arrive au client qu'à la fin.
+func (w *gzipWriter) Flush() {
+	w.gz.Flush()
+	w.ResponseWriter.Flush()
+}
+
 // Gzip compresses JSON/text responses when the client supports it.
 // Only compresses responses > 1 KB to avoid overhead on tiny payloads.
 func Gzip() gin.HandlerFunc {

@@ -1,0 +1,107 @@
+[
+ {
+  "q": "Quel est le préavis pour quitter un logement vide en zone tendue ?",
+  "route": "rag",
+  "ttft": 1.7702795100049116,
+  "total": 1.7708410600025672,
+  "car": 213
+ },
+ {
+  "q": "Mon propriétaire peut-il garder mon dépôt de garantie ?",
+  "route": "rag",
+  "ttft": 3.219022802019026,
+  "total": 3.219603511010064,
+  "car": 701
+ },
+ {
+  "q": "Comment contester une augmentation de loyer ?",
+  "route": "rag",
+  "ttft": 3.513733964005951,
+  "total": 3.514391306001926,
+  "car": 709
+ },
+ {
+  "q": "Ai-je le droit de sous-louer mon appartement ?",
+  "route": "rag",
+  "ttft": 4.817999594990397,
+  "total": 4.82046258597984,
+  "car": 346
+ },
+ {
+  "q": "Quels sont les frais de notaire pour un achat dans l'ancien ?",
+  "route": "rag",
+  "ttft": 2.133133835013723,
+  "total": 2.1348626680264715,
+  "car": 355
+ },
+ {
+  "q": "Le bailleur doit-il faire les travaux de mise en décence ?",
+  "route": "rag",
+  "ttft": 2.717347233003238,
+  "total": 2.7179246289888397,
+  "car": 151
+ },
+ {
+  "q": "Qu'est-ce que l'encadrement des loyers à Paris ?",
+  "route": "rag",
+  "ttft": 0.4566204290022142,
+  "total": 0.4571319289971143,
+  "car": 748
+ },
+ {
+  "q": "Comment fonctionne la trêve hivernale pour les expulsions ?",
+  "route": "rag",
+  "ttft": 3.434631112002535,
+  "total": 3.435186527989572,
+  "car": 703
+ },
+ {
+  "q": "Puis-je résilier mon bail meublé avant la fin ?",
+  "route": "rag",
+  "ttft": 2.3213385440176353,
+  "total": 2.3230421259941068,
+  "car": 406
+ },
+ {
+  "q": "Quelles aides pour rénover une passoire thermique ?",
+  "route": "rag",
+  "ttft": 2.3579353950044606,
+  "total": 2.358662591985194,
+  "car": 847
+ },
+ {
+  "q": "Quelles sont les communes les moins chères du 93 ?",
+  "route": "sql",
+  "ttft": 49.73965774901444,
+  "total": 49.740226705005625,
+  "car": 81
+ },
+ {
+  "q": "Prix au m2 à Versailles",
+  "route": "sql",
+  "ttft": 0.32598601302015595,
+  "total": 0.326678184006596,
+  "car": 367
+ },
+ {
+  "q": "Compare Montreuil et Vincennes",
+  "route": "sql",
+  "ttft": 0.2845348379923962,
+  "total": 0.28675656800623983,
+  "car": 511
+ },
+ {
+  "q": "Meilleure qualité de vie dans le 77",
+  "route": "sql",
+  "ttft": 0.3200387519900687,
+  "total": 0.3208580689970404,
+  "car": 83
+ },
+ {
+  "q": "Rendement locatif à Saint-Denis",
+  "route": "sql",
+  "ttft": 0.2826305039925501,
+  "total": 0.28333193698199466,
+  "car": 367
+ }
+]
